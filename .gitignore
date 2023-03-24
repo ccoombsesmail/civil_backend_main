@@ -1,0 +1,11 @@
+.env
+.bloop
+.bsp
+.idea
+.metals
+
+.target
+
+./target
+./project/target
+asdas
