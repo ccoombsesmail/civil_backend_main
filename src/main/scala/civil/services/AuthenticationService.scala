@@ -100,8 +100,6 @@ case class AuthenticationServiceLive()
     for {
       res <- authenticateCivicTokenHeader(decodedJwt)
       body <- ZIO.fromEither(res.body)
-      _  = println("BODYYY")
-      _ = println(body + Console.GREEN_B)
       userData <- ZIO
         .fromOption(UsersRepository.getUserInternal(body.pk))
         .orElseFail(new Throwable("Civil Relevant User Information Not Found"))
@@ -110,10 +108,11 @@ case class AuthenticationServiceLive()
       username = body.name.getOrElse(body.pk),
       userCivilTag = userData.tag.getOrElse(""),
       userIconSrc = body.iconUrl.getOrElse(
-        userData.iconSrc.getOrElse( "https://civil-dev.s3.us-west-1.amazonaws.com/profile_img_1.png")
+        userData.iconSrc.getOrElse("https://civil-dev.s3.us-west-1.amazonaws.com/profile_img_1.png")
       ),
       civicHeadline = body.headline,
-      permissions = body.permissions
+      permissions = body.permissions,
+      experience = userData.experience
     )
   }
 
@@ -168,7 +167,8 @@ case class AuthenticationServiceLive()
                 claims
                   .getOrDefault("userCivilTag", claims.get("username").toString)
                   .toString,
-                "https://civil-dev.s3.us-west-1.amazonaws.com/profile_img_1.png"
+                "https://civil-dev.s3.us-west-1.amazonaws.com/profile_img_1.png",
+                experience = None
               )
             )
           } else None

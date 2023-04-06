@@ -20,11 +20,12 @@ trait DiscussionService {
   def insertDiscussion(
       jwt: String,
       jwtType: String,
-      incomingDiscussion: IncomingDiscussion
-  ): ZIO[Any, ErrorInfo, Discussions]
+      incomingDiscussion: IncomingDiscussion,
+): ZIO[Any, ErrorInfo, Discussions]
   def getDiscussions(
-      topicId: UUID
-  ): ZIO[Any, ErrorInfo, List[OutgoingDiscussion]]
+      topicId: UUID,
+      skip: Int
+                    ): ZIO[Any, ErrorInfo, List[OutgoingDiscussion]]
   def getDiscussion(id: UUID): ZIO[Any, ErrorInfo, OutgoingDiscussion]
 
   def getGeneralDiscussionId(topicId: UUID): ZIO[Any, ErrorInfo, GeneralDiscussionId]
@@ -48,9 +49,10 @@ object DiscussionService {
     )
 
   def getDiscussions(
-      topicId: UUID
+      topicId: UUID,
+      skip: Int
   ): ZIO[Has[DiscussionService], ErrorInfo, List[OutgoingDiscussion]] =
-    ZIO.serviceWith[DiscussionService](_.getDiscussions(topicId))
+    ZIO.serviceWith[DiscussionService](_.getDiscussions(topicId, skip))
 
   def getDiscussion(
       id: UUID
@@ -108,9 +110,11 @@ case class DiscussionServiceLive(discussionRepository: DiscussionRepository, aut
   }
 
   override def getDiscussions(
-      topicId: UUID
+      topicId: UUID,
+      skip: Int
+
   ): ZIO[Any, ErrorInfo, List[OutgoingDiscussion]] = {
-    discussionRepository.getDiscussions(topicId)
+    discussionRepository.getDiscussions(topicId, skip)
   }
 
   override def getDiscussion(

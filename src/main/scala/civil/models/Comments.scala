@@ -1,12 +1,11 @@
 package civil.models
 
 import civil.models.enums.ReportStatus.Clean
+import civil.models.enums.{ReportStatus, Sentiment}
 
 import java.time.LocalDateTime
 import java.util.UUID
 import io.scalaland.chimney.dsl._
-
-
 
 case class CommentNode(data: CommentReply, children: Seq[CommentNode])
 case class EntryWithDepth(comment: CommentReply, depth: Int)
@@ -18,10 +17,11 @@ object Comments {
       civility: Float,
       iconSrc: String,
       userId: String,
-      createdByExperience: Option[String],
+      createdByExperience: Option[String]
   ) =
     EntryWithDepth(
-      commentWithDepth.into[CommentReply]
+      commentWithDepth
+        .into[CommentReply]
         .withFieldConst(_.likeState, likeState)
         .withFieldConst(_.civility, civility)
         .withFieldConst(_.createdByIconSrc, iconSrc)
@@ -38,17 +38,37 @@ object Comments {
       civility: Float,
       iconSrc: String,
       userId: String,
-      createdByExperience: Option[String],
+      createdByExperience: Option[String]
   ) =
-     comment.into[CommentReply]
-       .withFieldConst(_.likeState, 0)
-       .withFieldConst(_.civility, civility)
-       .withFieldConst(_.createdByIconSrc, iconSrc)
-       .withFieldConst(_.createdByUserId, userId)
-       .withFieldConst(_.createdByExperience, createdByExperience)
-       .withFieldConst(_.source, comment.source)
-       .transform
+    comment
+      .into[CommentReply]
+      .withFieldConst(_.likeState, 0)
+      .withFieldConst(_.civility, civility)
+      .withFieldConst(_.createdByIconSrc, iconSrc)
+      .withFieldConst(_.createdByUserId, userId)
+      .withFieldConst(_.createdByExperience, createdByExperience)
+      .withFieldConst(_.source, comment.source)
+      .transform
 }
+
+case class CommentWithDepthAndUser(
+    id: UUID,
+    editorState: String,
+    createdByUsername: String,
+    sentiment: String,
+    discussionId: UUID,
+    parentId: Option[UUID],
+    createdAt: LocalDateTime,
+    likes: Int,
+    rootId: Option[UUID],
+    depth: Int,
+    source: Option[String],
+    reportStatus: String = Clean.entryName,
+    toxicityStatus: Option[String] = None,
+    userIconSrc: Option[String],
+    userExperience: Option[String],
+    userId: String
+)
 
 case class Comments(
     id: UUID,
@@ -65,7 +85,8 @@ case class Comments(
     rootId: Option[UUID],
     source: Option[String],
     reportStatus: String = Clean.entryName,
-    toxicityStatus: Option[String] = None //TODO: turn this into enum with varius toxicity values (profanity, racism etc.)
+    toxicityStatus: Option[String] =
+      None // TODO: turn this into enum with varius toxicity values (profanity, racism etc.)
 )
 
 case class IncomingComment(
@@ -99,7 +120,7 @@ case class OutgoingComment(
     toxicityStatus: Option[String] = None
 )
 
-case class  CommentReply(
+case class CommentReply(
     id: UUID,
     editorState: String,
     createdByUsername: String,
@@ -133,14 +154,12 @@ case class CommentWithDepth(
     source: Option[String],
     reportStatus: String = Clean.entryName,
     toxicityStatus: Option[String] = None
-
 )
-
 
 case class CommentWithReplies(
     replies: List[CommentNode],
     comment: CommentReply
- )
+)
 
 case class UpdateLikes(id: UUID, userId: String, increment: Boolean)
 

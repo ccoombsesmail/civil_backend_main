@@ -47,6 +47,7 @@ case class TopicLikesRepositoryLive() extends TopicLikesRepository {
         case "-11" => 2
         case _ => 0
       }
+      _ <- ZIO.when(likeValueToAdd == 0)(ZIO.fail(InternalServerError("Invalid like value")))
         topic <- ZIO.effect(
         transaction {
           run(

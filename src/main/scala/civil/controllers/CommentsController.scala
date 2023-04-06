@@ -34,9 +34,9 @@ object CommentsController {
     CommentsService
   ], Throwable, Request, Response[Any, Throwable]] = {
     ZioHttpInterpreter().toHttp(getAllCommentsEndpoint) {
-      case (jwt, jwtType, subtopicId) =>
+      case (jwt, jwtType, discussionId, skip) =>
         CommentsService
-          .getComments(jwt, jwtType, UUID.fromString(subtopicId))
+          .getComments(jwt, jwtType, UUID.fromString(discussionId), skip)
           .map(comment => {
             Right(comment)
           })

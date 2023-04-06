@@ -24,13 +24,13 @@ val newDiscussionEndpointRoute: Http[Has[DiscussionService], Throwable, Request,
 
 
   val getAllDiscussionsEndpointRoute: Http[Has[DiscussionService], Throwable, Request, Response[Any, Throwable]] = {
-    ZioHttpInterpreter().toHttp(getAllDiscussionsEndpoint)(topicId => {
-      DiscussionService.getDiscussions(UUID.fromString((topicId)))
+    ZioHttpInterpreter().toHttp(getAllDiscussionsEndpoint) { case (topicId, skip) => {
+      DiscussionService.getDiscussions(UUID.fromString(topicId), skip)
         .map(discussions => {
           Right(discussions)
         }).catchAll(e => ZIO.succeed(Left(e)))
         .provideLayer(layer)
-    }) 
+    }}
   }
 
  val getDiscussionEndpointRoute: Http[Has[DiscussionService], Throwable, Request, Response[Any, Throwable]] = {

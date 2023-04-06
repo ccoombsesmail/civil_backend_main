@@ -1,44 +1,35 @@
 package civil.repositories.comments
 
-import civil.models.NotifcationEvents.CommentLike
-import civil.models.{
-  CommentLiked,
-  CommentLikes,
-  Comments,
-  ErrorInfo,
-  InternalServerError,
-  TribunalComments
-}
-import civil.models._
-import civil.services.KafkaProducerServiceLive
+import civil.models.{CommentLiked, CommentLikes, Comments, ErrorInfo, InternalServerError, TribunalComments}
+import civil.repositories.comments
 import zio.{Has, ZIO, ZLayer}
-
+import zio.logging._
 trait CommentLikesRepository {
   def addRemoveCommentLikeOrDislike(
       commentLikeDislike: CommentLikes,
       createdById: String
-  ): ZIO[Any, ErrorInfo, (CommentLiked, Comments)]
+  ): ZIO[Any with Logging, ErrorInfo, (CommentLiked, Comments)]
 
   def addRemoveTribunalCommentLikeOrDislike(
       commentLikeDislike: CommentLikes
-  ): ZIO[Any, ErrorInfo, CommentLiked]
+  ): ZIO[Any with Logging, ErrorInfo, CommentLiked]
 }
 
 object CommentLikesRepository {
   def addRemoveCommentLikeOrDislike(
       commentLikeDislike: CommentLikes,
       createdById: String
-  ): ZIO[Has[CommentLikesRepository], ErrorInfo, (CommentLiked, Comments)] =
-    ZIO.serviceWith[CommentLikesRepository](
-      _.addRemoveCommentLikeOrDislike(commentLikeDislike, createdById)
-    )
+  ): ZIO[Has[CommentLikesRepository] with Logging, ErrorInfo, (CommentLiked, Comments)] =
+    ZIO.accessM[Has[CommentLikesRepository] with Logging] { env =>
+      env.get[CommentLikesRepository].addRemoveCommentLikeOrDislike(commentLikeDislike, createdById)
+    }
 
   def addRemoveTribunalCommentLikeOrDislike(
       commentLikeDislike: CommentLikes
-  ): ZIO[Has[CommentLikesRepository], ErrorInfo, CommentLiked] =
-    ZIO.serviceWith[CommentLikesRepository](
-      _.addRemoveTribunalCommentLikeOrDislike(commentLikeDislike)
-    )
+  ): ZIO[Has[CommentLikesRepository] with Logging, ErrorInfo, CommentLiked] =
+    ZIO.accessM[Has[CommentLikesRepository] with Logging] { env =>
+      env.get[CommentLikesRepository].addRemoveTribunalCommentLikeOrDislike(commentLikeDislike)
+    }
 
 }
 
@@ -48,8 +39,9 @@ case class CommentLikesRepositoryLive() extends CommentLikesRepository {
   override def addRemoveCommentLikeOrDislike(
       commentLikeDislike: CommentLikes,
       createdById: String
-  ): ZIO[Any, ErrorInfo, (CommentLiked, Comments)] = {
+  ): ZIO[Any with Logging, ErrorInfo, (CommentLiked, Comments)] = {
     for {
+      _ <- log.info(s"Fetching previous like state for comment id ${commentLikeDislike.commentId}")
       likeValueToAddSubtract <- getLikeValueToAddOrSubtract(commentLikeDislike)
       comment <- ZIO
         .effect(
@@ -92,7 +84,7 @@ case class CommentLikesRepositoryLive() extends CommentLikesRepository {
 
   override def addRemoveTribunalCommentLikeOrDislike(
       commentLikeDislike: CommentLikes
-  ): ZIO[Any, ErrorInfo, CommentLiked] = {
+  ): ZIO[Any with Logging, ErrorInfo, CommentLiked] = {
     for {
       likeValueToAddSubtract <- getLikeValueToAddOrSubtract(commentLikeDislike)
       commentLikesData <- ZIO
@@ -143,11 +135,12 @@ case class CommentLikesRepositoryLive() extends CommentLikesRepository {
                 commentLikeDislike.commentId
               ) && cl.userId == lift(commentLikeDislike.userId)
             )
-          )
+          ).headOption
         )
         .mapError(e => InternalServerError(e.toString))
+      _ <- log.info(s"Previous like state for comment id ${commentLikeDislike.commentId} is: ${previousLikeState}")
       newLikeState = commentLikeDislike.value
-      prevLikeState = previousLikeState.headOption
+      prevLikeState = previousLikeState
         .getOrElse(
           CommentLikes(
             commentLikeDislike.commentId,
@@ -166,6 +159,7 @@ case class CommentLikesRepositoryLive() extends CommentLikesRepository {
         case "-11" => 2
         case _     => 0
       }
+      _ <- ZIO.when(likeValueToAdd == 0)(ZIO.fail(InternalServerError("Invalid like value")))
     } yield likeValueToAdd
   }
 

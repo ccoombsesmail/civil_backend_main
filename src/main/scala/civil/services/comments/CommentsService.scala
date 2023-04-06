@@ -27,8 +27,9 @@ trait CommentsService {
   def getComments(
       jwt: String,
       jwtType: String,
-      subtopicId: UUID
-  ): ZIO[Any, ErrorInfo, List[CommentNode]]
+      discussionId: UUID,
+      skip: Int
+     ): ZIO[Any, ErrorInfo, List[CommentNode]]
   def getComment(
       jwt: String,
       jwtType: String,
@@ -59,9 +60,10 @@ object CommentsService {
   def getComments(
       jwt: String,
       jwtType: String,
-      subtopicId: UUID
+      discussionId: UUID,
+      skip: Int
   ): ZIO[Has[CommentsService], ErrorInfo, List[CommentNode]] =
-    ZIO.serviceWith[CommentsService](_.getComments(jwt, jwtType, subtopicId))
+    ZIO.serviceWith[CommentsService](_.getComments(jwt, jwtType, discussionId, skip))
   def getComment(
       jwt: String,
       jwtType: String,
@@ -112,7 +114,7 @@ case class CommentsServiceLive(
           .withFieldConst(_.discussionId, incomingComment.contentId)
           .withFieldConst(_.createdByUserId, userData.userId)
           .transform,
-        userData.userId
+        userData
       )
     } yield insertedComment
 
@@ -121,12 +123,13 @@ case class CommentsServiceLive(
   override def getComments(
       jwt: String,
       jwtType: String,
-      subtopicId: UUID
+      discussionId: UUID,
+      skip: Int
   ): ZIO[Any, ErrorInfo, List[CommentNode]] = {
 
     for {
       userData <- authenticationService.extractUserData(jwt, jwtType)
-      comments <- commentsRepo.getComments(userData.userId, subtopicId)
+      comments <- commentsRepo.getComments(userData.userId, discussionId, skip)
     } yield comments
   }
 

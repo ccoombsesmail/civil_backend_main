@@ -25,7 +25,7 @@ trait TopicService {
       jwt: String,
       jwtType: String,
       offset: Int
-  ): ZIO[Any, ErrorInfo, OutgoingTopicsPayload]
+  ): ZIO[Any, ErrorInfo, List[OutgoingTopic]]
   def getTopic(
       jwt: String,
       jwtType: String,
@@ -54,7 +54,7 @@ object TopicService {
       jwt: String,
       jwtType: String,
       offset: Int
-  ): ZIO[Has[TopicService], ErrorInfo, OutgoingTopicsPayload] =
+  ): ZIO[Has[TopicService], ErrorInfo, List[OutgoingTopic]] =
     ZIO.serviceWith[TopicService](_.getTopicsAuthenticated(jwt, jwtType, offset))
 
   def getTopic(
@@ -125,7 +125,7 @@ case class TopicServiceLive(topicRepository: TopicRepository, pollsRepository: P
       jwt: String,
       jwtType: String,
       offset: Int
-  ): ZIO[Any, ErrorInfo, OutgoingTopicsPayload] = {
+  ): ZIO[Any, ErrorInfo, List[OutgoingTopic]] = {
 
     for {
       userData <- authService.extractUserData(jwt, jwtType)
@@ -134,7 +134,7 @@ case class TopicServiceLive(topicRepository: TopicRepository, pollsRepository: P
         userData,
         offset
       )
-    } yield OutgoingTopicsPayload(offset = offset, items = topics)
+    } yield topics
   }
 
   override def getTopic(

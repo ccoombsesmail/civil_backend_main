@@ -15,10 +15,11 @@ object CommentsApi {
       .in(jsonBody[IncomingComment])
       .out(jsonBody[CommentReply])
 
-  lazy val getAllCommentsEndpoint: Endpoint[(String, String, String), ErrorInfo, List[CommentNode], Any] =
+  lazy val getAllCommentsEndpoint: Endpoint[(String, String, String, Int), ErrorInfo, List[CommentNode], Any] =
     baseEndpointAuthenticated.get
       .in("comments")
-      .in(query[(String)]("discussionId"))
+      .in(query[String]("discussionId"))
+      .in(query[Int]("skip"))
       .out(jsonBody[List[CommentNode]])
 
   lazy val getAllCommentRepliesEndpoint: Endpoint[(String, String, String), ErrorInfo, CommentWithReplies, Any] =

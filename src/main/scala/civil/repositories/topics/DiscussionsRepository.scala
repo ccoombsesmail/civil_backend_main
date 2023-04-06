@@ -27,7 +27,8 @@ trait DiscussionRepository {
       linkData: Option[ExternalLinksDiscussions]
   ): ZIO[Any, ErrorInfo, Discussions]
   def getDiscussions(
-      topicId: UUID
+      topicId: UUID,
+      skip: Int
   ): ZIO[Any, ErrorInfo, List[OutgoingDiscussion]]
   def getDiscussion(id: UUID): ZIO[Any, ErrorInfo, OutgoingDiscussion]
 
@@ -51,9 +52,10 @@ object DiscussionRepository {
     )
 
   def getDiscussions(
-      topicId: UUID
+      topicId: UUID,
+      skip: Int
   ): ZIO[Has[DiscussionRepository], ErrorInfo, List[OutgoingDiscussion]] =
-    ZIO.serviceWith[DiscussionRepository](_.getDiscussions(topicId))
+    ZIO.serviceWith[DiscussionRepository](_.getDiscussions(topicId, skip))
 
   def getDiscussion(
       id: UUID
@@ -123,8 +125,10 @@ case class DiscussionRepositoryLive() extends DiscussionRepository {
   }
 
   override def getDiscussions(
-      topicId: UUID
-  ): ZIO[Any, ErrorInfo, List[OutgoingDiscussion]] = {
+      topicId: UUID,
+      skip: Int
+
+                             ): ZIO[Any, ErrorInfo, List[OutgoingDiscussion]] = {
 
     for {
       discussionsUsersLinksJoin <- ZIO
@@ -137,7 +141,7 @@ case class DiscussionRepositoryLive() extends DiscussionRepository {
               .leftJoin(query[ExternalLinksDiscussions])
               .on { case ((d, _), l) => d.id == l.discussionId }
               .map { case ((d, u), l) => (d, u, l) }
-          )
+              .drop(lift(skip)).take(10)          )
         )
         .mapError(e => InternalServerError(e.toString))
 

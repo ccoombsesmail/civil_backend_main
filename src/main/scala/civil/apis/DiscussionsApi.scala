@@ -19,11 +19,12 @@ object DiscussionsApi {
       .in(jsonBody[IncomingDiscussion])
       .out(jsonBody[Discussions])
 
-  val getAllDiscussionsEndpoint: Endpoint[String, ErrorInfo, List[OutgoingDiscussion], Any] =
+  val getAllDiscussionsEndpoint: Endpoint[(String, Int), ErrorInfo, List[OutgoingDiscussion], Any] =
     baseEndpoint
       .get
       .in("discussions")
       .in(query[String]("topicId"))
+      .in(query[Int]("skip"))
       .out(jsonBody[List[OutgoingDiscussion]])
   
 

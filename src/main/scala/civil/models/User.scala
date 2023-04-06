@@ -178,7 +178,8 @@ case class JwtUserClaimsData(
     userCivilTag: String,
     userIconSrc: String,
     civicHeadline: Option[String] = None,
-    permissions: Permissions = Permissions(false, false)
+    permissions: Permissions = Permissions(false, false),
+    experience: Option[String]
 )
 
 

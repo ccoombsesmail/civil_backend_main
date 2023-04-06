@@ -17,11 +17,11 @@ object TopicsApi {
       .in(jsonBody[IncomingTopic])
       .out(jsonBody[OutgoingTopic])
 
-  val getAllTopicsEndpointAuthenticated: Endpoint[(String, String, Int), ErrorInfo, OutgoingTopicsPayload, Any] =
+  val getAllTopicsEndpointAuthenticated: Endpoint[(String, String, Int), ErrorInfo, List[OutgoingTopic], Any] =
     baseEndpointAuthenticated.get
       .in("topics")
       .in(query[Int]("skip"))
-      .out(jsonBody[OutgoingTopicsPayload])
+      .out(jsonBody[List[OutgoingTopic]])
 
   val getAllTopicsEndpoint: Endpoint[Unit, ErrorInfo, List[OutgoingTopic], Any] =
     baseEndpoint.get

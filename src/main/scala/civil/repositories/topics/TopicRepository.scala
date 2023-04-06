@@ -1,32 +1,22 @@
 package civil.repositories.topics
 
-import civil.models.{
-  Discussions,
-  ErrorInfo,
-  InternalServerError,
-  OutgoingTopic,
-  Recommendations,
-  TopicLikes,
-  TopicVods,
-  Topics,
-  Users,
-  _
-}
+import civil.models.{Discussions, ErrorInfo, InternalServerError, OutgoingTopic, Recommendations, TopicLikes, TopicVods, Topics, Users, _}
 import civil.directives.OutgoingHttp
 import civil.repositories.QuillContextHelper
 import civil.repositories.recommendations.RecommendationsRepository
 import io.scalaland.chimney.dsl._
 import zio.{ZIO, _}
 import io.circe.syntax._
+import io.getquill.Ord.desc
 import io.getquill._
 import io.getquill.context.jdbc._
 import io.getquill.{Literal, SnakeCase}
+
 import java.util.UUID
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import java.time.Instant
 import java.time.format.DateTimeFormatter
-
 
 
 
@@ -46,7 +36,6 @@ case class TopicRepoHelpers(
         quote {
           query[Topics]
             .filter(_.createdByUserId == lift(userId))
-            .sortBy(_.createdAt)
             .join(query[Users])
             .on(_.createdByUserId == _.userId)
             .leftJoin(query[TopicVods])
@@ -57,7 +46,6 @@ case class TopicRepoHelpers(
       case None =>
         quote {
           query[Topics]
-            .sortBy(_.createdAt)
             .join(query[Users])
             .on(_.createdByUserId == _.userId)
             .leftJoin(query[TopicVods])
@@ -159,7 +147,8 @@ case class TopicRepoHelpers(
         m + (t.topicId -> t.value)
       }
       topicsUsersVodsJoin <- ZIO
-        .effect(run(topicsUsersVodsLinksJoin(fromUserId).drop(lift(skip)).take(5)).map {
+        .effect(run(topicsUsersVodsLinksJoin(fromUserId).drop(lift(skip)).take(5).sortBy(_._1._1._1.createdAt)(Ord.desc)
+        ).map {
           case (((t, u), v), l) =>
             (t, u, v, l)
         })
