@@ -1,50 +1,42 @@
 package civil.repositories
 
+import civil.errors.AppError
+import civil.errors.AppError.InternalServerError
 import civil.models.{
-  ErrorInfo,
-  InternalServerError,
-  NotFound,
   ReportInfo,
   ReportTimings,
   Reports,
   Topics
 }
-import civil.models.enums.ReportStatus
 import civil.models._
 import civil.models.NotifcationEvents._
-import zio.duration.{Duration, durationInt}
-import zio.{Fiber, Has, Schedule, Task, ZIO, ZLayer, console}
+import zio._
 
-import java.io.IOException
-import java.time.Instant
 import java.util.UUID
-import io.getquill.Query
 import civil.services.KafkaProducerServiceLive
 
-import scala.annotation.unused
-
 trait ReportsRepository {
-  def addReport(report: Reports): ZIO[Any, ErrorInfo, Unit]
+  def addReport(report: Reports): ZIO[Any, AppError, Unit]
   def getReport(
       contentId: UUID,
       userId: String
-  ): ZIO[Any, ErrorInfo, ReportInfo]
+  ): ZIO[Any, AppError, ReportInfo]
 
 }
 
 object ReportsRepository {
   def addReport(
       report: Reports
-  ): ZIO[Has[ReportsRepository], ErrorInfo, Unit] =
-    ZIO.serviceWith[ReportsRepository](
+  ): ZIO[ReportsRepository, AppError, Unit] =
+    ZIO.serviceWithZIO[ReportsRepository](
       _.addReport(report)
     )
 
   def getReport(
       contentId: UUID,
       userId: String
-  ): ZIO[Has[ReportsRepository], ErrorInfo, ReportInfo] =
-    ZIO.serviceWith[ReportsRepository](
+  ): ZIO[ReportsRepository, AppError, ReportInfo] =
+    ZIO.serviceWithZIO[ReportsRepository](
       _.getReport(contentId, userId)
     )
 }
@@ -57,10 +49,10 @@ case class ReportsRepositoryLive() extends ReportsRepository {
   val REPORT_THRESHOLD = 1
   override def addReport(
       report: Reports
-  ): ZIO[Any, ErrorInfo, Unit] = {
+  ): ZIO[Any, AppError, Unit] = {
     for {
       topicOpt <- ZIO
-        .effect(
+        .attempt(
           run(
             query[Topics].filter(t => t.id == lift(report.contentId))
           ).headOption
@@ -69,7 +61,7 @@ case class ReportsRepositoryLive() extends ReportsRepository {
       contentType = if (topicOpt.isDefined) "TOPIC" else "COMMENT"
       reportWithContentType = report.copy(contentType = contentType)
       _ <- ZIO
-        .effect(
+        .attempt(
           run(
             query[Reports].insert(lift(reportWithContentType))
           )
@@ -78,7 +70,7 @@ case class ReportsRepositoryLive() extends ReportsRepository {
           InternalServerError(s"Sorry! There was an issue saving the Report \n ${e.getMessage}")
         })
       allReports <- ZIO
-        .effect(
+        .attempt(
           run(
             query[Reports].filter(r => r.contentId == lift(report.contentId))
           )
@@ -88,7 +80,7 @@ case class ReportsRepositoryLive() extends ReportsRepository {
           InternalServerError(s"Error Getting All Reports")
         })
       _ <- ZIO.when(allReports.length >= REPORT_THRESHOLD) {
-        ZIO.effect(
+        ZIO.attempt(
           kafka.publish(
             ContentReported(
               eventType = "ContentReported",
@@ -108,10 +100,10 @@ case class ReportsRepositoryLive() extends ReportsRepository {
   override def getReport(
       contentId: UUID,
       userId: String
-  ): ZIO[Any, ErrorInfo, ReportInfo] = {
+  ): ZIO[Any, AppError, ReportInfo] = {
     for {
       votes <- ZIO
-        .effect(
+        .attempt(
           run(
             query[TribunalVotes].filter(tv => tv.contentId == lift(contentId))
           )
@@ -131,14 +123,14 @@ case class ReportsRepositoryLive() extends ReportsRepository {
         )
       )
       timing <- ZIO
-        .effect(
+        .attempt(
           run(
             query[ReportTimings].filter(rt => rt.contentId == lift(contentId))
           ).headOption
         )
         .mapError(e => InternalServerError(e.toString))
       reports <- ZIO
-        .effect(
+        .attempt(
           run(
             query[Reports].filter(tr => tr.contentId == lift(contentId))
           )
@@ -179,7 +171,5 @@ case class ReportsRepositoryLive() extends ReportsRepository {
 }
 
 object ReportsRepositoryLive {
-  val live: ZLayer[Any, Nothing, Has[
-    ReportsRepository
-  ]] = ZLayer.succeed(ReportsRepositoryLive())
+  val layer: URLayer[Any, ReportsRepository] = ZLayer.fromFunction(ReportsRepositoryLive.apply _)
 }

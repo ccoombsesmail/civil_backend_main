@@ -1,27 +1,28 @@
 package civil.services
 
-import civil.models.{ErrorInfo, Report, ReportInfo, Reports}
+import civil.errors.AppError
+import civil.models.{Report, ReportInfo, Reports}
 import civil.repositories.ReportsRepository
 import io.scalaland.chimney.dsl.TransformerOps
-import zio.{Has, ZIO, ZLayer}
+import zio.{URLayer, ZIO, ZLayer}
 
 import java.util.UUID
 
 trait ReportsService {
-  def addReport(jwt: String, jwtType: String, report: Report): ZIO[Any, ErrorInfo, Unit]
-  def getReport(jwt: String, jwtType: String, contentId: UUID): ZIO[Any, ErrorInfo, ReportInfo]
+  def addReport(jwt: String, jwtType: String, report: Report): ZIO[Any, AppError, Unit]
+  def getReport(jwt: String, jwtType: String, contentId: UUID): ZIO[Any, AppError, ReportInfo]
 
 }
 
 
 object ReportsService {
-  def addReport(jwt: String, jwtType: String, report: Report): ZIO[Has[ReportsService], ErrorInfo, Unit] =
-    ZIO.serviceWith[ReportsService](
+  def addReport(jwt: String, jwtType: String, report: Report): ZIO[ReportsService, AppError, Unit] =
+    ZIO.serviceWithZIO[ReportsService](
       _.addReport(jwt, jwtType, report)
     )
 
-  def getReport(jwt: String, jwtType: String, contentId: UUID): ZIO[Has[ReportsService], ErrorInfo, ReportInfo] =
-    ZIO.serviceWith[ReportsService](
+  def getReport(jwt: String, jwtType: String, contentId: UUID): ZIO[ReportsService, AppError, ReportInfo] =
+    ZIO.serviceWithZIO[ReportsService](
       _.getReport(jwt, jwtType, contentId)
     )
 }
@@ -29,7 +30,7 @@ object ReportsService {
 
 case class ReportsServiceLive(reportsRepo: ReportsRepository) extends ReportsService {
 
-  override def addReport(jwt: String, jwtType: String, report: Report): ZIO[Any, ErrorInfo, Unit] = {
+  override def addReport(jwt: String, jwtType: String, report: Report): ZIO[Any, AppError, Unit] = {
     val authenticationService = AuthenticationServiceLive()
     for {
       userData <- authenticationService.extractUserData(jwt, jwtType)
@@ -43,7 +44,7 @@ case class ReportsServiceLive(reportsRepo: ReportsRepository) extends ReportsSer
     } yield ()
   }
 
-  override def getReport(jwt: String, jwtType: String, contentId: UUID): ZIO[Any, ErrorInfo, ReportInfo] = {
+  override def getReport(jwt: String, jwtType: String, contentId: UUID): ZIO[Any, AppError, ReportInfo] = {
     val authenticationService = AuthenticationServiceLive()
 
     for {
@@ -56,11 +57,5 @@ case class ReportsServiceLive(reportsRepo: ReportsRepository) extends ReportsSer
 
 
 object ReportsServiceLive {
-  val live: ZLayer[Has[ReportsRepository], Nothing, Has[
-    ReportsService
-  ]] = {
-    for {
-      reportsRepo <- ZIO.service[ReportsRepository]
-    } yield ReportsServiceLive(reportsRepo)
-  }.toLayer
+  val layer: URLayer[ReportsRepository, ReportsService] = ZLayer.fromFunction(ReportsServiceLive.apply _)
 }

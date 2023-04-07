@@ -1,7 +1,10 @@
 package civil.repositories
 
+import civil.errors.AppError.InternalServerError
 import civil.models.enums.ClerkEventType
 import civil.models._
+import civil.errors.AppError
+import civil.services.{UsersService, UsersServiceLive}
 import io.scalaland.chimney.dsl._
 import zio._
 
@@ -11,84 +14,84 @@ import java.util.UUID
 trait UsersRepository {
   def upsertDidUser(
       incomingUser: IncomingUser
-  ): ZIO[Any, ErrorInfo, OutgoingUser]
+  ): ZIO[Any, AppError, OutgoingUser]
   def insertOrUpdateUserHook(
       webHookData: WebHookData,
       eventType: ClerkEventType
-  ): ZIO[Any, ErrorInfo, Unit]
+  ): ZIO[Any, AppError, Unit]
   def getUser(
       id: String,
       requesterId: String
-  ): ZIO[Any, ErrorInfo, OutgoingUser]
+  ): ZIO[Any, AppError, OutgoingUser]
   def updateUserIcon(
       username: String,
       iconSrc: String
-  ): ZIO[Any, ErrorInfo, OutgoingUser]
+  ): ZIO[Any, AppError, OutgoingUser]
   def updateUserBio(
       userId: String,
       bioInfo: UpdateUserBio
-  ): ZIO[Any, ErrorInfo, OutgoingUser]
+  ): ZIO[Any, AppError, OutgoingUser]
 
   def addOrRemoveCivility(
       userId: String,
       commentId: UUID,
       civility: Int,
       removeCivility: Boolean
-  ): Task[CivilityGiven]
+  ): Task[CivilityGivenResponse]
 
-  def createUserTag(userId: String, tag: String): ZIO[Any, ErrorInfo, OutgoingUser]
-  def checkIfTagExists(tag: String): ZIO[Any, ErrorInfo, TagExists]
+  def createUserTag(userId: String, tag: String): ZIO[Any, AppError, OutgoingUser]
+  def checkIfTagExists(tag: String): ZIO[Any, AppError, TagExists]
 
 }
 
 object UsersRepository {
   def upsertDidUser(
       incomingUser: IncomingUser
-  ): ZIO[Has[UsersRepository], ErrorInfo, OutgoingUser] =
-    ZIO.serviceWith[UsersRepository](_.upsertDidUser(incomingUser))
+  ): ZIO[UsersRepository, AppError, OutgoingUser] =
+    ZIO.serviceWithZIO[UsersRepository](_.upsertDidUser(incomingUser))
 
   def insertOrUpdateUserHook(
       webHookData: WebHookData,
       eventType: ClerkEventType
-  ): ZIO[Has[UsersRepository], ErrorInfo, Unit] =
-    ZIO.serviceWith[UsersRepository](
+  ): ZIO[UsersRepository, AppError, Unit] =
+    ZIO.serviceWithZIO[UsersRepository](
       _.insertOrUpdateUserHook(webHookData, eventType)
     )
 
   def getUser(
       id: String,
       requesterId: String
-  ): ZIO[Has[UsersRepository], ErrorInfo, OutgoingUser] =
-    ZIO.serviceWith[UsersRepository](_.getUser(id, requesterId))
+  ): ZIO[UsersRepository, AppError, OutgoingUser] =
+    ZIO.serviceWithZIO[UsersRepository](_.getUser(id, requesterId))
 
   def updateUserIcon(
       username: String,
       iconSrc: String
-  ): ZIO[Has[UsersRepository], ErrorInfo, OutgoingUser] =
-    ZIO.serviceWith[UsersRepository](_.updateUserIcon(username, iconSrc))
+  ): ZIO[UsersRepository, AppError, OutgoingUser] =
+    ZIO.serviceWithZIO[UsersRepository](_.updateUserIcon(username, iconSrc))
 
   def updateUserBio(
       userId: String,
       bioInfo: UpdateUserBio
-  ): ZIO[Has[UsersRepository], ErrorInfo, OutgoingUser] =
-    ZIO.serviceWith[UsersRepository](_.updateUserBio(userId, bioInfo))
+  ): ZIO[UsersRepository, AppError, OutgoingUser] =
+    ZIO.serviceWithZIO[UsersRepository](_.updateUserBio(userId, bioInfo))
 
   def createUserTag(
       userId: String,
       tag: String
-  ): ZIO[Has[UsersRepository], ErrorInfo, OutgoingUser] =
-    ZIO.serviceWith[UsersRepository](_.createUserTag(userId, tag))
+  ): ZIO[UsersRepository, AppError, OutgoingUser] =
+    ZIO.serviceWithZIO[UsersRepository](_.createUserTag(userId, tag))
 
-  def checkIfTagExists(tag: String): ZIO[Has[UsersRepository], ErrorInfo, TagExists] =
-    ZIO.serviceWith[UsersRepository](_.checkIfTagExists(tag))
+  def checkIfTagExists(tag: String): ZIO[UsersRepository, AppError, TagExists] =
+    ZIO.serviceWithZIO[UsersRepository](_.checkIfTagExists(tag))
 
   def addOrRemoveCivility(
       userId: String,
       commentId: UUID,
       civility: Int,
       removeCivility: Boolean
-  ): RIO[Has[UsersRepository], CivilityGiven] =
-    ZIO.serviceWith[UsersRepository](
+  ): RIO[UsersRepository, CivilityGivenResponse] =
+    ZIO.serviceWithZIO[UsersRepository](
       _.addOrRemoveCivility(userId, commentId, civility, removeCivility)
     )
 
@@ -127,13 +130,13 @@ case class UsersRepositoryLive() extends UsersRepository {
 
   override def upsertDidUser(
       incomingUser: IncomingUser
-  ): ZIO[Any, ErrorInfo, OutgoingUser] = {
+  ): ZIO[Any, AppError, OutgoingUser] = {
     for {
       upsertedUser <- ZIO
-        .effect(
+        .attempt(
           run(
             query[Users]
-              .insert(
+              .insertValue(
                 lift(
                   Users(
                     incomingUser.userId,
@@ -173,13 +176,13 @@ case class UsersRepositoryLive() extends UsersRepository {
   override def insertOrUpdateUserHook(
       webHookData: WebHookData,
       eventType: ClerkEventType
-  ): ZIO[Any, ErrorInfo, Unit] = {
+  ): ZIO[Any, AppError, Unit] = {
     for {
       _ <- ZIO
         .when(eventType == ClerkEventType.UserCreated)(
-          ZIO.effect(
+          ZIO.attempt(
             run(
-              query[Users].insert(
+              query[Users].insertValue(
                 lift(
                   Users(
                     webHookData.id,
@@ -205,7 +208,7 @@ case class UsersRepositoryLive() extends UsersRepository {
       _ = println(webHookData.unsafe_metadata)
       _ <- ZIO
         .when(eventType == ClerkEventType.UserUpdated)(
-          ZIO.effect(
+          ZIO.attempt(
             run(
               query[Users]
                 .filter(u => u.userId == lift(webHookData.id))
@@ -227,15 +230,15 @@ case class UsersRepositoryLive() extends UsersRepository {
   override def getUser(
       id: String,
       requesterId: String
-  ): ZIO[Any, ErrorInfo, OutgoingUser] = {
+  ): ZIO[Any, AppError, OutgoingUser] = {
     for {
       user <- ZIO
         .fromOption(
           run(query[Users].filter(u => u.userId == lift(id))).headOption
         )
-        .orElseFail(NotFound("Couldn't locate user info"))
+        .orElseFail(InternalServerError("Couldn't locate user info"))
       isFollowing <- ZIO
-        .effect(
+        .attempt(
           run(
             query[Follows].filter(f =>
               f.userId == lift(requesterId) && f.followedUserId == lift(id)
@@ -243,7 +246,7 @@ case class UsersRepositoryLive() extends UsersRepository {
         ))
         .mapError(e => InternalServerError(e.toString))
       following <- ZIO
-        .effect(
+        .attempt(
           run(
             query[Follows].filter(f =>
               f.userId == lift(requesterId)
@@ -251,7 +254,7 @@ case class UsersRepositoryLive() extends UsersRepository {
           ))
         .mapError(e => InternalServerError(e.toString))
       followed <- ZIO
-        .effect(
+        .attempt(
           run(
             query[Follows].filter(f =>
               f.followedUserId == lift(requesterId)
@@ -259,7 +262,7 @@ case class UsersRepositoryLive() extends UsersRepository {
           ))
         .mapError(e => InternalServerError(e.toString))
       numPosts <- ZIO
-        .effect(
+        .attempt(
           run(
             query[Topics].filter(t =>
               t.createdByUserId == lift(requesterId)
@@ -277,7 +280,6 @@ case class UsersRepositoryLive() extends UsersRepository {
       .withFieldConst(_.numFollowers, Some(followed.toInt))
       .withFieldConst(_.numPosts, Some(numPosts))
       .withFieldComputed(_.userLevelData, u => {
-        println(Some(UserLevel.apply(u.civility)))
         Some(UserLevel.apply(u.civility.toDouble))
         })
       .transform
@@ -286,10 +288,10 @@ case class UsersRepositoryLive() extends UsersRepository {
   override def updateUserIcon(
       username: String,
       iconSrc: String
-  ): ZIO[Any, ErrorInfo, OutgoingUser] = {
+  ): ZIO[Any, AppError, OutgoingUser] = {
     for {
       user <- ZIO
-        .effect(
+        .attempt(
           run(
             query[Users]
               .filter(u => u.username == lift(username))
@@ -309,11 +311,11 @@ case class UsersRepositoryLive() extends UsersRepository {
   override def updateUserBio(
       userId: String,
       bioInfo: UpdateUserBio
-  ): ZIO[Any, ErrorInfo, OutgoingUser] = {
+  ): ZIO[Any, AppError, OutgoingUser] = {
 
     for {
       user <- ZIO
-        .effect(
+        .attempt(
           run(
             query[Users]
               .filter(u => u.userId == lift(userId))
@@ -337,7 +339,7 @@ case class UsersRepositoryLive() extends UsersRepository {
       commentId: UUID,
       civility: Int,
       removeCivility: Boolean
-  ): Task[CivilityGiven] = {
+  ): Task[CivilityGivenResponse] = {
 
     val commentCivilityStatus = removeCivility match {
       case true  => None
@@ -351,7 +353,7 @@ case class UsersRepositoryLive() extends UsersRepository {
         .filter(u => u.userId == lift(userId))
         .update(user => user.civility -> (user.civility + lift(civility)))
         .returning(user =>
-          CivilityGiven(
+          CivilityGivenResponse(
             user.civility,
             lift(commentId),
             lift(comment.rootId)
@@ -362,32 +364,30 @@ case class UsersRepositoryLive() extends UsersRepository {
     ZIO.succeed(c)
   }
 
-  override def createUserTag(userId: String, tag: String): ZIO[Any, ErrorInfo, OutgoingUser] = {
+  override def createUserTag(userId: String, tag: String): ZIO[Any, AppError, OutgoingUser] = {
 
     for {
-      user <- ZIO.effect(run(
+      user <- ZIO.attempt(run(
         query[Users]
           .filter(u => u.userId == lift(userId) && u.tag.isEmpty)
           .update(_.tag -> lift(Option(tag)))
           .returning(u => u)
-      )).mapError(_ => BadRequest("Cannot Update Tag More Than Once"))
+      )).mapError(_ => InternalServerError("Cannot Update Tag More Than Once"))
     } yield user.into[OutgoingUser]
       .withFieldConst(_.isFollowing, None)
       .withFieldComputed(_.userLevelData, u => Some(UserLevel.apply(u.civility.toDouble)))
       .transform
   }
 
-  override def checkIfTagExists(tag: String): ZIO[Any, ErrorInfo, TagExists] = {
+  override def checkIfTagExists(tag: String): ZIO[Any, AppError, TagExists] = {
     for {
-      user <- ZIO.effect(run(
+      user <- ZIO.attempt(run(
         query[Users].filter(u => u.tag == lift(Option(tag)))
-      ).headOption).mapError(e => BadRequest(e.toString))
+      ).headOption).mapError(e => InternalServerError(e.toString))
     } yield TagExists(tagExists=user.isDefined)
   }
 }
 
 object UsersRepositoryLive {
-  val live: ZLayer[Any, Throwable, Has[UsersRepository]] =
-    ZLayer.succeed(UsersRepositoryLive())
-
+  val layer: URLayer[Any, UsersRepository] = ZLayer.fromFunction(UsersRepositoryLive.apply _)
 }

@@ -1,5 +1,8 @@
 package civil.repositories
-import civil.models.{ErrorInfo, Follows, InternalServerError, NotFound, OutgoingUser, Users}
+
+import civil.errors.AppError
+import civil.errors.AppError.InternalServerError
+import civil.models.{Follows, NotFound, OutgoingUser, Users}
 import civil.models.NotifcationEvents.NewFollower
 import civil.models._
 import civil.services.KafkaProducerServiceLive
@@ -7,8 +10,8 @@ import io.scalaland.chimney.dsl._
 import zio._
 
 trait FollowsRepository {
-  def insertFollow(follow: Follows): ZIO[Any, ErrorInfo, OutgoingUser]
-  def deleteFollow(follow: Follows): ZIO[Any, ErrorInfo, OutgoingUser]
+  def insertFollow(follow: Follows): ZIO[Any, AppError, OutgoingUser]
+  def deleteFollow(follow: Follows): ZIO[Any, AppError, OutgoingUser]
   def getAllFollowers(userId: String): Task[List[OutgoingUser]]
   def getAllFollowed(userId: String): Task[List[OutgoingUser]]
 }
@@ -16,23 +19,23 @@ trait FollowsRepository {
 object FollowsRepository {
   def insertFollow(
       follow: Follows
-  ): ZIO[Has[FollowsRepository], ErrorInfo, OutgoingUser] =
-    ZIO.serviceWith[FollowsRepository](_.insertFollow(follow))
+  ): ZIO[FollowsRepository, AppError, OutgoingUser] =
+    ZIO.serviceWithZIO[FollowsRepository](_.insertFollow(follow))
 
   def deleteFollow(
       follow: Follows
-  ): ZIO[Has[FollowsRepository], ErrorInfo, OutgoingUser] =
-    ZIO.serviceWith[FollowsRepository](_.deleteFollow(follow))
+  ): ZIO[FollowsRepository, AppError, OutgoingUser] =
+    ZIO.serviceWithZIO[FollowsRepository](_.deleteFollow(follow))
 
   def getAllFollowers(
       userId: String
-  ): RIO[Has[FollowsRepository], List[OutgoingUser]] =
-    ZIO.serviceWith[FollowsRepository](_.getAllFollowers(userId))
+  ): RIO[FollowsRepository, List[OutgoingUser]] =
+    ZIO.serviceWithZIO[FollowsRepository](_.getAllFollowers(userId))
 
   def getAllFollowed(
       userId: String
-  ): RIO[Has[FollowsRepository], List[OutgoingUser]] =
-    ZIO.serviceWith[FollowsRepository](_.getAllFollowed(userId))
+  ): RIO[FollowsRepository, List[OutgoingUser]] =
+    ZIO.serviceWithZIO[FollowsRepository](_.getAllFollowed(userId))
 }
 
 case class FollowsRepositoryLive() extends FollowsRepository {
@@ -41,20 +44,20 @@ case class FollowsRepositoryLive() extends FollowsRepository {
 
   override def insertFollow(
       follow: Follows
-  ): ZIO[Any, ErrorInfo, OutgoingUser] = {
+  ): ZIO[Any, AppError, OutgoingUser] = {
     for {
       _ <- ZIO
-        .effect(run(query[Follows].insert(lift(follow))))
+        .attempt(run(query[Follows].insertValue(lift(follow))))
         .mapError(e => InternalServerError(e.toString))
       users <- ZIO
-        .effect(
+        .attempt(
           run(
             query[Users].filter(u => u.userId == lift(follow.userId) || u.userId == lift(follow.followedUserId))
           )
         )
-        .mapError(e => NotFound(e.toString))
-      user <- ZIO.fromOption(users.find(u => u.userId == follow.userId)).orElseFail(NotFound("User Not Found"))
-      followedUser <-  ZIO.fromOption(users.find(u => u.userId == follow.followedUserId)).orElseFail(NotFound("User Not Found"))
+        .mapError(e => InternalServerError(e.toString))
+      user <- ZIO.fromOption(users.find(u => u.userId == follow.userId)).orElseFail(InternalServerError("User Not Found"))
+      followedUser <-  ZIO.fromOption(users.find(u => u.userId == follow.followedUserId)).orElseFail(InternalServerError("User Not Found"))
     } yield followedUser
       .into[OutgoingUser]
       .withFieldConst(_.isFollowing, Some(true))
@@ -64,10 +67,10 @@ case class FollowsRepositoryLive() extends FollowsRepository {
   }
   override def deleteFollow(
       follow: Follows
-  ): ZIO[Any, ErrorInfo, OutgoingUser] = {
+  ): ZIO[Any, AppError, OutgoingUser] = {
     for {
       _ <- ZIO
-        .effect(
+        .attempt(
           run(
             query[Follows]
               .filter(f =>
@@ -80,13 +83,13 @@ case class FollowsRepositoryLive() extends FollowsRepository {
         )
         .mapError(e => InternalServerError(e.toString))
       users <- ZIO
-        .effect(
+        .attempt(
           run(
             query[Users].filter(u => u.userId == lift(follow.followedUserId))
           )
         )
-        .mapError(e => NotFound(e.toString))
-      followedUser <-  ZIO.fromOption(users.find(u => u.userId == follow.followedUserId)).orElseFail(NotFound("User Not Found"))
+        .mapError(e => InternalServerError(e.toString))
+      followedUser <-  ZIO.fromOption(users.find(u => u.userId == follow.followedUserId)).orElseFail(InternalServerError("User Not Found"))
     } yield followedUser
       .into[OutgoingUser]
       .withFieldConst(_.isFollowing, Some(false))
@@ -127,6 +130,7 @@ case class FollowsRepositoryLive() extends FollowsRepository {
 }
 
 object FollowsRepositoryLive {
-  val live: ZLayer[Any, Throwable, Has[FollowsRepository]] =
-    ZLayer.succeed(FollowsRepositoryLive())
+
+  val layer: URLayer[Any, FollowsRepository] = ZLayer.fromFunction(FollowsRepositoryLive.apply _)
+
 }

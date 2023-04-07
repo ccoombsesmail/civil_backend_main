@@ -49,11 +49,11 @@ class KafkaProducerServiceLive extends KafkaProducerService {
 //        serde
 //      )
 //    }
-    runtime.unsafeRunAsync(for {
+    runtime.unsafeRunAsyncWith(for {
       record <- producerEffect.use(identity)
     } yield record)(k => k.mapError(e => InternalServerError(e.toString)))
 
-    runtime.unsafeRunAsync(for {
+    runtime.unsafeRunAsyncWith(for {
       _ <- producerFlushEffect.use(identity)
     } yield ())(k => k.mapError(e => InternalServerError(e.toString)))
   }

@@ -2,6 +2,7 @@ package civil.models
 
 import civil.models.enums.TribunalCommentType
 import io.scalaland.chimney.dsl.TransformerOps
+import zio.json.{DeriveJsonCodec, JsonCodec}
 
 import java.time.LocalDateTime
 import java.util.UUID
@@ -10,6 +11,10 @@ case class TribunalCommentNode(
     data: TribunalCommentsReply,
     children: Seq[TribunalCommentNode]
 )
+
+object TribunalCommentNode {
+  implicit val codec: JsonCodec[TribunalCommentNode] = DeriveJsonCodec.gen[TribunalCommentNode]
+}
 case class TribunalEntryWithDepth(comment: TribunalCommentsReply, depth: Int)
 
 object TribunalComments {
@@ -69,6 +74,8 @@ case class TribunalComments(
     commentType: TribunalCommentType = TribunalCommentType.General
 )
 
+
+
 case class TribunalCommentsReply(
     id: UUID,
     editorState: String,
@@ -88,6 +95,10 @@ case class TribunalCommentsReply(
     createdByExperience: Option[String],
     commentType: TribunalCommentType
 )
+
+object TribunalCommentsReply {
+  implicit val codec: JsonCodec[TribunalCommentsReply] = DeriveJsonCodec.gen[TribunalCommentsReply]
+}
 
 case class TribunalCommentWithDepth(
     id: UUID,

@@ -8,62 +8,62 @@ import sttp.tapir._
 import sttp.tapir.CodecFormat._
 import civil.controllers.UsersController._
 import civil.apis.BaseApi.{baseEndpoint, baseEndpointAuthenticated}
-import civil.models.{ErrorInfo, IncomingUser, OutgoingUser, TagData, TagExists, UpdateUserBio, UpdateUserIcon, WebHookEvent}
+import civil.models.{AppError, IncomingUser, OutgoingUser, TagData, TagExists, UpdateUserBio, UpdateUserIcon, WebHookEvent}
 import sttp.model.Part
 
 import java.io.File
 
 object UsersApi {
-  val upsertDidUserEndpoint: Endpoint[IncomingUser, ErrorInfo, OutgoingUser, Any] =
+  val upsertDidUserEndpoint: Endpoint[IncomingUser, AppError, OutgoingUser, Any] =
     baseEndpoint
       .post
       .in("users" / "did-user")
       .in(jsonBody[IncomingUser])
       .out(jsonBody[OutgoingUser])
 
-  val getUserEndpoint: Endpoint[(String, String, String), ErrorInfo, OutgoingUser, Any] =
+  val getUserEndpoint: Endpoint[(String, String, String), AppError, OutgoingUser, Any] =
     baseEndpointAuthenticated
       .get
       .in("users")
       .in(query[String]("userId"))
       .out(jsonBody[OutgoingUser])
 
-  val updateUserIconEndpoint: Endpoint[UpdateUserIcon, ErrorInfo, OutgoingUser, Any] =
+  val updateUserIconEndpoint: Endpoint[UpdateUserIcon, AppError, OutgoingUser, Any] =
     baseEndpoint
       .put
       .in("users")
       .in(jsonBody[UpdateUserIcon])
       .out(jsonBody[OutgoingUser])
 
-  val updateUserBioInformationEndpoint: Endpoint[(String, String, UpdateUserBio), ErrorInfo, OutgoingUser, Any] =
+  val updateUserBioInformationEndpoint: Endpoint[(String, String, UpdateUserBio), AppError, OutgoingUser, Any] =
     baseEndpointAuthenticated
       .patch
       .in("users" / "bio-experience")
       .in(jsonBody[UpdateUserBio])
       .out(jsonBody[OutgoingUser])
 
-  val uploadUserIconEndpoint: Endpoint[UpdateUserIcon, ErrorInfo, OutgoingUser, Any] =
+  val uploadUserIconEndpoint: Endpoint[UpdateUserIcon, AppError, OutgoingUser, Any] =
     baseEndpoint
       .post
       .in("users" / "upload")
       .in(jsonBody[UpdateUserIcon])
       .out(jsonBody[OutgoingUser])
 
-  val createUserTagEndpoint: Endpoint[(String, String, TagData), ErrorInfo, OutgoingUser, Any] =
+  val createUserTagEndpoint: Endpoint[(String, String, TagData), AppError, OutgoingUser, Any] =
     baseEndpointAuthenticated
       .patch
       .in("users" / "tag")
       .in(jsonBody[TagData])
       .out(jsonBody[OutgoingUser])
 
-  val checkIfTagExistsEndpoint: Endpoint[(String), ErrorInfo, TagExists, Any] =
+  val checkIfTagExistsEndpoint: Endpoint[(String), AppError, TagExists, Any] =
     baseEndpoint
       .get
       .in("users" / "tag-exists")
       .in(query[String]("tag"))
       .out(jsonBody[TagExists])
 
-  val receiveWebHookEndpoint: Endpoint[WebHookEvent, ErrorInfo, Unit, Any] =
+  val receiveWebHookEndpoint: Endpoint[WebHookEvent, AppError, Unit, Any] =
     baseEndpoint
       .post
       .in("users" / "clerk-event")

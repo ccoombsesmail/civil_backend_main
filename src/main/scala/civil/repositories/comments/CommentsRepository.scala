@@ -1,5 +1,7 @@
 package civil.repositories.comments
 
+import civil.errors.AppError
+import civil.errors.AppError.{GeneralError, InternalServerError}
 import civil.models._
 import civil.repositories.topics.DiscussionRepository
 import civil.repositories.{QuillContextHelper, QuillContextQueries}
@@ -11,58 +13,58 @@ import zio._
 import java.util.UUID
 
 trait CommentsRepository {
-  def insertComment(comment: Comments, requestingUserData: JwtUserClaimsData): ZIO[Any, ErrorInfo, CommentReply]
+  def insertComment(comment: Comments, requestingUserData: JwtUserClaimsData): ZIO[Any, AppError, CommentReply]
   def getComments(
       userId: String,
       discussionId: UUID,
       skip: Int
-  ): ZIO[Any, ErrorInfo, List[CommentNode]]
+  ): ZIO[Any, AppError, List[CommentNode]]
   def getComment(
       userId: String,
       commentId: UUID
-  ): ZIO[Any, ErrorInfo, CommentReply]
+  ): ZIO[Any, AppError, CommentReply]
 
   def getAllCommentReplies(
       userId: String,
       commentId: UUID
-  ): ZIO[Any, ErrorInfo, CommentWithReplies]
+  ): ZIO[Any, AppError, CommentWithReplies]
 
   def getUserComments(
        requestingUserId: String,
        userId: String
-  ): ZIO[Any, ErrorInfo, List[CommentNode]]
+  ): ZIO[Any, AppError, List[CommentNode]]
 }
 
 object CommentsRepository {
   def insertComment(
       comment: Comments,
       requestingUserData: JwtUserClaimsData
-  ): ZIO[Has[CommentsRepository], ErrorInfo, CommentReply] =
-    ZIO.serviceWith[CommentsRepository](_.insertComment(comment, requestingUserData))
+  ): ZIO[CommentsRepository, AppError, CommentReply] =
+    ZIO.serviceWithZIO[CommentsRepository](_.insertComment(comment, requestingUserData))
   def getComments(
       userId: String,
       discussionId: UUID,
       skip: Int
-                 ): ZIO[Has[CommentsRepository], ErrorInfo, List[CommentNode]] =
-    ZIO.serviceWith[CommentsRepository](_.getComments(userId, discussionId, skip))
+                 ): ZIO[CommentsRepository, AppError, List[CommentNode]] =
+    ZIO.serviceWithZIO[CommentsRepository](_.getComments(userId, discussionId, skip))
   def getComment(
       userId: String,
       commentId: UUID
-  ): ZIO[Has[CommentsRepository], ErrorInfo, CommentReply] =
-    ZIO.serviceWith[CommentsRepository](_.getComment(userId, commentId))
+  ): ZIO[CommentsRepository, AppError, CommentReply] =
+    ZIO.serviceWithZIO[CommentsRepository](_.getComment(userId, commentId))
   def getAllCommentReplies(
       userId: String,
       commentId: UUID
-  ): ZIO[Has[CommentsRepository], ErrorInfo, CommentWithReplies] =
-    ZIO.serviceWith[CommentsRepository](
+  ): ZIO[CommentsRepository, AppError, CommentWithReplies] =
+    ZIO.serviceWithZIO[CommentsRepository](
       _.getAllCommentReplies(userId, commentId)
     )
 
   def getUserComments(
                      requestingUserId: String,
                      userId: String
-                   ): ZIO[Has[CommentsRepository], ErrorInfo, List[CommentNode]] =
-    ZIO.serviceWith[CommentsRepository](
+                   ): ZIO[CommentsRepository, AppError, List[CommentNode]] =
+    ZIO.serviceWithZIO[CommentsRepository](
       _.getUserComments(requestingUserId, userId)
     )
 }
@@ -74,12 +76,11 @@ case class CommentsRepositoryLive() extends CommentsRepository {
   override def insertComment(
       comment: Comments,
       requestingUserData: JwtUserClaimsData
-  ): ZIO[Any, ErrorInfo, CommentReply] = {
-    println(requestingUserData + Console.BOLD)
+  ): ZIO[Any, AppError, CommentReply] = {
     for {
-      inserted <- ZIO.effect(run(
+      inserted <- ZIO.attempt(run(
         query[Comments]
-          .insert(lift(comment))
+          .insertValue(lift(comment))
           .returning(c => c)
       )).mapError(e => InternalServerError(e.toString()))
 
@@ -98,10 +99,10 @@ case class CommentsRepositoryLive() extends CommentsRepository {
       userId: String,
       discussionId: UUID,
       skip: Int
-  ): ZIO[Any, ErrorInfo, List[CommentNode]] = {
+  ): ZIO[Any, AppError, List[CommentNode]] = {
 
     for {
-      joinedData <- ZIO.effect(run {
+      joinedData <- ZIO.attempt(run {
         query[Comments]
           .filter(c => c.discussionId == lift(discussionId) && c.parentId.isEmpty)
           .join(query[Users])
@@ -156,17 +157,17 @@ case class CommentsRepositoryLive() extends CommentsRepository {
   override def getComment(
       userId: String,
       commentId: UUID
-  ): ZIO[Any, ErrorInfo, CommentReply] = {
+  ): ZIO[Any, AppError, CommentReply] = {
     for {
       comment <- ZIO
-        .effect(
+        .attempt(
           run(
             query[Comments].filter(c => c.id == lift(commentId))
           ).head
         )
         .mapError(e => InternalServerError(e.toString))
       user <- ZIO
-        .effect(run(query[Users].filter(u => u.userId == lift(userId))).head)
+        .attempt(run(query[Users].filter(u => u.userId == lift(userId))).head)
         .mapError(e => InternalServerError(e.toString))
     } yield comment
       .into[CommentReply]
@@ -181,11 +182,11 @@ case class CommentsRepositoryLive() extends CommentsRepository {
   override def getAllCommentReplies(
       userId: String,
       commentId: UUID
-  ): ZIO[Any, ErrorInfo, CommentWithReplies] = {
+  ): ZIO[Any, AppError, CommentWithReplies] = {
 
     for {
       commentUser <- ZIO
-        .effect(
+        .attempt(
           run(
             query[Comments]
               .filter(c => c.id == lift(commentId))
@@ -201,7 +202,7 @@ case class CommentsRepositoryLive() extends CommentsRepository {
         .mapError(e => InternalServerError(e.toString))
       (comment, user, likeOpt, civilityOpt) = commentUser
       joinedData
-        <- ZIO.effect(run {
+        <- ZIO.attempt(run {
         query[Comments]
           .filter(c => c.parentId == lift(Option(commentId)))
           .join(query[Users])
@@ -350,11 +351,11 @@ case class CommentsRepositoryLive() extends CommentsRepository {
 
   }
 
-  override def getUserComments(requestingUserId: String, userId: String): ZIO[Any, ErrorInfo, List[CommentNode]] = {
+  override def getUserComments(requestingUserId: String, userId: String): ZIO[Any, AppError, List[CommentNode]] = {
 
 
     for {
-      commentsUsersJoin <- ZIO.effect(run(
+      commentsUsersJoin <- ZIO.attempt(run(
         query[Comments]
           .filter(c => c.createdByUserId == lift(userId))
           .join(query[Users])
@@ -365,11 +366,11 @@ case class CommentsRepositoryLive() extends CommentsRepository {
         (m, t) =>
           m + (t._1.id -> t._2.iconSrc.getOrElse(""))
       }
-      likes <- ZIO.effect(run(query[CommentLikes].filter(l => l.userId == lift(userId)))).mapError(e => InternalServerError(e.getMessage))
+      likes <- ZIO.attempt(run(query[CommentLikes].filter(l => l.userId == lift(userId)))).mapError(e => InternalServerError(e.getMessage))
       likesMap = likes.foldLeft(Map[UUID, Int]()) { (m, t) =>
         m + (t.commentId -> t.value)
       }
-      civility <- ZIO.effect(run(
+      civility <- ZIO.attempt(run(
         query[CommentCivility].filter(l => l.userId == lift(userId))
       )).mapError(e => InternalServerError(e.getMessage))
       civilityMap = civility.foldLeft(Map[UUID, Float]()) { (m, t) =>
@@ -417,6 +418,7 @@ case class CommentsRepositoryLive() extends CommentsRepository {
 }
 
 object CommentsRepositoryLive {
-  val live: ZLayer[Any, Throwable, Has[CommentsRepository]] = ZLayer.succeed(CommentsRepositoryLive())
+  val layer: URLayer[Any, CommentsRepository] = ZLayer.fromFunction(CommentsRepositoryLive.apply _)
+
 }
 

@@ -1,25 +1,26 @@
 package civil.services
 
-import civil.models.{ErrorInfo, OutgoingRecommendations}
+import civil.controllers.RecommendationsController
+import civil.models.OutgoingRecommendations
 
 import java.util.UUID
-import civil.models.ErrorInfo
+import civil.errors.AppError
 import civil.repositories.recommendations.RecommendationsRepository
 import zio._
 
 trait RecommendationsService {
-  def getAllRecommendations(targetContentId: UUID): ZIO[Any, ErrorInfo, List[OutgoingRecommendations]]
+  def getAllRecommendations(targetContentId: UUID): ZIO[Any, AppError, List[OutgoingRecommendations]]
 }
 
 object RecommendationsService {
-  def getAllRecommendations(targetContentId: UUID): ZIO[Has[RecommendationsService], ErrorInfo, List[OutgoingRecommendations]] =
-    ZIO.serviceWith[RecommendationsService](_.getAllRecommendations(targetContentId))
+  def getAllRecommendations(targetContentId: UUID): ZIO[RecommendationsService, AppError, List[OutgoingRecommendations]] =
+    ZIO.serviceWithZIO[RecommendationsService](_.getAllRecommendations(targetContentId))
 }
 
 
 case class RecommendationsServiceLive(recommendationsRepo: RecommendationsRepository) extends RecommendationsService {
 
-  override def getAllRecommendations(targetContentId: UUID): ZIO[Any, ErrorInfo, List[OutgoingRecommendations]] = {
+  override def getAllRecommendations(targetContentId: UUID): ZIO[Any, AppError, List[OutgoingRecommendations]] = {
     recommendationsRepo.getAllRecommendations(targetContentId)
   }
 
@@ -27,10 +28,6 @@ case class RecommendationsServiceLive(recommendationsRepo: RecommendationsReposi
 
 
 object RecommendationsServiceLive {
-  val live: ZLayer[Has[RecommendationsRepository], Throwable, Has[RecommendationsService]] = {
-    for {
-      recommendationsRepo <- ZIO.service[RecommendationsRepository]
-    } yield RecommendationsServiceLive(recommendationsRepo)
-  }.toLayer
+  val layer: URLayer[RecommendationsRepository, RecommendationsService] = ZLayer.fromFunction(RecommendationsServiceLive.apply _)
 }
 

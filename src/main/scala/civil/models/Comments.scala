@@ -1,13 +1,36 @@
 package civil.models
 
 import civil.models.enums.ReportStatus.Clean
-import civil.models.enums.{ReportStatus, Sentiment}
 
 import java.time.LocalDateTime
 import java.util.UUID
 import io.scalaland.chimney.dsl._
+import zio.{Random, Task, UIO, ZIO}
+import zio.json.{DeriveJsonCodec, JsonCodec}
+
+
+case class CommentId(id: UUID)
+
+object CommentId {
+
+  def random: UIO[CommentId] = Random.nextUUID.map(CommentId(_))
+
+  def fromString(id: String): Task[CommentId] =
+    ZIO.attempt {
+      CommentId(UUID.fromString(id))
+    }
+
+  implicit val codec: JsonCodec[CommentId] =
+    JsonCodec[UUID].transform(CommentId(_), _.id)
+}
 
 case class CommentNode(data: CommentReply, children: Seq[CommentNode])
+
+object CommentNode {
+  implicit val codec: JsonCodec[CommentNode] =
+    DeriveJsonCodec.gen[CommentNode]
+}
+
 case class EntryWithDepth(comment: CommentReply, depth: Int)
 
 object Comments {
@@ -101,24 +124,11 @@ case class IncomingComment(
     topicId: UUID
 )
 
-case class OutgoingComment(
-    id: UUID,
-    editorState: String,
-    createdByUsername: String,
-    createdByUserId: String,
-    sentiment: String,
-    discussionId: UUID,
-    parentId: Option[UUID],
-    createdAt: LocalDateTime,
-    likes: Int,
-    likeState: Int,
-    civility: Float,
-    source: Option[String],
-    createdByIconSrc: String,
-    rootId: Option[UUID],
-    reportStatus: String,
-    toxicityStatus: Option[String] = None
-)
+
+object IncomingComment {
+  implicit val codec: JsonCodec[IncomingComment] = DeriveJsonCodec.gen[IncomingComment]
+}
+
 
 case class CommentReply(
     id: UUID,
@@ -139,6 +149,11 @@ case class CommentReply(
     reportStatus: String = Clean.entryName,
     toxicityStatus: Option[String] = None
 )
+
+object CommentReply {
+  implicit val codec: JsonCodec[CommentReply] = DeriveJsonCodec.gen[CommentReply]
+}
+
 
 case class CommentWithDepth(
     id: UUID,
@@ -161,6 +176,11 @@ case class CommentWithReplies(
     comment: CommentReply
 )
 
+object CommentWithReplies {
+  implicit val codec: JsonCodec[CommentWithReplies] =
+    DeriveJsonCodec.gen[CommentWithReplies]
+}
+
 case class UpdateLikes(id: UUID, userId: String, increment: Boolean)
 
 case class Liked(
@@ -170,8 +190,3 @@ case class Liked(
     rootId: Option[UUID]
 )
 
-case class CivilityGiven(
-    civility: Float,
-    commentId: UUID,
-    rootId: Option[UUID]
-)

@@ -1,7 +1,8 @@
 package civil.repositories.recommendations
 
-import civil.models.{ErrorInfo, InternalServerError, OutgoingRecommendations, Recommendations, Discussions, Topics}
-import civil.models._
+import civil.models.{OutgoingRecommendations, Recommendations, Discussions, Topics}
+import civil.errors.AppError
+import civil.errors.AppError.InternalServerError
 import civil.repositories.QuillContextHelper
 import io.getquill.Ord
 import zio._
@@ -12,16 +13,16 @@ import java.util.UUID
 trait RecommendationsRepository {
   def insertRecommendation(rec: Recommendations): Task[Unit]
   def batchInsertRecommendation(recs: List[Recommendations]): Task[Unit]
-  def getAllRecommendations(targetContentId: UUID): ZIO[Any, ErrorInfo, List[OutgoingRecommendations]]
+  def getAllRecommendations(targetContentId: UUID): ZIO[Any, AppError, List[OutgoingRecommendations]]
 }
 
 object RecommendationsRepository {
-  def insertRecommendation(rec: Recommendations): RIO[Has[RecommendationsRepository], Unit] =
-    ZIO.serviceWith[RecommendationsRepository](_.insertRecommendation(rec))
-  def batchInsertRecommendation(recs: List[Recommendations]): RIO[Has[RecommendationsRepository], Unit] =
-    ZIO.serviceWith[RecommendationsRepository](_.batchInsertRecommendation(recs))
-  def getAllRecommendations(targetContentId: UUID): ZIO[Has[RecommendationsRepository], ErrorInfo, List[OutgoingRecommendations]] =
-    ZIO.serviceWith[RecommendationsRepository](_.getAllRecommendations(targetContentId))
+  def insertRecommendation(rec: Recommendations): RIO[RecommendationsRepository, Unit] =
+    ZIO.serviceWithZIO[RecommendationsRepository](_.insertRecommendation(rec))
+  def batchInsertRecommendation(recs: List[Recommendations]): RIO[RecommendationsRepository, Unit] =
+    ZIO.serviceWithZIO[RecommendationsRepository](_.batchInsertRecommendation(recs))
+  def getAllRecommendations(targetContentId: UUID): ZIO[RecommendationsRepository, AppError, List[OutgoingRecommendations]] =
+    ZIO.serviceWithZIO[RecommendationsRepository](_.getAllRecommendations(targetContentId))
 }
 
 
@@ -30,16 +31,16 @@ case class RecommendationsRepositoryLive() extends RecommendationsRepository {
   import QuillContextHelper.ctx.extras._
 
   override def insertRecommendation(rec: Recommendations): Task[Unit] = {
-    run(query[Recommendations].insert(lift(rec)))
+    run(query[Recommendations].insertValue(lift(rec)))
     ZIO.unit
   }
 
   override def batchInsertRecommendation(recs: List[Recommendations]): Task[Unit] = {
-    run(liftQuery(recs).foreach(e => query[Recommendations].insert(e)))
+    run(liftQuery(recs).foreach(e => query[Recommendations].insertValue(e)))
     ZIO.unit
   }
 
-  override def getAllRecommendations(targetContentId: UUID): ZIO[Any, ErrorInfo, List[OutgoingRecommendations]] = {
+  override def getAllRecommendations(targetContentId: UUID): ZIO[Any, AppError, List[OutgoingRecommendations]] = {
 
 
     val q = quote {
@@ -51,7 +52,7 @@ case class RecommendationsRepositoryLive() extends RecommendationsRepository {
     }
 
     for {
-      outgoingRecs <- ZIO.effect(
+      outgoingRecs <- ZIO.attempt(
         run(q).map({ case (rec, topic, subtopic) =>
           rec.into[OutgoingRecommendations]
             .withFieldConst(_.topic, topic)
@@ -65,6 +66,5 @@ case class RecommendationsRepositoryLive() extends RecommendationsRepository {
 }
 
 object RecommendationsRepositoryLive {
-  val live: ZLayer[Any, Throwable, Has[RecommendationsRepository]] =
-    ZLayer.succeed(RecommendationsRepositoryLive())
+  val layer: URLayer[Any, RecommendationsRepository] = ZLayer.fromFunction(RecommendationsRepositoryLive.apply _)
 }

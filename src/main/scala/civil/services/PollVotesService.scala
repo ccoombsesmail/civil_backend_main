@@ -1,34 +1,35 @@
 package civil.services
 
-import civil.models.{ErrorInfo, IncomingPollVote, OutgoingPollVote, PollVotes}
+import civil.errors.AppError
+import civil.models.{IncomingPollVote, OutgoingPollVote, PollVotes}
 import civil.repositories.PollVotesRepository
 import io.scalaland.chimney.dsl.TransformerOps
-import zio.{Has, ZIO, ZLayer}
+import zio.{URLayer, ZIO, ZLayer}
 
 import java.util.UUID
 
 trait PollVotesService {
-  def createPollVote(jwt: String, jwtType: String, pollVote: IncomingPollVote): ZIO[Any, ErrorInfo, OutgoingPollVote]
-  def deletePollVote(jwt: String, jwtType: String, pollOptionId: UUID): ZIO[Any, ErrorInfo, OutgoingPollVote]
-  def getPollVoteData(jwt: String, jwtType: String, pollOptionIds: List[UUID]): ZIO[Any, ErrorInfo, List[OutgoingPollVote]]
+  def createPollVote(jwt: String, jwtType: String, pollVote: IncomingPollVote): ZIO[Any, AppError, OutgoingPollVote]
+  def deletePollVote(jwt: String, jwtType: String, pollOptionId: UUID): ZIO[Any, AppError, OutgoingPollVote]
+  def getPollVoteData(jwt: String, jwtType: String, pollOptionIds: List[UUID]): ZIO[Any, AppError, List[OutgoingPollVote]]
 
 }
 
 
 
 object PollVotesService {
-  def createPollVote(jwt: String, jwtType: String, pollVote: IncomingPollVote): ZIO[Has[PollVotesService], ErrorInfo, OutgoingPollVote] =
-    ZIO.serviceWith[PollVotesService](
+  def createPollVote(jwt: String, jwtType: String, pollVote: IncomingPollVote): ZIO[PollVotesService, AppError, OutgoingPollVote] =
+    ZIO.serviceWithZIO[PollVotesService](
       _.createPollVote(jwt, jwtType, pollVote)
     )
 
-  def deletePollVote(jwt: String, jwtType: String, pollOptionId: UUID): ZIO[Has[PollVotesService], ErrorInfo, OutgoingPollVote] =
-    ZIO.serviceWith[PollVotesService](
+  def deletePollVote(jwt: String, jwtType: String, pollOptionId: UUID): ZIO[PollVotesService, AppError, OutgoingPollVote] =
+    ZIO.serviceWithZIO[PollVotesService](
       _.deletePollVote(jwt, jwtType, pollOptionId)
     )
 
-  def getPollVoteData(jwt: String, jwtType: String, pollOptionIds: List[UUID]): ZIO[Has[PollVotesService], ErrorInfo, List[OutgoingPollVote]] =
-    ZIO.serviceWith[PollVotesService](
+  def getPollVoteData(jwt: String, jwtType: String, pollOptionIds: List[UUID]): ZIO[PollVotesService, AppError, List[OutgoingPollVote]] =
+    ZIO.serviceWithZIO[PollVotesService](
       _.getPollVoteData(jwt, jwtType, pollOptionIds)
     )
 }
@@ -37,7 +38,7 @@ object PollVotesService {
 case class PollVotesServiceLive(pollVotesRepo: PollVotesRepository) extends PollVotesService {
   val authenticationService = AuthenticationServiceLive()
 
-  override def createPollVote(jwt: String, jwtType: String, pollVotes: IncomingPollVote): ZIO[Any, ErrorInfo, OutgoingPollVote] = {
+  override def createPollVote(jwt: String, jwtType: String, pollVotes: IncomingPollVote): ZIO[Any, AppError, OutgoingPollVote] = {
     for {
       userData <- authenticationService.extractUserData(jwt, jwtType)
       vote <- pollVotesRepo.createPollVote(
@@ -48,7 +49,7 @@ case class PollVotesServiceLive(pollVotesRepo: PollVotesRepository) extends Poll
     } yield vote
   }
 
-  override def deletePollVote(jwt: String, jwtType: String, pollOptionId: UUID): ZIO[Any, ErrorInfo, OutgoingPollVote] = {
+  override def deletePollVote(jwt: String, jwtType: String, pollOptionId: UUID): ZIO[Any, AppError, OutgoingPollVote] = {
     for {
       userData <- authenticationService.extractUserData(jwt, jwtType)
       vote <- pollVotesRepo.deletePollVote(pollOptionId, userData.userId)
@@ -56,7 +57,7 @@ case class PollVotesServiceLive(pollVotesRepo: PollVotesRepository) extends Poll
 
   }
 
-  override def getPollVoteData(jwt: String, jwtType: String, pollOptionIds: List[UUID]): ZIO[Any, ErrorInfo, List[OutgoingPollVote]] = {
+  override def getPollVoteData(jwt: String, jwtType: String, pollOptionIds: List[UUID]): ZIO[Any, AppError, List[OutgoingPollVote]] = {
     for {
       userData <- authenticationService.extractUserData(jwt, jwtType)
       vote <- pollVotesRepo.getPollVoteData(pollOptionIds, userData.userId)
@@ -68,11 +69,7 @@ case class PollVotesServiceLive(pollVotesRepo: PollVotesRepository) extends Poll
 
 
 object PollVotesServiceLive {
-  val live: ZLayer[Has[PollVotesRepository], Nothing, Has[
-    PollVotesService
-  ]] = {
-    for {
-      pollVotesRepo <- ZIO.service[PollVotesRepository]
-    } yield PollVotesServiceLive(pollVotesRepo)
-  }.toLayer
+
+  val layer: URLayer[PollVotesRepository, PollVotesService] = ZLayer.fromFunction(PollVotesServiceLive.apply _)
+
 }

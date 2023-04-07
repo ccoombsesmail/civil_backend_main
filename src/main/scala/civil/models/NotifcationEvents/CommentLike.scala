@@ -30,6 +30,6 @@ object CommentLike {
           .map(new RuntimeException(_))
       )
   } { commentLikeAsObj =>
-    ZIO.effect(commentLikeAsObj.toJson)
+    ZIO.attempt(commentLikeAsObj.toJson)
   }
 }

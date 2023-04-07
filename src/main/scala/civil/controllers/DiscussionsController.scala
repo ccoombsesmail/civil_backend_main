@@ -1,72 +1,57 @@
 package civil.controllers
 
-import java.util.UUID
-import civil.services.{AuthenticationServiceLive, DiscussionService, DiscussionServiceLive}
-import civil.apis.DiscussionsApi._
-import civil.repositories.topics.DiscussionsRepositoryLive
-import sttp.tapir.server.ziohttp.ZioHttpInterpreter
-import zhttp.http.{Http, Request, Response}
+import civil.services.DiscussionService
+import civil.errors.AppError.JsonDecodingError
+import civil.models.IncomingDiscussion
+import zhttp.http.{Http, Method, Request, Response}
 import zio._
-
-object DiscussionsController {
-
-  val layer =(DiscussionsRepositoryLive.live ++ AuthenticationServiceLive.live) >>> DiscussionServiceLive.live
- 
-val newDiscussionEndpointRoute: Http[Has[DiscussionService], Throwable, Request, Response[Any, Throwable]] = {
-    ZioHttpInterpreter().toHttp(newDiscussionEndpoint) { case (jwt, jwtType, incomingDiscussion) =>
-      DiscussionService.insertDiscussion(jwt, jwtType, incomingDiscussion)
-        .map(discussion => {
-          Right(discussion)
-        }).catchAll(e => ZIO.succeed(Left(e)))
-        .provideLayer(layer)
-    }
-  }
+import zio.json.EncoderOps
+import zhttp.http._
+import civil.controllers.ParseUtils._
 
 
-  val getAllDiscussionsEndpointRoute: Http[Has[DiscussionService], Throwable, Request, Response[Any, Throwable]] = {
-    ZioHttpInterpreter().toHttp(getAllDiscussionsEndpoint) { case (topicId, skip) => {
-      DiscussionService.getDiscussions(UUID.fromString(topicId), skip)
-        .map(discussions => {
-          Right(discussions)
-        }).catchAll(e => ZIO.succeed(Left(e)))
-        .provideLayer(layer)
-    }}
-  }
+final case class DiscussionsController(discussionsService: DiscussionService) {
+  val routes: Http[Any, Throwable, Request, Response] = Http.collectZIO[Request] {
+    case req @ Method.POST -> !! / "discussions"  =>
+      for {
+        incomingDiscussion <- parseBody[IncomingDiscussion](req)
+        authDataOpt <- extractJwtData(req).mapError(e => JsonDecodingError(e.toString))
+        insertedComment <- discussionsService.insertDiscussion(authDataOpt.get._1, authDataOpt.get._2, incomingDiscussion)
+      } yield Response.json(incomingDiscussion.toJson)
 
- val getDiscussionEndpointRoute: Http[Has[DiscussionService], Throwable, Request, Response[Any, Throwable]] = {
-    ZioHttpInterpreter().toHttp(getDiscussionEndpoint)(id => {
-      DiscussionService.getDiscussion(UUID.fromString(id))
-        .map(discussion => {
-          Right(discussion)
-        }).catchAll(e => ZIO.succeed(Left(e)))
-        .provideLayer(layer)
-    }) 
-  }
+    case req @ Method.GET -> !! / "discussions" / topicId / skip =>
+      for {
+        id <- parseTopicId(topicId)
+        skip <- parseSkip(skip)
+        authDataOpt <- extractJwtData(req).mapError(e => JsonDecodingError(e.toString))
+        discussions <- discussionsService.getDiscussions(authDataOpt.get._1, authDataOpt.get._2, id.id, skip.value )
+      } yield Response.json(discussions.toJson)
 
-  val getGeneralDiscussionIdEndpointRoute: Http[Has[DiscussionService], Throwable, Request, Response[Any, Throwable]] = {
-    ZioHttpInterpreter().toHttp(getGeneralDiscussionIdEndpoint)(topicId => {
-      DiscussionService.getGeneralDiscussionId(UUID.fromString(topicId))
-        .map(genDicussionId => {
-          Right(genDicussionId)
-        }).catchAll(e => ZIO.succeed(Left(e)))
-        .provideLayer(layer)
-    })
-  }
+    case req @ Method.GET -> !! / "discussions" / discussionId =>
+      for {
+        id <- parseDiscussionId(discussionId)
+        authDataOpt <- extractJwtData(req).mapError(e => JsonDecodingError(e.toString))
+        discussion <- discussionsService.getDiscussion(id.id)
+      } yield Response.json(discussion.toJson)
 
-  val getUserDiscussionsEndpointRoute: Http[Has[
-    DiscussionService
-  ], Throwable, Request, Response[Any, Throwable]] = {
-    ZioHttpInterpreter().toHttp(getUserDiscussions) {
-      case (jwt, jwtType, userId) => {
-        DiscussionService
-          .getUserDiscussions(jwt, jwtType, userId)
-          .map(userDiscussions => {
-            Right(userDiscussions)
-          })
-          .catchAll(e => ZIO.succeed(Left(e)))
-          .provideLayer(layer)
-      }
-    }
+    case req @ Method.GET -> !! / "discussions" / "general" / topicId =>
+      for {
+        id <- parseTopicId(topicId)
+        genDiscussionId <- discussionsService.getGeneralDiscussionId(id.id)
+      } yield Response.json(genDiscussionId.toJson)
+
+    case req@Method.GET -> !! / "discussions" / "user" / userId =>
+      for {
+        authDataOpt <- extractJwtData(req).mapError(e => JsonDecodingError(e.toString))
+        discussions <- discussionsService.getUserDiscussions(authDataOpt.get._1, authDataOpt.get._2, userId)
+      } yield Response.json(discussions.toJson)
   }
 
 }
+
+object DiscussionsController {
+
+  val layer: URLayer[DiscussionService, DiscussionsController] = ZLayer.fromFunction(DiscussionsController.apply _)
+
+}
+

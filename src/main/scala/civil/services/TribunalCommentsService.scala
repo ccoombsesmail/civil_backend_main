@@ -1,11 +1,10 @@
 package civil.services
 
-import civil.models.{ErrorInfo, IncomingComment, TribunalCommentNode, TribunalComments, TribunalCommentsReply}
+import civil.errors.AppError
+import civil.models.{IncomingComment, TribunalCommentNode, TribunalComments, TribunalCommentsReply}
 import civil.models.enums.{Sentiment, TribunalCommentType}
-import civil.models._
-import civil.repositories.{TribunalCommentsRepository, TribunalJuryRepository}
+import civil.repositories.TribunalCommentsRepository
 import zio._
-// import civil.models.enums.{Sentiment}
 import civil.repositories.UsersRepository
 import io.scalaland.chimney.dsl._
 
@@ -18,9 +17,9 @@ trait TribunalCommentsService {
       jwt: String,
       jwtType: String,
       incomingComment: IncomingComment
-  ): ZIO[Any, ErrorInfo, TribunalCommentsReply]
-  def getComments(jwt: String, jwtType: String, contentId: UUID, commentType: TribunalCommentType): ZIO[Any, ErrorInfo, List[TribunalCommentNode]]
-  def getCommentsBatch(jwt: String, jwtType: String, contentId: UUID): ZIO[Any, ErrorInfo, List[TribunalCommentNode]]
+  ): ZIO[Any, AppError, TribunalCommentsReply]
+  def getComments(jwt: String, jwtType: String, contentId: UUID, commentType: TribunalCommentType): ZIO[Any, AppError, List[TribunalCommentNode]]
+  def getCommentsBatch(jwt: String, jwtType: String, contentId: UUID): ZIO[Any, AppError, List[TribunalCommentNode]]
 
   //  def addOrRemoveCommentLike(id: UUID, userId: String, increment: Boolean): Task[Liked]
 }
@@ -30,14 +29,14 @@ object TribunalCommentsService {
       jwt: String,
       jwtType: String,
       incomingComment: IncomingComment
-  ): ZIO[Has[TribunalCommentsService], ErrorInfo, TribunalCommentsReply] =
-    ZIO.serviceWith[TribunalCommentsService](
+  ): ZIO[TribunalCommentsService, AppError, TribunalCommentsReply] =
+    ZIO.serviceWithZIO[TribunalCommentsService](
       _.insertComment(jwt, jwtType, incomingComment)
     )
-  def getComments(jwt: String, jwtType: String, contentId: UUID, commentType: TribunalCommentType): ZIO[Has[TribunalCommentsService], ErrorInfo, List[TribunalCommentNode]] =
-    ZIO.serviceWith[TribunalCommentsService](_.getComments(jwt, jwtType, contentId, commentType))
-  def getCommentsBatch(jwt: String, jwtType: String, contentId: UUID): ZIO[Has[TribunalCommentsService], ErrorInfo, List[TribunalCommentNode]] =
-    ZIO.serviceWith[TribunalCommentsService](_.getCommentsBatch(jwt, jwtType, contentId))
+  def getComments(jwt: String, jwtType: String, contentId: UUID, commentType: TribunalCommentType): ZIO[TribunalCommentsService, AppError, List[TribunalCommentNode]] =
+    ZIO.serviceWithZIO[TribunalCommentsService](_.getComments(jwt, jwtType, contentId, commentType))
+  def getCommentsBatch(jwt: String, jwtType: String, contentId: UUID): ZIO[TribunalCommentsService, AppError, List[TribunalCommentNode]] =
+    ZIO.serviceWithZIO[TribunalCommentsService](_.getCommentsBatch(jwt, jwtType, contentId))
 //  def addOrRemoveCommentLike(id: UUID, userId: String, increment: Boolean): RIO[Has[CommentsService], Liked] =
 //    ZIO.serviceWith[CommentsService](_.addOrRemoveCommentLike(id, userId, increment))
 }
@@ -50,7 +49,7 @@ case class TribunalCommentsServiceLive(
       jwt: String,
       jwtType: String,
       incomingComment: IncomingComment
-  ): ZIO[Any, ErrorInfo, TribunalCommentsReply] = {
+  ): ZIO[Any, AppError, TribunalCommentsReply] = {
     // val sentiment = SentimentAnalyzer.mainSentiment(incommingComment.rawText)
 
     val authenticationService = AuthenticationServiceLive()
@@ -73,7 +72,7 @@ case class TribunalCommentsServiceLive(
   }
 
 
-  override def getComments(jwt: String, jwtType: String, contentId: UUID, commentType: TribunalCommentType): ZIO[Any, ErrorInfo, List[TribunalCommentNode]] = {
+  override def getComments(jwt: String, jwtType: String, contentId: UUID, commentType: TribunalCommentType): ZIO[Any, AppError, List[TribunalCommentNode]] = {
     val authenticationService = AuthenticationServiceLive()
 
     for {
@@ -82,7 +81,7 @@ case class TribunalCommentsServiceLive(
     } yield comments
   }
 
-  override def getCommentsBatch(jwt: String, jwtType: String, contentId: UUID): ZIO[Any, ErrorInfo, List[TribunalCommentNode]] = {
+  override def getCommentsBatch(jwt: String, jwtType: String, contentId: UUID): ZIO[Any, AppError, List[TribunalCommentNode]] = {
     val authenticationService = AuthenticationServiceLive()
 
     for {
@@ -90,29 +89,11 @@ case class TribunalCommentsServiceLive(
       comments <- tribunalCommentsRepo.getCommentsBatch(userData.userId, contentId)
     } yield comments
   }
-//
-//  override def addOrRemoveCommentLike(id: UUID, userId: String, increment: Boolean): Task[Liked] = {
-//    val addEntryInLikeTable = increment match {
-//      case true => Try(insertLike(id, userId))
-//      case _ => Try(deleteLike(id, userId))
-//    }
-//
-//    addEntryInLikeTable match {
-//      case Success(value) => commentsRepo.addOrRemoveCommentLike(id, increment)
-//      case Failure(e) => {
-//        ZIO.fail(e)
-//      }
-//    }
-//  }
 
 }
 
 object TribunalCommentsServiceLive {
-  val live: ZLayer[Has[TribunalCommentsRepository] with Has[
-    UsersRepository
-  ], Throwable, Has[TribunalCommentsService]] = {
-    for {
-      tribunalCommentsRepo <- ZIO.service[TribunalCommentsRepository]
-    } yield TribunalCommentsServiceLive(tribunalCommentsRepo)
-  }.toLayer
+
+  val layer: URLayer[TribunalCommentsRepository with UsersRepository, TribunalCommentsService] = ZLayer.fromFunction(TribunalCommentsServiceLive.apply _)
+
 }

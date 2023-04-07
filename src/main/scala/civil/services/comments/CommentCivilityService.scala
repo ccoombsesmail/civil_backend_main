@@ -1,10 +1,9 @@
 package civil.services.comments
 
-import civil.models.NotifcationEvents.{
-  CommentCivilityGiven,
-  GivingUserNotificationData
-}
-import civil.models.{Civility, CivilityGiven, ErrorInfo, InternalServerError}
+import civil.errors.AppError
+import civil.errors.AppError.GeneralError
+import civil.models.NotifcationEvents.{CommentCivilityGiven, GivingUserNotificationData}
+import civil.models.{AppError, UpdateCommentCivility}
 import civil.models._
 import civil.repositories.comments.CommentCivilityRepository
 import civil.services.{AuthenticationServiceLive, KafkaProducerServiceLive}
@@ -15,13 +14,13 @@ trait CommentCivilityService {
   def addOrRemoveCommentCivility(
       jwt: String,
       jwtType: String,
-      civilityData: Civility
-  ): ZIO[Any, ErrorInfo, CivilityGiven]
+      civilityData: UpdateCommentCivility
+  ): ZIO[Any, AppError, CivilityGivenResponse]
   def addOrRemoveTribunalCommentCivility(
       jwt: String,
       jwtType: String,
-      civilityData: Civility
-  ): ZIO[Any, ErrorInfo, CivilityGiven]
+      civilityData: UpdateCommentCivility
+  ): ZIO[Any, AppError, CivilityGivenResponse]
 
 }
 
@@ -29,9 +28,9 @@ object CommentCivilityService {
   def addOrRemoveCommentCivility(
       jwt: String,
       jwtType: String,
-      civilityData: Civility
-  ): ZIO[Has[CommentCivilityService], ErrorInfo, CivilityGiven] =
-    ZIO.serviceWith[CommentCivilityService](
+      civilityData: UpdateCommentCivility
+  ): ZIO[CommentCivilityService, AppError, CivilityGivenResponse] =
+    ZIO.serviceWithZIO[CommentCivilityService](
       _.addOrRemoveCommentCivility(
         jwt,
         jwtType,
@@ -41,9 +40,9 @@ object CommentCivilityService {
   def addOrRemoveTribunalCommentCivility(
       jwt: String,
       jwtType: String,
-      civilityData: Civility
-  ): ZIO[Has[CommentCivilityService], ErrorInfo, CivilityGiven] =
-    ZIO.serviceWith[CommentCivilityService](
+      civilityData: UpdateCommentCivility
+  ): ZIO[CommentCivilityService, AppError, CivilityGivenResponse] =
+    ZIO.serviceWithZIO[CommentCivilityService](
       _.addOrRemoveTribunalCommentCivility(
         jwt,
         jwtType,
@@ -61,8 +60,8 @@ case class CommentCivilityServiceLive(
   override def addOrRemoveCommentCivility(
       jwt: String,
       jwtType: String,
-      civilityData: Civility
-  ): ZIO[Any, ErrorInfo, CivilityGiven] = {
+      civilityData: UpdateCommentCivility
+  ): ZIO[Any, AppError, CivilityGivenResponse] = {
 
     for {
       userData <- authenticationService.extractUserData(jwt, jwtType)
@@ -73,10 +72,10 @@ case class CommentCivilityServiceLive(
           givingUserUsername = userData.username,
           civilityData
         )
-        .mapError(e => InternalServerError(e.toString))
+        .mapError(e => GeneralError(e.toString))
       (civilityGiven, comment) = res
       _ <- ZIO
-        .effect(
+        .attempt(
           kafka.publish(
             CommentCivilityGiven(
               eventType = "CommentCivilityGiven",
@@ -104,8 +103,8 @@ case class CommentCivilityServiceLive(
   override def addOrRemoveTribunalCommentCivility(
       jwt: String,
       jwtType: String,
-      civilityData: Civility
-  ): ZIO[Any, ErrorInfo, CivilityGiven] = {
+      civilityData: UpdateCommentCivility
+  ): ZIO[Any, AppError, CivilityGivenResponse] = {
     for {
       userData <- authenticationService.extractUserData(jwt, jwtType)
       _ <- authenticationService.canPerformCaptchaRequiredAction(userData)
@@ -113,20 +112,16 @@ case class CommentCivilityServiceLive(
         .addOrRemoveTribunalCommentCivility(
           givingUserId = userData.userId,
           givingUserUsername = userData.username,
-          civilityData: Civility
+          civilityData: UpdateCommentCivility
         )
-        .mapError(e => InternalServerError(e.toString))
+        .mapError(e => GeneralError(e.toString))
     } yield res
   }
 
 }
 
 object CommentCivilityServiceLive {
-  val live: ZLayer[Has[CommentCivilityRepository], Throwable, Has[
-    CommentCivilityService
-  ]] = {
-    for {
-      commentCivilityRepo <- ZIO.service[CommentCivilityRepository]
-    } yield CommentCivilityServiceLive(commentCivilityRepo)
-  }.toLayer
+
+  val layer: URLayer[CommentCivilityRepository, CommentCivilityService] = ZLayer.fromFunction(CommentCivilityServiceLive.apply _)
+
 }

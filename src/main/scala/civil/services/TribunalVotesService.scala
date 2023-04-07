@@ -1,19 +1,20 @@
 package civil.services
 
-import civil.models.{ErrorInfo, TribunalVote, TribunalVotes}
+import civil.errors.AppError
+import civil.models.{TribunalVote, TribunalVotes}
 import civil.repositories.TribunalVotesRepository
 import io.scalaland.chimney.dsl.TransformerOps
-import zio.{Has, ZIO, ZLayer}
+import zio.{URLayer, ZIO, ZLayer}
 
 trait TribunalVotesService {
-  def addTribunalVote(jwt: String, jwtType: String, tribunalVote: TribunalVote): ZIO[Any, ErrorInfo, TribunalVote]
+  def addTribunalVote(jwt: String, jwtType: String, tribunalVote: TribunalVote): ZIO[Any, AppError, TribunalVote]
 }
 
 
 
 object TribunalVotesService {
-  def addTribunalVote(jwt: String, jwtType: String, tribunalVote: TribunalVote): ZIO[Has[TribunalVotesService], ErrorInfo, TribunalVote] =
-    ZIO.serviceWith[TribunalVotesService](
+  def addTribunalVote(jwt: String, jwtType: String, tribunalVote: TribunalVote): ZIO[TribunalVotesService, AppError, TribunalVote] =
+    ZIO.serviceWithZIO[TribunalVotesService](
       _.addTribunalVote(jwt, jwtType, tribunalVote)
     )
 }
@@ -21,7 +22,7 @@ object TribunalVotesService {
 
 case class TribunalVotesServiceLive(tribunalVotesRepo: TribunalVotesRepository) extends TribunalVotesService {
 
-  override def addTribunalVote(jwt: String, jwtType: String, tribunalVote: TribunalVote): ZIO[Any, ErrorInfo, TribunalVote] = {
+  override def addTribunalVote(jwt: String, jwtType: String, tribunalVote: TribunalVote): ZIO[Any, AppError, TribunalVote] = {
     val authenticationService = AuthenticationServiceLive()
 
     for {
@@ -39,12 +40,6 @@ case class TribunalVotesServiceLive(tribunalVotesRepo: TribunalVotesRepository) 
 
 
 object TribunalVotesServiceLive {
-  val live: ZLayer[Has[TribunalVotesRepository], Nothing, Has[
-    TribunalVotesService
-  ]] = {
-    for {
-      tribunalVotesRepo <- ZIO.service[TribunalVotesRepository]
-    } yield TribunalVotesServiceLive(tribunalVotesRepo)
-  }.toLayer
+  val layer: URLayer[TribunalVotesRepository, TribunalVotesService] = ZLayer.fromFunction(TribunalVotesServiceLive.apply _)
 }
 

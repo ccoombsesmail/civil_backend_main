@@ -1,5 +1,7 @@
 package civil.models
 
+import zio.json.{DeriveJsonCodec, JsonCodec}
+
 import java.util.UUID
 
 case class Topic(id: UUID, editorTextContent: String)
@@ -13,3 +15,8 @@ case class SearchResult(
     comment: Option[Comment] = None,
     user: User,
 )
+
+
+object SearchResult {
+  implicit val codec: JsonCodec[SearchResult] = DeriveJsonCodec.gen[SearchResult]
+}

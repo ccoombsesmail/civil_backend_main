@@ -1,32 +1,31 @@
 package civil.services
 
-import civil.models.{ErrorInfo, OpposingRecommendations, OutGoingOpposingRecommendations}
-
+import civil.models.{OpposingRecommendations, OutGoingOpposingRecommendations}
 import java.util.UUID
-import civil.models.ErrorInfo
+import civil.errors.AppError
 import civil.repositories.recommendations.OpposingRecommendationsRepository
 import zio._
 
 trait OpposingRecommendationsService {
-  def insertOpposingRecommendation(opposingRec: OpposingRecommendations): ZIO[Any, ErrorInfo, Unit]
-  def getAllOpposingRecommendations(targetContentId: UUID): ZIO[Any, ErrorInfo, List[OutGoingOpposingRecommendations]]
+  def insertOpposingRecommendation(opposingRec: OpposingRecommendations): ZIO[Any, AppError, Unit]
+  def getAllOpposingRecommendations(targetContentId: UUID): ZIO[Any, AppError, List[OutGoingOpposingRecommendations]]
 }
 
 object OpposingRecommendationsService {
-  def insertOpposingRecommendation(opposingRec: OpposingRecommendations): ZIO[Has[OpposingRecommendationsService], ErrorInfo, Unit] =
-    ZIO.serviceWith[OpposingRecommendationsService](_.insertOpposingRecommendation(opposingRec))
-  def getAllOpposingRecommendations(targetContentId: UUID): ZIO[Has[OpposingRecommendationsService], ErrorInfo, List[OutGoingOpposingRecommendations]] =
-    ZIO.serviceWith[OpposingRecommendationsService](_.getAllOpposingRecommendations(targetContentId))
+  def insertOpposingRecommendation(opposingRec: OpposingRecommendations): ZIO[OpposingRecommendationsService, AppError, Unit] =
+    ZIO.serviceWithZIO[OpposingRecommendationsService](_.insertOpposingRecommendation(opposingRec))
+  def getAllOpposingRecommendations(targetContentId: UUID): ZIO[OpposingRecommendationsService, AppError, List[OutGoingOpposingRecommendations]] =
+    ZIO.serviceWithZIO[OpposingRecommendationsService](_.getAllOpposingRecommendations(targetContentId))
 }
 
 
 case class OpposingRecommendationsServiceLive(opposingRecommendationsRepo: OpposingRecommendationsRepository) extends OpposingRecommendationsService {
 
-  override def insertOpposingRecommendation(opposingRec: OpposingRecommendations): ZIO[Any, ErrorInfo, Unit] = {
+  override def insertOpposingRecommendation(opposingRec: OpposingRecommendations): ZIO[Any, AppError, Unit] = {
     opposingRecommendationsRepo.insertOpposingRecommendation(opposingRec)
   }
 
-  override def getAllOpposingRecommendations(targetContentId: UUID): ZIO[Any, ErrorInfo, List[OutGoingOpposingRecommendations]] = {
+  override def getAllOpposingRecommendations(targetContentId: UUID): ZIO[Any, AppError, List[OutGoingOpposingRecommendations]] = {
     opposingRecommendationsRepo.getAllOpposingRecommendations(targetContentId)
   }
 
@@ -34,10 +33,7 @@ case class OpposingRecommendationsServiceLive(opposingRecommendationsRepo: Oppos
 
 
 object OpposingRecommendationsServiceLive {
-  val live: ZLayer[Has[OpposingRecommendationsRepository], Throwable, Has[OpposingRecommendationsService]] = {
-    for {
-      opposingRecommendationsRepo <- ZIO.service[OpposingRecommendationsRepository]
-    } yield OpposingRecommendationsServiceLive(opposingRecommendationsRepo)
-  }.toLayer
+  val layer: URLayer[OpposingRecommendationsRepository, OpposingRecommendationsService] = ZLayer.fromFunction(OpposingRecommendationsServiceLive.apply _)
+
 }
 

@@ -1,6 +1,7 @@
 package civil.repositories.recommendations
 
-import civil.models.{ErrorInfo, OpposingRecommendations, OutGoingOpposingRecommendations, Discussions, Topics, UrlsForTFIDFConversion}
+import civil.models.{OpposingRecommendations, OutGoingOpposingRecommendations, Discussions, Topics, UrlsForTFIDFConversion}
+import civil.errors.AppError
 import civil.directives.OutgoingHttp
 import civil.models._
 import civil.repositories.QuillContextHelper
@@ -13,15 +14,15 @@ import scala.util.{Failure, Success}
 import scala.concurrent.ExecutionContext.Implicits.global
 
 trait OpposingRecommendationsRepository {
-  def insertOpposingRecommendation(opposingRec: OpposingRecommendations): ZIO[Any, ErrorInfo, Unit]
-  def getAllOpposingRecommendations(targetContentId: UUID): ZIO[Any, ErrorInfo, List[OutGoingOpposingRecommendations]]
+  def insertOpposingRecommendation(opposingRec: OpposingRecommendations): ZIO[Any, AppError, Unit]
+  def getAllOpposingRecommendations(targetContentId: UUID): ZIO[Any, AppError, List[OutGoingOpposingRecommendations]]
 }
 
 object OpposingRecommendationsRepository {
-  def insertOpposingRecommendation(opposingRec: OpposingRecommendations): ZIO[Has[OpposingRecommendationsRepository], ErrorInfo, Unit] =
-    ZIO.serviceWith[OpposingRecommendationsRepository](_.insertOpposingRecommendation(opposingRec))
-  def getAllOpposingRecommendations(targetContentId: UUID): ZIO[Has[OpposingRecommendationsRepository], ErrorInfo, List[OutGoingOpposingRecommendations]] =
-    ZIO.serviceWith[OpposingRecommendationsRepository](_.getAllOpposingRecommendations(targetContentId))
+  def insertOpposingRecommendation(opposingRec: OpposingRecommendations): ZIO[OpposingRecommendationsRepository, AppError, Unit] =
+    ZIO.serviceWithZIO[OpposingRecommendationsRepository](_.insertOpposingRecommendation(opposingRec))
+  def getAllOpposingRecommendations(targetContentId: UUID): ZIO[OpposingRecommendationsRepository, AppError, List[OutGoingOpposingRecommendations]] =
+    ZIO.serviceWithZIO[OpposingRecommendationsRepository](_.getAllOpposingRecommendations(targetContentId))
 }
 
 
@@ -29,7 +30,7 @@ case class OpposingRecommendationsRepositoryLive() extends OpposingRecommendatio
   import QuillContextHelper.ctx._
   import QuillContextHelper.ctx.extras._
 
-  override def insertOpposingRecommendation(opposingRec: OpposingRecommendations): ZIO[Any, ErrorInfo, Unit] = {
+  override def insertOpposingRecommendation(opposingRec: OpposingRecommendations): ZIO[Any, AppError, Unit] = {
     val recommendedContentIdIsDiscussion = opposingRec.recommendedContentId.map((recId) => {
       val isDiscussion = run(query[Discussions].filter(st => st.id == lift(recId))).nonEmpty
       isDiscussion
@@ -48,36 +49,16 @@ case class OpposingRecommendationsRepositoryLive() extends OpposingRecommendatio
           f onComplete {
             case Success(score) => {
               val recToBeInserted = opposingRec.copy(isDiscussion = recommendedContentIdIsDiscussion.getOrElse(false), similarityScore = score.score)
-              run(query[OpposingRecommendations].insert(lift(recToBeInserted)))
+              run(query[OpposingRecommendations].insertValue(lift(recToBeInserted)))
             }
             case Failure(t) => println("An error has occurred: " + t.getMessage)
           }
         })
     })
-
-//    opposingRec.externalRecommendedContent.foreach((url) => {
-//      val topic = run(query[Topics].filter(t => t.id == lift(opposingRec.targetContentId))).head
-//      val fut = for {
-//        contentUrl <-  topic.externalContentUrl
-//        f = OutgoingHttp.sendHTTPToMLService("tfidf", UrlsForTFIDFConversion(contentUrl, url))
-//      } yield f
-//      fut.foreach(f => {
-//        f onComplete {
-//          case Success(score) => {
-//            val recToBeInserted = opposingRec.copy(isSubTopic = recommendedContentIdIsSubTopic.getOrElse(false), similarityScore = score.score)
-//            run(query[OpposingRecommendations].insert(lift(recToBeInserted)))
-//          }
-//          case Failure(t) => println("An error has occurred: " + t.getMessage)
-//        }
-//      })
-//    })
-
-
-
     ZIO.unit
   }
 
-  override def getAllOpposingRecommendations(targetContentId: UUID): ZIO[Any, ErrorInfo, List[OutGoingOpposingRecommendations]] = {
+  override def getAllOpposingRecommendations(targetContentId: UUID): ZIO[Any, AppError, List[OutGoingOpposingRecommendations]] = {
 
 
     val q = quote {
@@ -103,6 +84,5 @@ case class OpposingRecommendationsRepositoryLive() extends OpposingRecommendatio
 }
 
 object OpposingRecommendationsRepositoryLive {
-  val live: ZLayer[Any, Throwable, Has[OpposingRecommendationsRepository]] =
-    ZLayer.succeed(OpposingRecommendationsRepositoryLive())
+  val layer: URLayer[Any, OpposingRecommendationsRepository] = ZLayer.fromFunction(OpposingRecommendationsRepositoryLive.apply _)
 }

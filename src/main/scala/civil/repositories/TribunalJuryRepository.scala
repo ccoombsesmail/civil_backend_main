@@ -1,8 +1,8 @@
 package civil.repositories
 
-import civil.models.{ErrorInfo, InternalServerError, TribunalJuryMembers}
+import civil.models.{AppError, InternalServerError, TribunalJuryMembers}
 import civil.models.InternalServerError
-import zio.{Has, ZIO, ZLayer}
+import zio.{ZIO, ZLayer}
 
 import java.util.UUID
 
@@ -10,7 +10,7 @@ trait TribunalJuryRepository {
   def insertJuryMember(
       userId: String,
       contentId: UUID
-  ): ZIO[Any, ErrorInfo, Unit]
+  ): ZIO[Any, AppError, Unit]
 
 }
 
@@ -18,8 +18,8 @@ object TribunalJuryRepository {
   def insertJuryMember(
       userId: String,
       contentId: UUID
-  ): ZIO[Has[TribunalJuryRepository], ErrorInfo, Unit] =
-    ZIO.serviceWith[TribunalJuryRepository](
+  ): ZIO[TribunalJuryRepository, AppError, Unit] =
+    ZIO.serviceWithZIO[TribunalJuryRepository](
       _.insertJuryMember(userId, contentId)
     )
 
@@ -30,9 +30,9 @@ object TribunalJuryRepository {
 case class TribunalJuryRepositoryLive() extends TribunalJuryRepository {
   import QuillContextHelper.ctx._
 
-  override def insertJuryMember(userId: String, contentId: UUID): ZIO[Any, ErrorInfo, Unit] = {
+  override def insertJuryMember(userId: String, contentId: UUID): ZIO[Any, AppError, Unit] = {
     for {
-      _ <- ZIO.effect(run(
+      _ <- ZIO.attempt(run(
         query[TribunalJuryMembers].insert(lift(TribunalJuryMembers(userId, contentId, contentType = "TOPIC" )))
       )).mapError(e => InternalServerError(e.toString))
     } yield ()
@@ -41,7 +41,7 @@ case class TribunalJuryRepositoryLive() extends TribunalJuryRepository {
 
 
 object TribunalJuryRepositoryLive {
-  val live: ZLayer[Any, Throwable, Has[TribunalJuryRepository]] =
+  val live: ZLayer[Any, Throwable, TribunalJuryRepository] =
     ZLayer.succeed(TribunalJuryRepositoryLive())
 }
 

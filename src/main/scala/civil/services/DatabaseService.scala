@@ -13,7 +13,7 @@ trait DatabaseService {
 object ConnectionService {
   def withConnection[R, E, A](
                                f: Connection => ZIO[R, E, A]
-                             ): ZIO[R with Has[DatabaseService], Either[SQLException, E], A] =
+                             ): ZIO[R with DatabaseService, Either[SQLException, E], A] =
     ZIO.service[DatabaseService].flatMap(_.withConnection(f))
 }
 
@@ -29,10 +29,10 @@ case class ConnectionServiceLive(
   private def usePermit[R, E, A](f: Connection => ZIO[R, E, A]) =
     for {
       result <- ZIO
-        .effect(ds.getConnection)
+        .attempt(ds.getConnection)
         .refineToOrDie[SQLException]
         .mapError(Left.apply)
-        .bracket(releaseConnection, useConnection(f))
+        .acquireReleaseWith(releaseConnection, useConnection(f))
     } yield result
 
   private def useConnection[R, E, A](f: Connection => ZIO[R, E, A])(
@@ -41,15 +41,13 @@ case class ConnectionServiceLive(
     f(conn).mapError(Right.apply)
 
   private def releaseConnection(conn: Connection): UIO[Unit] =
-    ZIO.effect(conn.close()).catchAll {
+    ZIO.attempt(conn.close()).catchAll {
       case e: SQLException => ZIO.succeed(println(s"Ignoring SQLException caught when closing a connection."))
       case t => ZIO.succeed(println("Unexpected exception closing a connection.", t))
     }
 }
 
 object ConnectionServiceLive {
-  val layer: URLayer[Has[DataSource with Closeable] with Has[Semaphore], Has[
-    DatabaseService
-  ]] =
+  val layer: URLayer[DataSource with Closeable with Semaphore, DatabaseService] =
     (ConnectionServiceLive(_, _)).toLayer
 }

@@ -1,5 +1,7 @@
 package civil.models
 
+import zio.json.{DeriveJsonCodec, JsonCodec}
+
 import java.util.UUID
 
 case class Recommendations(
@@ -13,6 +15,10 @@ case class OutgoingRecommendations(
     topic: Option[Topics],
     similarityScore: Double
 )
+
+object OutgoingRecommendations {
+  implicit val codec: JsonCodec[OutgoingRecommendations] = DeriveJsonCodec.gen[OutgoingRecommendations]
+}
 
 case class Recs(
     targetContentId: String,

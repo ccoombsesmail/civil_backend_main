@@ -34,6 +34,6 @@ object ContentReported {
           .map(new RuntimeException(_))
       )
     } { contentReportedAsObj =>
-      ZIO.effect(contentReportedAsObj.toJson)
+      ZIO.attempt(contentReportedAsObj.toJson)
     }
 }

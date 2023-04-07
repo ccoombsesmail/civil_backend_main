@@ -4,7 +4,7 @@ import sttp.tapir.json.circe._
 import sttp.tapir.generic.auto._
 import io.circe.generic.auto._
 import civil.apis.BaseApi.{baseEndpoint, baseEndpointAuthenticated}
-import civil.models.{Discussions, ErrorInfo, GeneralDiscussionId, IncomingDiscussion, OutgoingDiscussion, OutgoingTopic}
+import civil.models.{Discussions, AppError, GeneralDiscussionId, IncomingDiscussion, OutgoingDiscussion, OutgoingTopic}
 import sttp.tapir._
 
 import java.util.UUID
@@ -12,14 +12,14 @@ import java.util.UUID
 
 
 object DiscussionsApi {
-  val newDiscussionEndpoint: Endpoint[(String, String, IncomingDiscussion), ErrorInfo, Discussions, Any] =
+  val newDiscussionEndpoint: Endpoint[(String, String, IncomingDiscussion), AppError, Discussions, Any] =
     baseEndpointAuthenticated
       .post
       .in("discussions")
       .in(jsonBody[IncomingDiscussion])
       .out(jsonBody[Discussions])
 
-  val getAllDiscussionsEndpoint: Endpoint[(String, Int), ErrorInfo, List[OutgoingDiscussion], Any] =
+  val getAllDiscussionsEndpoint: Endpoint[(String, Int), AppError, List[OutgoingDiscussion], Any] =
     baseEndpoint
       .get
       .in("discussions")
@@ -28,21 +28,21 @@ object DiscussionsApi {
       .out(jsonBody[List[OutgoingDiscussion]])
   
 
-  val getDiscussionEndpoint: Endpoint[String, ErrorInfo, OutgoingDiscussion, Any] =
+  val getDiscussionEndpoint: Endpoint[String, AppError, OutgoingDiscussion, Any] =
     baseEndpoint
       .get
       .in("discussions")
       .in(path[String]("subTopicId"))
       .out(jsonBody[OutgoingDiscussion])
 
-  val getGeneralDiscussionIdEndpoint: Endpoint[String, ErrorInfo, GeneralDiscussionId, Any] =
+  val getGeneralDiscussionIdEndpoint: Endpoint[String, AppError, GeneralDiscussionId, Any] =
     baseEndpoint
       .get
       .in("discussions" / "general")
       .in(path[String]("topicId"))
       .out(jsonBody[GeneralDiscussionId])
 
-  val getUserDiscussions: Endpoint[(String, String, String), ErrorInfo, List[OutgoingDiscussion], Any] =
+  val getUserDiscussions: Endpoint[(String, String, String), AppError, List[OutgoingDiscussion], Any] =
     baseEndpointAuthenticated.get
       .in("discussions")
       .in("user")

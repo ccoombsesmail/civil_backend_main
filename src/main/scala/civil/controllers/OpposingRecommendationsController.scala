@@ -1,38 +1,30 @@
 package civil.controllers
 
 import java.util.UUID
-import civil.services.{OpposingRecommendationsService, OpposingRecommendationsServiceLive}
-import civil.apis.OpposingRecommendationsApi._
+import civil.services.OpposingRecommendationsService
 import civil.models.OpposingRecommendations
-import civil.repositories.recommendations.OpposingRecommendationsRepositoryLive
-import sttp.tapir.server.ziohttp.{ZioHttpInterpreter, ZioHttpServerOptions}
 import zhttp.http.{Http, Request, Response}
 import zio._
+import zhttp.http._
+import civil.controllers.ParseUtils._
+import zio.json.EncoderOps
 
-object OpposingRecommendationsController {
-  val newOpposingRecommendationEndpointRoute: Http[Has[OpposingRecommendationsService], Throwable, Request, Response[Any, Throwable]] = {
-    ZioHttpInterpreter().toHttp(newOpposingRecommendationEndpoint)(opposingRec => {
-      OpposingRecommendationsService.insertOpposingRecommendation(opposingRec)
-        .map(_ => {
-          Right(())
-        }).catchAll(e => ZIO.succeed(Left(e)))
-        .provideLayer(OpposingRecommendationsRepositoryLive.live >>> OpposingRecommendationsServiceLive.live)
-    })
+final case class OpposingRecommendationsController(opposingRecommendationsService: OpposingRecommendationsService) {
+    val routes: Http[Any, Throwable, Request, Response] = Http.collectZIO[Request] {
+      case req @ Method.POST -> !! / "opposing-recommendations" =>
+        for {
+          opposingRec <- parseBody[OpposingRecommendations](req)
+          _ <- opposingRecommendationsService.insertOpposingRecommendation(opposingRec)
+        } yield Response.ok
+
+      case req@Method.GET -> !! / "opposing-recommendations" if (req.url.queryParams.nonEmpty) =>
+        for {
+          recs <- opposingRecommendationsService.getAllOpposingRecommendations(UUID.fromString(req.url.queryParams("targetContentId").head))
+        } yield Response.json(recs.toJson)
+    }
   }
 
-
-
-  val getAllOpposingRecommendationEndpointRoute: Http[Has[OpposingRecommendationsService], Throwable, Request, Response[Any, Throwable]] = {
-    ZioHttpInterpreter().toHttp(getOpposingRecommendationEndpoint)(targetContentId => {
-      OpposingRecommendationsService.getAllOpposingRecommendations(UUID.fromString(targetContentId))
-        .map(recs => {
-          Right(recs)
-        }).catchAll(e => ZIO.succeed(Left(e)))
-        .provideLayer(OpposingRecommendationsRepositoryLive.live >>> OpposingRecommendationsServiceLive.live)
-    })
+  object OpposingRecommendationsController {
+    val layer: URLayer[OpposingRecommendationsService, OpposingRecommendationsController] = ZLayer.fromFunction(OpposingRecommendationsController.apply _)
   }
-
-
-
-}
 

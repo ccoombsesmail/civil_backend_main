@@ -1,26 +1,26 @@
 package civil.repositories
 
 import civil.models.{
-  ErrorInfo,
+  AppError,
   InternalServerError,
   JsonPoll,
   PollOptions,
   Polls
 }
-import zio.{Has, ZIO, ZLayer}
+import zio.{ZIO, ZLayer}
 
 import java.util.UUID
 
 trait PollsRepository {
-  def insertPoll(contentId: UUID, poll: JsonPoll): ZIO[Any, ErrorInfo, Option[JsonPoll]]
+  def insertPoll(contentId: UUID, poll: JsonPoll): ZIO[Any, AppError, Option[JsonPoll]]
 }
 
 object PollsRepository {
   def insertPoll(
       contentId: UUID,
       poll: JsonPoll
-  ): ZIO[Has[PollsRepository], ErrorInfo, Option[JsonPoll]] =
-    ZIO.serviceWith[PollsRepository](_.insertPoll(contentId, poll))
+  ): ZIO[PollsRepository, AppError, Option[JsonPoll]] =
+    ZIO.serviceWithZIO[PollsRepository](_.insertPoll(contentId, poll))
 
 }
 
@@ -31,7 +31,7 @@ case class PollsRepositoryLive() extends PollsRepository {
   override def insertPoll(
       contentId: UUID,
       poll: JsonPoll
-  ): ZIO[Any, ErrorInfo, Option[JsonPoll]] = {
+  ): ZIO[Any, AppError, Option[JsonPoll]] = {
     val newPoll = Polls(
       contentId = contentId,
       question = poll.question,
@@ -39,7 +39,7 @@ case class PollsRepositoryLive() extends PollsRepository {
     )
     for {
       _ <- ZIO
-        .effect(transaction {
+        .attempt(transaction {
           val insertedPoll = run(
             query[Polls]
               .insert(lift(newPoll))
@@ -61,6 +61,6 @@ case class PollsRepositoryLive() extends PollsRepository {
 }
 
 object PollsRepositoryLive {
-  val live: ZLayer[Any, Throwable, Has[PollsRepository]] =
+  val live: ZLayer[Any, Throwable, PollsRepository] =
     ZLayer.succeed(PollsRepositoryLive())
 }

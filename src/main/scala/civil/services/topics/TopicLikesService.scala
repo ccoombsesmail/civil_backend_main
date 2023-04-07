@@ -1,22 +1,19 @@
 package civil.services.topics
 
-import civil.models.{
-  ErrorInfo,
-  InternalServerError,
-  TopicLiked,
-  UpdateTopicLikes
-}
+import civil.errors.AppError.InternalServerError
+import civil.errors.AppError
+import civil.models.{TopicLiked, UpdateTopicLikes}
 import civil.models.NotifcationEvents.{GivingUserNotificationData, TopicLike}
 import civil.repositories.topics.TopicLikesRepository
 import civil.services.{AuthenticationServiceLive, KafkaProducerServiceLive}
-import zio.{Has, ZIO, ZLayer}
+import zio.{URLayer, ZIO, ZLayer}
 
 trait TopicLikesService {
   def addRemoveTopicLikeOrDislike(
       jwt: String,
       jwtType: String,
       topicLikeDislikeData: UpdateTopicLikes
-  ): ZIO[Any, ErrorInfo, TopicLiked]
+  ): ZIO[Any, AppError, TopicLiked]
 }
 
 object TopicLikesService {
@@ -24,8 +21,8 @@ object TopicLikesService {
       jwt: String,
       jwtType: String,
       topicLikeDislikeData: UpdateTopicLikes
-  ): ZIO[Has[TopicLikesService], ErrorInfo, TopicLiked] =
-    ZIO.serviceWith[TopicLikesService](
+  ): ZIO[TopicLikesService, AppError, TopicLiked] =
+    ZIO.serviceWithZIO[TopicLikesService](
       _.addRemoveTopicLikeOrDislike(jwt, jwtType, topicLikeDislikeData)
     )
 
@@ -39,19 +36,19 @@ case class TopicLikesServiceLive(topicLikesRep: TopicLikesRepository)
       jwt: String,
       jwtType: String,
       topicLikeDislikeData: UpdateTopicLikes
-  ): ZIO[Any, ErrorInfo, TopicLiked] = {
+  ): ZIO[Any, AppError, TopicLiked] = {
     val authenticationService = AuthenticationServiceLive()
     for {
-      userData <- authenticationService.extractUserData(jwt, jwtType)
+      userData <- authenticationService.extractUserData(jwt, jwtType).mapError(e => InternalServerError(e.toString))
       data <- topicLikesRep
         .addRemoveTopicLikeOrDislike(
           topicLikeDislikeData, userData.userId
-        )
+        ).mapError(e => InternalServerError(e.toString))
       (updatedLikeData, topic) = data
       _ <- ZIO
         .when(updatedLikeData.likeState == 1)(
           ZIO
-            .effect(
+            .attempt(
               kafka.publish(
                 TopicLike(
                   eventType = "TopicLike",
@@ -78,11 +75,7 @@ case class TopicLikesServiceLive(topicLikesRep: TopicLikesRepository)
 }
 
 object TopicLikesServiceLive {
-  val live: ZLayer[Has[TopicLikesRepository], Nothing, Has[
-    TopicLikesService
-  ]] = {
-    for {
-      topicLikesRepo <- ZIO.service[TopicLikesRepository]
-    } yield TopicLikesServiceLive(topicLikesRepo)
-  }.toLayer
+
+  val layer: URLayer[TopicLikesRepository, TopicLikesService] = ZLayer.fromFunction(TopicLikesServiceLive.apply _)
+
 }

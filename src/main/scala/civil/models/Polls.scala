@@ -1,5 +1,6 @@
 package civil.models
 import civil.repositories.QuillContextHelper.insertMeta
+import zio.json.{DeriveJsonCodec, JsonCodec}
 
 import java.util.UUID
 
@@ -33,6 +34,9 @@ case class PollOptions(
 case class IncomingPollVote(
     pollOptionId: UUID
 )
+object IncomingPollVote {
+  implicit val codec: JsonCodec[IncomingPollVote] = DeriveJsonCodec.gen[IncomingPollVote]
+}
 case class PollVotes(
     pollOptionId: UUID,
     userId: String
@@ -43,6 +47,10 @@ case class OutgoingPollVote(
     voteCast: Boolean,
     totalVotes: Int
 ) extends AnyRef with PrimaryKey
+
+object OutgoingPollVote {
+  implicit val codec: JsonCodec[OutgoingPollVote] = DeriveJsonCodec.gen[OutgoingPollVote]
+}
 
 case class JsonPoll(
     question: String,

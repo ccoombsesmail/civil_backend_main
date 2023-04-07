@@ -1,5 +1,7 @@
 package civil.models
 
+import zio.json.{DeriveJsonCodec, JsonCodec}
+
 import java.util.UUID
 import java.time.{Instant, LocalDateTime}
 
@@ -9,6 +11,10 @@ case class Report(
     spam: Option[Boolean],
     personalAttack: Option[Boolean]
 )
+
+object Report {
+  implicit val codec: JsonCodec[Report] = DeriveJsonCodec.gen[Report]
+}
 
 case class Reports(
     userId: String,
@@ -38,4 +44,8 @@ case class ReportInfo(
     if (votingPeriodEnd.isEmpty || votingPeriodEnd.exists(x => x < Instant.now().toEpochMilli)) this.copy(numVotesAgainst = Some(votesAgainst), numVotesFor = Some(votesFor))
     else this
   }
+}
+
+object ReportInfo {
+  implicit val codec: JsonCodec[ReportInfo] = DeriveJsonCodec.gen[ReportInfo]
 }

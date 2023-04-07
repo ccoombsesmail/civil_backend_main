@@ -1,6 +1,7 @@
 package civil.services.topics
 
-import civil.models.{ErrorInfo, OutgoingTopicsPayload, ExternalLinks, IncomingTopic, OutgoingTopic, Topics}
+import civil.errors.AppError
+import civil.models.{ExternalLinks, IncomingTopic, OutgoingTopic, Topics}
 import civil.directives.OutgoingHttp._
 import civil.models.enums.UserVerificationType.{CAPTCHA_VERIFIED, FACE_ID_AND_CAPTCHA_VERIFIED, FACE_ID_VERIFIED, NO_VERIFICATION}
 import civil.repositories.PollsRepository
@@ -18,25 +19,25 @@ trait TopicService {
       jwt: String,
       jwtType: String,
       incomingTopic: IncomingTopic
-  ): ZIO[Any, ErrorInfo, OutgoingTopic]
-  def getTopics: ZIO[Any, ErrorInfo, List[OutgoingTopic]]
+  ): ZIO[Any, AppError, OutgoingTopic]
+  def getTopics: ZIO[Any, AppError, List[OutgoingTopic]]
 
   def getTopicsAuthenticated(
       jwt: String,
       jwtType: String,
       offset: Int
-  ): ZIO[Any, ErrorInfo, List[OutgoingTopic]]
+  ): ZIO[Any, AppError, List[OutgoingTopic]]
   def getTopic(
       jwt: String,
       jwtType: String,
       id: UUID
-  ): ZIO[Any, ErrorInfo, OutgoingTopic]
+  ): ZIO[Any, AppError, OutgoingTopic]
 
   def getUserTopics(
                 jwt: String,
                 jwtType: String,
                 userId: String
-              ): ZIO[Any, ErrorInfo, List[OutgoingTopic]]
+              ): ZIO[Any, AppError, List[OutgoingTopic]]
 }
 
 object TopicService {
@@ -44,32 +45,32 @@ object TopicService {
       jwt: String,
       jwtType: String,
       incomingTopic: IncomingTopic
-  ): ZIO[Has[TopicService], ErrorInfo, OutgoingTopic] =
-    ZIO.serviceWith[TopicService](_.insertTopic(jwt, jwtType, incomingTopic))
+  ): ZIO[TopicService, AppError, OutgoingTopic] =
+    ZIO.serviceWithZIO[TopicService](_.insertTopic(jwt, jwtType, incomingTopic))
 
-  def getTopics(): ZIO[Has[TopicService], ErrorInfo, List[OutgoingTopic]] =
-    ZIO.serviceWith[TopicService](_.getTopics)
+  def getTopics(): ZIO[TopicService, AppError, List[OutgoingTopic]] =
+    ZIO.serviceWithZIO[TopicService](_.getTopics)
 
   def getTopicsAuthenticated(
       jwt: String,
       jwtType: String,
       offset: Int
-  ): ZIO[Has[TopicService], ErrorInfo, List[OutgoingTopic]] =
-    ZIO.serviceWith[TopicService](_.getTopicsAuthenticated(jwt, jwtType, offset))
+  ): ZIO[TopicService, AppError, List[OutgoingTopic]] =
+    ZIO.serviceWithZIO[TopicService](_.getTopicsAuthenticated(jwt, jwtType, offset))
 
   def getTopic(
       jwt: String,
       jwtType: String,
       id: UUID
-  ): ZIO[Has[TopicService], ErrorInfo, OutgoingTopic] =
-    ZIO.serviceWith[TopicService](_.getTopic(jwt, jwtType, id))
+  ): ZIO[TopicService, AppError, OutgoingTopic] =
+    ZIO.serviceWithZIO[TopicService](_.getTopic(jwt, jwtType, id))
 
   def getUserTopics(
                 jwt: String,
                 jwtType: String,
                 userId: String
-              ): ZIO[Has[TopicService], ErrorInfo, List[OutgoingTopic]] =
-    ZIO.serviceWith[TopicService](_.getUserTopics(jwt, jwtType, userId))
+              ): ZIO[TopicService, AppError, List[OutgoingTopic]] =
+    ZIO.serviceWithZIO[TopicService](_.getUserTopics(jwt, jwtType, userId))
 }
 
 case class TopicServiceLive(topicRepository: TopicRepository, pollsRepository: PollsRepository, authService: AuthenticationService)
@@ -81,7 +82,7 @@ case class TopicServiceLive(topicRepository: TopicRepository, pollsRepository: P
       jwt: String,
       jwtType: String,
       incomingTopic: IncomingTopic
-  ): ZIO[Any, ErrorInfo, OutgoingTopic] = {
+  ): ZIO[Any, AppError, OutgoingTopic] = {
 
     for {
       userData <- authService.extractUserData(jwt, jwtType)
@@ -117,7 +118,7 @@ case class TopicServiceLive(topicRepository: TopicRepository, pollsRepository: P
     } yield insertedTopic
   }
 
-  override def getTopics: ZIO[Any, ErrorInfo, List[OutgoingTopic]] = {
+  override def getTopics: ZIO[Any, AppError, List[OutgoingTopic]] = {
     topicRepository.getTopics
   }
 
@@ -125,7 +126,7 @@ case class TopicServiceLive(topicRepository: TopicRepository, pollsRepository: P
       jwt: String,
       jwtType: String,
       offset: Int
-  ): ZIO[Any, ErrorInfo, List[OutgoingTopic]] = {
+  ): ZIO[Any, AppError, List[OutgoingTopic]] = {
 
     for {
       userData <- authService.extractUserData(jwt, jwtType)
@@ -141,7 +142,7 @@ case class TopicServiceLive(topicRepository: TopicRepository, pollsRepository: P
       jwt: String,
       jwtType: String,
       id: UUID
-  ): ZIO[Any, ErrorInfo, OutgoingTopic] = {
+  ): ZIO[Any, AppError, OutgoingTopic] = {
     for {
       userData <- authService.extractUserData(jwt, jwtType)
       topic <- topicRepository
@@ -153,7 +154,7 @@ case class TopicServiceLive(topicRepository: TopicRepository, pollsRepository: P
     } yield topic
   }
 
-  override def getUserTopics(jwt: String, jwtType: String, userId: String): ZIO[Any, ErrorInfo, List[OutgoingTopic]] = {
+  override def getUserTopics(jwt: String, jwtType: String, userId: String): ZIO[Any, AppError, List[OutgoingTopic]] = {
     for {
       userData <- authService.extractUserData(jwt, jwtType)
       topics <- topicRepository.getUserTopics(
@@ -166,11 +167,9 @@ case class TopicServiceLive(topicRepository: TopicRepository, pollsRepository: P
 }
 
 object TopicServiceLive {
-  val live: ZLayer[Has[TopicRepository] with Has[PollsRepository] with Has[AuthenticationService], Nothing, Has[TopicService]] = {
-    for {
-      topicRepo <- ZIO.service[TopicRepository]
-      pollsRepo <- ZIO.service[PollsRepository]
-      authService <- ZIO.service[AuthenticationService]
-    } yield TopicServiceLive(topicRepo, pollsRepo, authService)
-  }.toLayer
+
+  val layer: URLayer[
+    TopicRepository with PollsRepository with AuthenticationService,
+    TopicService
+  ] = ZLayer.fromFunction(TopicServiceLive.apply _)
 }

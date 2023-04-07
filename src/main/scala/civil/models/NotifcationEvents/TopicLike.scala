@@ -35,6 +35,6 @@ object TopicLike {
           .map(new RuntimeException(_))
       )
   } { topicLikeAsObj =>
-    ZIO.effect(topicLikeAsObj.toJson)
+    ZIO.attempt(topicLikeAsObj.toJson)
   }
 }

@@ -27,7 +27,7 @@ object NotifyTribunalJuryMember {
   val notifyTribunalJuryMemberSerde: Serde[Any, NotifyTribunalJuryMember] = Serde.string.inmapM { notifyTribunalJuryMemberAsString =>
     ZIO.fromEither(notifyTribunalJuryMemberAsString.fromJson[NotifyTribunalJuryMember].left.map(new RuntimeException(_)))
   } { notifyTribunalJuryMemberAsObj =>
-    ZIO.effect(notifyTribunalJuryMemberAsObj.toJson)
+    ZIO.attempt(notifyTribunalJuryMemberAsObj.toJson)
   }
 }
 

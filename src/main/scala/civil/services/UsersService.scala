@@ -1,52 +1,53 @@
 package civil.services
 
-import civil.models.{ErrorInfo, IncomingUser, OutgoingUser, TagExists, UpdateUserBio, WebHookData}
+import civil.errors.AppError
+import civil.models.{IncomingUser, OutgoingUser, TagExists, UpdateUserBio, WebHookData}
 import civil.models.enums.ClerkEventType
 
-import civil.repositories.{UsersRepository}
+import civil.repositories.UsersRepository
 
 import zio._
 
 trait UsersService {
-  def upsertDidUser(incomingUser: IncomingUser): ZIO[Any, ErrorInfo, OutgoingUser]
+  def upsertDidUser(incomingUser: IncomingUser): ZIO[Any, AppError, OutgoingUser]
 
-  def insertOrUpdateUserHook(webHookData: WebHookData, eventType: ClerkEventType):  ZIO[Any, ErrorInfo, Unit]
+  def insertOrUpdateUserHook(webHookData: WebHookData, eventType: ClerkEventType):  ZIO[Any, AppError, Unit]
 
-  def getUser(jwt: String, jwtType: String, id: String):  ZIO[Any, ErrorInfo, OutgoingUser]
-  def updateUserIcon(username: String, iconSrc: String):  ZIO[Any, ErrorInfo, OutgoingUser]
-  def updateUserBio(jwt: String, jwtType: String, bioInfo: UpdateUserBio): ZIO[Any, ErrorInfo, OutgoingUser]
-  def createUserTag(jwt: String, jwtType: String, tag: String): ZIO[Any, ErrorInfo, OutgoingUser]
-  def checkIfTagExists(tag: String): ZIO[Any, ErrorInfo, TagExists]
+  def getUser(jwt: String, jwtType: String, id: String):  ZIO[Any, AppError, OutgoingUser]
+  def updateUserIcon(username: String, iconSrc: String):  ZIO[Any, AppError, OutgoingUser]
+  def updateUserBio(jwt: String, jwtType: String, bioInfo: UpdateUserBio): ZIO[Any, AppError, OutgoingUser]
+  def createUserTag(jwt: String, jwtType: String, tag: String): ZIO[Any, AppError, OutgoingUser]
+  def checkIfTagExists(tag: String): ZIO[Any, AppError, TagExists]
 
 }
 
 
 object UsersService {
 
-  def upsertDidUser(incomingUser: IncomingUser): ZIO[Has[UsersService], ErrorInfo, OutgoingUser]=
-    ZIO.serviceWith[UsersService](_.upsertDidUser(incomingUser))
+  def upsertDidUser(incomingUser: IncomingUser): ZIO[UsersService, AppError, OutgoingUser]=
+    ZIO.serviceWithZIO[UsersService](_.upsertDidUser(incomingUser))
 
-  def insertOrUpdateUserHook(webHookData: WebHookData, eventType: ClerkEventType): ZIO[Has[UsersService], ErrorInfo, Unit] =
-    ZIO.serviceWith[UsersService](_.insertOrUpdateUserHook(webHookData, eventType))
+  def insertOrUpdateUserHook(webHookData: WebHookData, eventType: ClerkEventType): ZIO[UsersService, AppError, Unit] =
+    ZIO.serviceWithZIO[UsersService](_.insertOrUpdateUserHook(webHookData, eventType))
   
-  def getUser(jwt: String, jwtType: String, id: String):  ZIO[Has[UsersService], ErrorInfo, OutgoingUser] =
-    ZIO.serviceWith[UsersService](_.getUser(jwt, jwtType, id))
+  def getUser(jwt: String, jwtType: String, id: String):  ZIO[UsersService, AppError, OutgoingUser] =
+    ZIO.serviceWithZIO[UsersService](_.getUser(jwt, jwtType, id))
 
-  def updateUserIcon(username: String, iconSrc: String):  ZIO[Has[UsersService], ErrorInfo, OutgoingUser] =
-    ZIO.serviceWith[UsersService](_.updateUserIcon(username, iconSrc))
+  def updateUserIcon(username: String, iconSrc: String):  ZIO[UsersService, AppError, OutgoingUser] =
+    ZIO.serviceWithZIO[UsersService](_.updateUserIcon(username, iconSrc))
 
-  def updateUserBio(jwt: String, jwtType: String, bioInfo: UpdateUserBio): ZIO[Has[UsersService], ErrorInfo, OutgoingUser] =
-    ZIO.serviceWith[UsersService](_.updateUserBio(jwt, jwtType, bioInfo))
+  def updateUserBio(jwt: String, jwtType: String, bioInfo: UpdateUserBio): ZIO[UsersService, AppError, OutgoingUser] =
+    ZIO.serviceWithZIO[UsersService](_.updateUserBio(jwt, jwtType, bioInfo))
 
   def createUserTag(
      jwt: String,
      jwtType: String,
      tag: String
-  ): ZIO[Has[UsersService], ErrorInfo, OutgoingUser] =
-    ZIO.serviceWith[UsersService](_.createUserTag(jwt, jwtType, tag))
+  ): ZIO[UsersService, AppError, OutgoingUser] =
+    ZIO.serviceWithZIO[UsersService](_.createUserTag(jwt, jwtType, tag))
 
-  def checkIfTagExists(tag: String): ZIO[Has[UsersService], ErrorInfo, TagExists] =
-    ZIO.serviceWith[UsersService](_.checkIfTagExists(tag))
+  def checkIfTagExists(tag: String): ZIO[UsersService, AppError, TagExists] =
+    ZIO.serviceWithZIO[UsersService](_.checkIfTagExists(tag))
 }
 
 
@@ -56,15 +57,15 @@ case class UsersServiceLive(usersRepository: UsersRepository) extends UsersServi
     scala.concurrent.ExecutionContext.global
   val authenticationService = AuthenticationServiceLive()
 
-  override def upsertDidUser(incomingUser: IncomingUser): ZIO[Any, ErrorInfo, OutgoingUser] = {
+  override def upsertDidUser(incomingUser: IncomingUser): ZIO[Any, AppError, OutgoingUser] = {
     usersRepository.upsertDidUser(incomingUser)
   }
 
-  override def insertOrUpdateUserHook(webHookData: WebHookData, eventType: ClerkEventType): ZIO[Any, ErrorInfo, Unit] = {
+  override def insertOrUpdateUserHook(webHookData: WebHookData, eventType: ClerkEventType): ZIO[Any, AppError, Unit] = {
     usersRepository.insertOrUpdateUserHook(webHookData, eventType)
   }
 
-  override def getUser(jwt: String, jwtType: String, id: String): ZIO[Any, ErrorInfo, OutgoingUser] = {
+  override def getUser(jwt: String, jwtType: String, id: String): ZIO[Any, AppError, OutgoingUser] = {
     println(id)
     println(jwt)
     for {
@@ -73,34 +74,30 @@ case class UsersServiceLive(usersRepository: UsersRepository) extends UsersServi
     } yield outgoingUser.copy(iconSrc = Some(userData.userIconSrc), permissions = userData.permissions)
   }
 
-  override def updateUserIcon(username: String, iconSrc: String): ZIO[Any, ErrorInfo, OutgoingUser] = {
+  override def updateUserIcon(username: String, iconSrc: String): ZIO[Any, AppError, OutgoingUser] = {
     usersRepository.updateUserIcon(username, iconSrc)
   }
 
-  override def updateUserBio(jwt: String, jwtType: String, bioInfo: UpdateUserBio): ZIO[Any, ErrorInfo, OutgoingUser] = {
+  override def updateUserBio(jwt: String, jwtType: String, bioInfo: UpdateUserBio): ZIO[Any, AppError, OutgoingUser] = {
     for {
       userData <- authenticationService.extractUserData(jwt, jwtType)
       outgoingUser <- usersRepository.updateUserBio(userData.userId, bioInfo)
     } yield outgoingUser.copy(iconSrc = Some(userData.userIconSrc), username = userData.username, permissions = userData.permissions)
   }
 
-  override def createUserTag(jwt: String, jwtType: String, tag: String): ZIO[Any, ErrorInfo, OutgoingUser] = {
+  override def createUserTag(jwt: String, jwtType: String, tag: String): ZIO[Any, AppError, OutgoingUser] = {
     for {
       userData <- authenticationService.extractUserData(jwt, jwtType)
       outgoingUser <- usersRepository.createUserTag(userData.userId, tag)
     } yield outgoingUser.copy(iconSrc = Some(userData.userIconSrc), username = userData.username, permissions = userData.permissions)
   }
 
-  override def checkIfTagExists(tag: String): ZIO[Any, ErrorInfo, TagExists] = {
+  override def checkIfTagExists(tag: String): ZIO[Any, AppError, TagExists] = {
     usersRepository.checkIfTagExists(tag)
   }
 }
 
 
 object UsersServiceLive {
-  val live: ZLayer[Has[UsersRepository], Throwable, Has[UsersService]] = {
-    for {
-      usersRepo <- ZIO.service[UsersRepository]
-    } yield UsersServiceLive(usersRepo)
-  }.toLayer
+  val layer: URLayer[UsersRepository, UsersService] = ZLayer.fromFunction(UsersServiceLive.apply _)
 }

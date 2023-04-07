@@ -1,10 +1,9 @@
 package civil.models
 
-sealed trait ErrorInfo extends Product with Serializable
+sealed trait AppError extends Product with Serializable
 
-case class NotFound(userMsg: String) extends ErrorInfo
-case class Unauthorized(userMsg: String) extends ErrorInfo
-case class Unknown(code: Int, userMsg: String) extends ErrorInfo
-case class InternalServerError(userMsg: String) extends ErrorInfo
-case class BadRequest(userMsg: String) extends ErrorInfo
-case object NoContent extends ErrorInfo
+case class NotFound(userMsg: String) extends AppError
+case class Unauthorized(userMsg: String) extends AppError
+case class Unknown(code: Int, userMsg: String) extends AppError
+case class BadRequest(userMsg: String) extends AppError
+case object NoContent extends AppError

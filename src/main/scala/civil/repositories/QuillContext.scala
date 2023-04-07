@@ -8,7 +8,7 @@ import io.circe._
 import io.circe.parser._
 import scalaz.Leibniz.subst
 import zio.ZIO
-import zio.blocking.Blocking
+
 
 import java.sql.Types
 import java.sql.Timestamp

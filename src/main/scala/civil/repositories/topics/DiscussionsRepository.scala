@@ -1,15 +1,8 @@
 package civil.repositories.topics
 
-import civil.models.{
-  Comments,
-  Discussions,
-  ErrorInfo,
-  ExternalLinksDiscussions,
-  InternalServerError,
-  OutgoingDiscussion,
-  Users,
-  _
-}
+import civil.models.{Comments, Discussions, ExternalLinksDiscussions, OutgoingDiscussion, Users, _}
+import civil.errors.AppError
+import civil.errors.AppError.InternalServerError
 import civil.repositories.QuillContextHelper
 import zio._
 import io.scalaland.chimney.dsl._
@@ -25,53 +18,53 @@ trait DiscussionRepository {
   def insertDiscussion(
       discussion: Discussions,
       linkData: Option[ExternalLinksDiscussions]
-  ): ZIO[Any, ErrorInfo, Discussions]
+  ): ZIO[Any, AppError, Discussions]
   def getDiscussions(
       topicId: UUID,
       skip: Int
-  ): ZIO[Any, ErrorInfo, List[OutgoingDiscussion]]
-  def getDiscussion(id: UUID): ZIO[Any, ErrorInfo, OutgoingDiscussion]
+  ): ZIO[Any, AppError, List[OutgoingDiscussion]]
+  def getDiscussion(id: UUID): ZIO[Any, AppError, OutgoingDiscussion]
 
   def getGeneralDiscussionId(
       topicId: UUID
-  ): ZIO[Any, ErrorInfo, GeneralDiscussionId]
+  ): ZIO[Any, AppError, GeneralDiscussionId]
 
   def getUserDiscussions(
       requestingUserId: String,
       userId: String
-  ): ZIO[Any, ErrorInfo, List[OutgoingDiscussion]]
+  ): ZIO[Any, AppError, List[OutgoingDiscussion]]
 }
 
 object DiscussionRepository {
   def insertDiscussion(
       discussion: Discussions,
       linkData: Option[ExternalLinksDiscussions]
-  ): ZIO[Has[DiscussionRepository], ErrorInfo, Discussions] =
-    ZIO.serviceWith[DiscussionRepository](
+  ): ZIO[DiscussionRepository, AppError, Discussions] =
+    ZIO.serviceWithZIO[DiscussionRepository](
       _.insertDiscussion(discussion, linkData)
     )
 
   def getDiscussions(
       topicId: UUID,
       skip: Int
-  ): ZIO[Has[DiscussionRepository], ErrorInfo, List[OutgoingDiscussion]] =
-    ZIO.serviceWith[DiscussionRepository](_.getDiscussions(topicId, skip))
+  ): ZIO[DiscussionRepository, AppError, List[OutgoingDiscussion]] =
+    ZIO.serviceWithZIO[DiscussionRepository](_.getDiscussions(topicId, skip))
 
   def getDiscussion(
       id: UUID
-  ): ZIO[Has[DiscussionRepository], ErrorInfo, OutgoingDiscussion] =
-    ZIO.serviceWith[DiscussionRepository](_.getDiscussion(id))
+  ): ZIO[DiscussionRepository, AppError, OutgoingDiscussion] =
+    ZIO.serviceWithZIO[DiscussionRepository](_.getDiscussion(id))
 
   def getGeneralDiscussionId(
       topicId: UUID
-  ): ZIO[Has[DiscussionRepository], ErrorInfo, GeneralDiscussionId] =
-    ZIO.serviceWith[DiscussionRepository](_.getGeneralDiscussionId(topicId))
+  ): ZIO[DiscussionRepository, AppError, GeneralDiscussionId] =
+    ZIO.serviceWithZIO[DiscussionRepository](_.getGeneralDiscussionId(topicId))
 
   def getUserTopics(
       requestingUserId: String,
       userId: String
-  ): ZIO[Has[DiscussionRepository], ErrorInfo, List[OutgoingDiscussion]] =
-    ZIO.serviceWith[DiscussionRepository](
+  ): ZIO[DiscussionRepository, AppError, List[OutgoingDiscussion]] =
+    ZIO.serviceWithZIO[DiscussionRepository](
       _.getUserDiscussions(requestingUserId, userId)
     )
 }
@@ -82,16 +75,16 @@ case class DiscussionRepositoryLive() extends DiscussionRepository {
   override def insertDiscussion(
       discussion: Discussions,
       externalLinks: Option[ExternalLinksDiscussions]
-  ): ZIO[Any, ErrorInfo, Discussions] = {
+  ): ZIO[Any, AppError, Discussions] = {
 
     for {
       discussionWithLinkData <-
         if (externalLinks.isEmpty)
           ZIO
-            .effect(transaction {
+            .attempt(transaction {
               val inserted = run(
                 query[Discussions]
-                  .insert(lift(discussion))
+                  .insertValue(lift(discussion))
                   .returning(inserted => inserted)
               )
               DiscussionWithLinkData(
@@ -102,15 +95,15 @@ case class DiscussionRepositoryLive() extends DiscussionRepository {
             .mapError(e => InternalServerError(e.toString))
         else
           ZIO
-            .effect(transaction {
+            .attempt(transaction {
               val inserted = run(
                 query[Discussions]
-                  .insert(lift(discussion))
+                  .insertValue(lift(discussion))
                   .returning(inserted => inserted)
               )
               val linkData = run(
                 query[ExternalLinksDiscussions]
-                  .insert(
+                  .insertValue(
                     lift(externalLinks.get.copy(discussionId = inserted.id))
                   )
                   .returning(inserted => inserted)
@@ -128,11 +121,11 @@ case class DiscussionRepositoryLive() extends DiscussionRepository {
       topicId: UUID,
       skip: Int
 
-                             ): ZIO[Any, ErrorInfo, List[OutgoingDiscussion]] = {
+                             ): ZIO[Any, AppError, List[OutgoingDiscussion]] = {
 
     for {
       discussionsUsersLinksJoin <- ZIO
-        .effect(
+        .attempt(
           run(
             query[Discussions]
               .filter(d => d.topicId == lift(topicId))
@@ -146,7 +139,7 @@ case class DiscussionRepositoryLive() extends DiscussionRepository {
         .mapError(e => InternalServerError(e.toString))
 
       discussions <- ZIO
-        .effect(discussionsUsersLinksJoin.map { case (d, u, linkData) =>
+        .attempt(discussionsUsersLinksJoin.map { case (d, u, linkData) =>
           val createdByIconSrc = u.iconSrc
           val commentNumbers = run(
             query[Comments]
@@ -192,11 +185,11 @@ case class DiscussionRepositoryLive() extends DiscussionRepository {
 
   override def getDiscussion(
       id: UUID
-  ): ZIO[Any, ErrorInfo, OutgoingDiscussion] = {
+  ): ZIO[Any, AppError, OutgoingDiscussion] = {
 
     for {
       discussionsUsersLinksJoin <- ZIO
-        .effect(
+        .attempt(
           run(
             query[Discussions]
               .filter(d => d.id == lift(id))
@@ -216,7 +209,7 @@ case class DiscussionRepositoryLive() extends DiscussionRepository {
       discussion = discussionUserLinks._1
       linkData = discussionUserLinks._3
       commentNumbers <- ZIO
-        .effect(
+        .attempt(
           run(
             query[Comments]
               .filter(c => c.discussionId == lift(id) && c.parentId.isEmpty)
@@ -228,7 +221,7 @@ case class DiscussionRepositoryLive() extends DiscussionRepository {
         )
         .mapError(e => InternalServerError(e.toString))
       numCommentsAndReplies <- ZIO
-        .effect(
+        .attempt(
           run(query[Comments].filter(c => c.discussionId == lift(id))).size
         )
         .mapError(e => InternalServerError(e.toString))
@@ -263,24 +256,24 @@ case class DiscussionRepositoryLive() extends DiscussionRepository {
 
   override def getGeneralDiscussionId(
       topicId: UUID
-  ): ZIO[Any, ErrorInfo, GeneralDiscussionId] = {
+  ): ZIO[Any, AppError, GeneralDiscussionId] = {
     for {
       discussion <- ZIO
         .fromOption(
           run(query[Discussions].filter(_.topicId == lift(topicId))).headOption
         )
-        .orElseFail(BadRequest("Cannot Find Discussion"))
+        .orElseFail(InternalServerError("Cannot Find Discussion"))
     } yield GeneralDiscussionId(discussion.id)
   }
 
   override def getUserDiscussions(
       requestingUserId: String,
       userId: String
-  ): ZIO[Any, ErrorInfo, List[OutgoingDiscussion]] = {
+  ): ZIO[Any, AppError, List[OutgoingDiscussion]] = {
 
     for {
       discussionsUsersLinksJoin <- ZIO
-        .effect(
+        .attempt(
           run(
             query[Discussions]
               .filter(d =>
@@ -297,7 +290,7 @@ case class DiscussionRepositoryLive() extends DiscussionRepository {
         )
         .mapError(e => InternalServerError(e.toString))
       discussions <- ZIO
-        .effect(discussionsUsersLinksJoin.map { case (d, u, linkData) =>
+        .attempt(discussionsUsersLinksJoin.map { case (d, u, linkData) =>
           val createdByIconSrc = u.iconSrc
           d.into[OutgoingDiscussion]
             .withFieldConst(_.liked, false)
@@ -326,7 +319,6 @@ case class DiscussionRepositoryLive() extends DiscussionRepository {
   }
 }
 
-object DiscussionsRepositoryLive {
-  val live: ZLayer[Any, Nothing, Has[DiscussionRepository]] =
-    ZLayer.succeed(DiscussionRepositoryLive())
+object DiscussionRepositoryLive {
+  val layer: URLayer[Any, DiscussionRepository] = ZLayer.fromFunction(DiscussionRepositoryLive.apply _)
 }

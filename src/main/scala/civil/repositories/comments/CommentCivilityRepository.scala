@@ -1,16 +1,9 @@
 package civil.repositories.comments
 
-import civil.models.{
-  Civility,
-  CivilityGiven,
-  CommentCivility,
-  Comments,
-  ErrorInfo,
-  InternalServerError,
-  TribunalComments,
-  Unknown,
-  Users
-}
+import civil.errors.AppError
+import civil.errors.AppError.InternalServerError
+
+import civil.models.{CommentCivility, Comments, AppError, TribunalComments, Unknown, Users}
 import civil.models.NotifcationEvents.CommentCivilityGiven
 import civil.models._
 import civil.repositories.{QuillContextHelper, QuillContextQueries}
@@ -24,13 +17,13 @@ trait CommentCivilityRepository {
   def addOrRemoveCommentCivility(
       givingUserId: String,
       givingUserUsername: String,
-      civilityData: Civility
-  ): ZIO[Any, ErrorInfo, (CivilityGiven, Comments)]
+      civilityData: UpdateCommentCivility
+  ): ZIO[Any, AppError, (CivilityGivenResponse, Comments)]
   def addOrRemoveTribunalCommentCivility(
       givingUserId: String,
       givingUserUsername: String,
-      civilityData: Civility
-  ): ZIO[Any, ErrorInfo, CivilityGiven]
+      civilityData: UpdateCommentCivility
+  ): ZIO[Any, AppError, CivilityGivenResponse]
 
 }
 
@@ -38,9 +31,9 @@ object CommentCivilityRepository {
   def addOrRemoveCommentCivility(
       givingUserId: String,
       givingUserUsername: String,
-      civilityData: Civility
-  ): ZIO[Has[CommentCivilityRepository], ErrorInfo, (CivilityGiven, Comments)] =
-    ZIO.serviceWith[CommentCivilityRepository](
+      civilityData: UpdateCommentCivility
+  ): ZIO[CommentCivilityRepository, AppError, (CivilityGivenResponse, Comments)] =
+    ZIO.serviceWithZIO[CommentCivilityRepository](
       _.addOrRemoveCommentCivility(
         givingUserId,
         givingUserUsername,
@@ -50,9 +43,9 @@ object CommentCivilityRepository {
   def addOrRemoveTribunalCommentCivility(
       givingUserId: String,
       givingUserUsername: String,
-      civilityData: Civility
-  ): ZIO[Has[CommentCivilityRepository], ErrorInfo, CivilityGiven] =
-    ZIO.serviceWith[CommentCivilityRepository](
+      civilityData: UpdateCommentCivility
+  ): ZIO[CommentCivilityRepository, AppError, CivilityGivenResponse] =
+    ZIO.serviceWithZIO[CommentCivilityRepository](
       _.addOrRemoveTribunalCommentCivility(
         givingUserId,
         givingUserUsername,
@@ -66,14 +59,14 @@ case class CommentCivilityRepositoryLive() extends CommentCivilityRepository {
   val kafka = new KafkaProducerServiceLive()
   import QuillContextHelper.ctx._
 
-  def addCivility(
+  private def addCivility(
       rootId: Option[UUID],
       givingUserId: String,
       givingUserUsername: String,
-      civilityData: Civility
+      civilityData: UpdateCommentCivility
   ) =
     for {
-      preUpdateCommentCivility <- ZIO.effect(
+      preUpdateCommentCivility <- ZIO.attempt(
         run(
           query[CommentCivility].filter(cv =>
             cv.userId == lift(givingUserId) && cv.commentId == lift(
@@ -83,11 +76,11 @@ case class CommentCivilityRepositoryLive() extends CommentCivilityRepository {
         ).headOption
       ).mapError(e => InternalServerError(e.toString))
       user <- ZIO
-        .effect(
+        .attempt(
           transaction {
             run(
               query[CommentCivility]
-                .insert(
+                .insertValue(
                   lift(
                     CommentCivility(
                       givingUserId,
@@ -100,7 +93,7 @@ case class CommentCivilityRepositoryLive() extends CommentCivilityRepository {
                   t.value -> e.value
                 )
                 .returning(c =>
-                  CivilityGiven(
+                  CivilityGivenResponse(
                     c.value,
                     lift(civilityData.commentId),
                     lift(rootId)
@@ -116,7 +109,7 @@ case class CommentCivilityRepositoryLive() extends CommentCivilityRepository {
           }
         )
         .mapError(e => InternalServerError(e.toString))
-    } yield CivilityGiven(
+    } yield CivilityGivenResponse(
       civility = civilityData.value,
       commentId = civilityData.commentId,
       rootId = rootId
@@ -125,8 +118,8 @@ case class CommentCivilityRepositoryLive() extends CommentCivilityRepository {
   override def addOrRemoveCommentCivility(
       givingUserId: String,
       givingUserUsername: String,
-      civilityData: Civility
-  ): ZIO[Any, ErrorInfo, (CivilityGiven, Comments)] = {
+      civilityData: UpdateCommentCivility
+  ): ZIO[Any, AppError, (CivilityGivenResponse, Comments)] = {
 
     for {
       comment <- ZIO
@@ -135,13 +128,13 @@ case class CommentCivilityRepositoryLive() extends CommentCivilityRepository {
             query[Comments].filter(c => c.id == lift(civilityData.commentId))
           ).headOption
         )
-        .orElseFail(Unknown(400, "Can't Find Comment"))
+        .orElseFail(InternalServerError("Can't Find Comment"))
       civilityGiven <- addCivility(
         comment.rootId,
         givingUserId,
         givingUserUsername,
         civilityData
-      )
+      ).mapError(e => InternalServerError(e.toString))
     } yield (civilityGiven, comment)
 
   }
@@ -157,8 +150,8 @@ case class CommentCivilityRepositoryLive() extends CommentCivilityRepository {
   override def addOrRemoveTribunalCommentCivility(
       givingUserId: String,
       givingUserUsername: String,
-      civilityData: Civility
-  ): ZIO[Any, ErrorInfo, CivilityGiven] = {
+      civilityData: UpdateCommentCivility
+  ): ZIO[Any, AppError, CivilityGivenResponse] = {
     for {
       comment <- ZIO
         .fromOption(
@@ -168,13 +161,13 @@ case class CommentCivilityRepositoryLive() extends CommentCivilityRepository {
             )
           ).headOption
         )
-        .orElseFail(Unknown(400, "Can't Find Comment"))
+        .orElseFail(InternalServerError("Can't Find Comment"))
       civilityGiven <- addCivility(
         comment.rootId,
         givingUserId,
         givingUserUsername,
         civilityData
-      )
+      ).mapError(e => InternalServerError(e.toString))
 
     } yield civilityGiven
   }
@@ -182,25 +175,7 @@ case class CommentCivilityRepositoryLive() extends CommentCivilityRepository {
 }
 
 object CommentCivilityRepositoryLive {
-  val live: ZLayer[Any, Throwable, Has[CommentCivilityRepository]] =
-    ZLayer.succeed(CommentCivilityRepositoryLive())
-}
 
-//object CommentCivilityRepository {
-//  val ctx = QuillContext.ctx
-//  import ctx._
-//
-//  def insertCivility(userId: String, commentId: UUID, civility: Int) = {
-//    val q = quote {
-//      query[CommentCivility].insert(lift(CommentCivility(userId, commentId, civility)))
-//      .onConflictUpdate(_.commentId, _.userId)((t, e) => t.civility -> e.civility)
-//    }
-//    ctx.run(q)
-//  }
-//
-//   def deleteCivility(userId: String, commentId: java.util.UUID) = {
-//    ctx.run(query[CommentCivility].filter(l => l.commentId == lift(commentId) && l.userId == lift(userId)).delete)
-//  }
-//
-//
-//}
+  val layer: URLayer[Any, CommentCivilityRepository] = ZLayer.fromFunction(CommentCivilityRepositoryLive.apply _)
+
+}

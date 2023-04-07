@@ -4,38 +4,38 @@ import sttp.tapir.json.circe._
 import sttp.tapir.generic.auto._
 import io.circe.generic.auto._
 import civil.apis.BaseApi.{baseEndpoint, baseEndpointAuthenticated}
-import civil.models.{ErrorInfo, IncomingTopic, OutgoingTopic, OutgoingTopicsPayload}
+import civil.models.{AppError, IncomingTopic, OutgoingTopic, OutgoingTopicsPayload}
 import sttp.tapir._
 import zio._
 
 
 object TopicsApi {
   
-  val newTopicEndpoint: Endpoint[(String, String, IncomingTopic), ErrorInfo, OutgoingTopic, Any] =
+  val newTopicEndpoint: Endpoint[(String, String, IncomingTopic), AppError, OutgoingTopic, Any] =
     baseEndpointAuthenticated.post
       .in("topics")
       .in(jsonBody[IncomingTopic])
       .out(jsonBody[OutgoingTopic])
 
-  val getAllTopicsEndpointAuthenticated: Endpoint[(String, String, Int), ErrorInfo, List[OutgoingTopic], Any] =
+  val getAllTopicsEndpointAuthenticated: Endpoint[(String, String, Int), AppError, List[OutgoingTopic], Any] =
     baseEndpointAuthenticated.get
       .in("topics")
       .in(query[Int]("skip"))
       .out(jsonBody[List[OutgoingTopic]])
 
-  val getAllTopicsEndpoint: Endpoint[Unit, ErrorInfo, List[OutgoingTopic], Any] =
+  val getAllTopicsEndpoint: Endpoint[Unit, AppError, List[OutgoingTopic], Any] =
     baseEndpoint.get
       .in("topics")
       .out(jsonBody[List[OutgoingTopic]])
 
 
-  val getTopicEndpoint: Endpoint[(String, String, String), ErrorInfo, OutgoingTopic, Any] =
+  val getTopicEndpoint: Endpoint[(String, String, String), AppError, OutgoingTopic, Any] =
     baseEndpointAuthenticated.get
       .in("topics")
       .in(path[String]("topicId"))
       .out(jsonBody[OutgoingTopic])
 
-  val getUserTopics: Endpoint[(String, String, String), ErrorInfo, List[OutgoingTopic], Any] =
+  val getUserTopics: Endpoint[(String, String, String), AppError, List[OutgoingTopic], Any] =
     baseEndpointAuthenticated.get
       .in("topics")
       .in("user")

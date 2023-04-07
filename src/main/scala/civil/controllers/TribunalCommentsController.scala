@@ -1,42 +1,42 @@
 package civil.controllers
 
-import civil.apis.TribunalCommentsApi._
+import java.util.UUID
 import civil.models.enums.TribunalCommentType
-import civil.repositories.{TribunalCommentsRepositoryLive, UsersRepositoryLive}
-import civil.services.{TribunalCommentsService, TribunalCommentsServiceLive}
-import sttp.tapir.server.ziohttp.ZioHttpInterpreter
+import civil.services.TribunalCommentsService
 import zhttp.http.{Http, Request, Response}
-import zio.{Has, ZIO}
+import zhttp.http._
+import zio._
+import zio.json.EncoderOps
+import civil.controllers.ParseUtils._
+import civil.models.IncomingComment
+
+
+final case class TribunalCommentsController(tribunalCommentsService: TribunalCommentsService) {
+  val routes: Http[Any, Throwable, Request, Response] = Http.collectZIO[Request] {
+    case req @ Method.POST -> !! / "tribunal-comments" =>
+      for {
+        authDataOpt <- extractJwtData(req)
+        tribunalComment <- parseBody[IncomingComment](req)
+        res <- tribunalCommentsService.insertComment(authDataOpt.get._1, authDataOpt.get._2, tribunalComment)
+      } yield Response.json(res.toJson)
+
+    case req @ Method.GET -> !! / "tribunal-comments" =>
+      for {
+        authDataOpt <- extractJwtData(req)
+        contentId <- parseQuery[String](req, "contentId")
+        commentType <- parseQuery[String](req, "commentType")
+        res <- tribunalCommentsService.getComments(authDataOpt.get._1, authDataOpt.get._2, UUID.fromString(contentId), TribunalCommentType.withName(commentType))
+      } yield Response.json(res.toJson)
+
+    case req @ Method.GET -> !! / "tribunal-comments-batch" =>
+      for {
+        authDataOpt <- extractJwtData(req)
+        contentId <- parseQuery[String](req, "contentId")
+        res <- tribunalCommentsService.getCommentsBatch(authDataOpt.get._1, authDataOpt.get._2, UUID.fromString(contentId))
+      } yield Response.json(res.toJson)
+  }
+}
 
 object TribunalCommentsController {
-  val newTopicTribunalVoteEndpointRoute: Http[Has[TribunalCommentsService], Throwable, Request, Response[Any, Throwable]] = {
-    ZioHttpInterpreter().toHttp(newTribunalCommentEndpoint){ case (jwt, jwtType, tribunalComment) =>
-     TribunalCommentsService.insertComment(jwt, jwtType, tribunalComment)
-        .map(res => {
-          Right(res)
-        }).catchAll(e => ZIO.succeed(Left(e)))
-        .provideLayer((TribunalCommentsRepositoryLive.live ++ UsersRepositoryLive.live) >>> TribunalCommentsServiceLive.live)
-    }
-  }
-
-  val getTribunalCommentsEndpointRoute: Http[Has[TribunalCommentsService], Throwable, Request, Response[Any, Throwable]] = {
-    ZioHttpInterpreter().toHttp(getTribunalCommentsEndpoint){ case (jwt, jwtType, contentId, commentType) =>
-      TribunalCommentsService.getComments(jwt, jwtType, java.util.UUID.fromString(contentId), TribunalCommentType.withName(commentType))
-        .map(res => {
-          Right(res)
-        }).catchAll(e => ZIO.succeed(Left(e)))
-        .provideLayer((TribunalCommentsRepositoryLive.live ++ UsersRepositoryLive.live) >>> TribunalCommentsServiceLive.live)
-    }
-  }
-
-
-  val getTribunalCommentsBatchEndpointRoute: Http[Has[TribunalCommentsService], Throwable, Request, Response[Any, Throwable]] = {
-    ZioHttpInterpreter().toHttp(getTribunalCommentsBatchEndpoint){ case (jwt, jwtType, contentId) =>
-      TribunalCommentsService.getCommentsBatch(jwt, jwtType, java.util.UUID.fromString(contentId))
-        .map(res => {
-          Right(res)
-        }).catchAll(e => ZIO.succeed(Left(e)))
-        .provideLayer((TribunalCommentsRepositoryLive.live ++ UsersRepositoryLive.live) >>> TribunalCommentsServiceLive.live)
-    }
-  }
+  val layer: URLayer[TribunalCommentsService, TribunalCommentsController] = ZLayer.fromFunction(TribunalCommentsController.apply _)
 }

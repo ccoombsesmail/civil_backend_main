@@ -1,33 +1,37 @@
 package civil.repositories
 
-import civil.models.{ErrorInfo, InternalServerError, OutgoingPollVote, PollVotes}
+
+import civil.errors.AppError
+import civil.errors.AppError.InternalServerError
+import civil.models.{OutgoingPollVote, PollVotes}
+import civil.services.{PollVotesService, PollVotesServiceLive}
 import io.scalaland.chimney.dsl.TransformerOps
-import zio.{Has, ZIO, ZLayer}
+import zio.{URLayer, ZIO, ZLayer}
 
 import java.util.UUID
 
 trait PollVotesRepository {
-  def createPollVote(pollVotes: PollVotes): ZIO[Any, ErrorInfo, OutgoingPollVote]
-  def deletePollVote(pollOptionId: UUID, userId: String): ZIO[Any, ErrorInfo, OutgoingPollVote]
-  def getPollVoteData(pollOptionIds: List[UUID], userId: String): ZIO[Any, ErrorInfo, List[OutgoingPollVote]]
+  def createPollVote(pollVotes: PollVotes): ZIO[Any, AppError, OutgoingPollVote]
+  def deletePollVote(pollOptionId: UUID, userId: String): ZIO[Any, AppError, OutgoingPollVote]
+  def getPollVoteData(pollOptionIds: List[UUID], userId: String): ZIO[Any, AppError, List[OutgoingPollVote]]
 
 }
 
 
 
 object PollVotesRepository {
-  def createPollVote(pollVotes: PollVotes): ZIO[Has[PollVotesRepository], ErrorInfo, OutgoingPollVote] =
-    ZIO.serviceWith[PollVotesRepository](
+  def createPollVote(pollVotes: PollVotes): ZIO[PollVotesRepository, AppError, OutgoingPollVote] =
+    ZIO.serviceWithZIO[PollVotesRepository](
       _.createPollVote(pollVotes)
     )
 
-  def deletePollVote(pollOptionId: UUID, userId: String): ZIO[Has[PollVotesRepository], ErrorInfo, OutgoingPollVote] =
-    ZIO.serviceWith[PollVotesRepository](
+  def deletePollVote(pollOptionId: UUID, userId: String): ZIO[PollVotesRepository, AppError, OutgoingPollVote] =
+    ZIO.serviceWithZIO[PollVotesRepository](
       _.deletePollVote(pollOptionId, userId)
     )
 
-  def getPollVoteData(pollOptionIds: List[UUID], userId: String): ZIO[Has[PollVotesRepository], ErrorInfo, List[OutgoingPollVote]] =
-    ZIO.serviceWith[PollVotesRepository](
+  def getPollVoteData(pollOptionIds: List[UUID], userId: String): ZIO[PollVotesRepository, AppError, List[OutgoingPollVote]] =
+    ZIO.serviceWithZIO[PollVotesRepository](
       _.getPollVoteData(pollOptionIds, userId)
     )
 }
@@ -37,42 +41,42 @@ case class PollVotesRepositoryLive() extends PollVotesRepository {
   import QuillContextHelper.ctx._
 
 
-  override def createPollVote(pollVotes: PollVotes): ZIO[Any, ErrorInfo, OutgoingPollVote] = {
+  override def createPollVote(pollVotes: PollVotes): ZIO[Any, AppError, OutgoingPollVote] = {
     for {
-      vote <- ZIO.effect(run(
+      vote <- ZIO.attempt(run(
         query[PollVotes]
-          .insert(lift(pollVotes))
+          .insertValue(lift(pollVotes))
           .returning(r => r)
       )).mapError(e => InternalServerError(e.toString))
-      totalVotes <- ZIO.effect(run(
+      totalVotes <- ZIO.attempt(run(
         query[PollVotes].filter(_.pollOptionId == lift(pollVotes.pollOptionId))
       ).length).mapError(e => InternalServerError(e.toString))
     } yield vote.into[OutgoingPollVote].withFieldConst(_.voteCast, true).withFieldConst(_.totalVotes, totalVotes).transform
   }
 
-  override def deletePollVote(pollOptionId: UUID, userId: String): ZIO[Any, ErrorInfo, OutgoingPollVote] = {
+  override def deletePollVote(pollOptionId: UUID, userId: String): ZIO[Any, AppError, OutgoingPollVote] = {
     for {
-      vote <- ZIO.effect(run(
+      vote <- ZIO.attempt(run(
         query[PollVotes]
           .filter(_.pollOptionId == lift(pollOptionId))
           .delete
           .returning(r => r)
       )).mapError(e => InternalServerError(e.toString))
-      totalVotes <- ZIO.effect(run(
+      totalVotes <- ZIO.attempt(run(
         query[PollVotes].filter(_.pollOptionId == lift(pollOptionId))
       ).length).mapError(e => InternalServerError(e.toString))
     } yield vote.into[OutgoingPollVote].withFieldConst(_.voteCast, false).withFieldConst(_.totalVotes, totalVotes).transform
   }
 
-  override def getPollVoteData(pollOptionIds: List[UUID], userId: String): ZIO[Any, ErrorInfo, List[OutgoingPollVote]] = {
+  override def getPollVoteData(pollOptionIds: List[UUID], userId: String): ZIO[Any, AppError, List[OutgoingPollVote]] = {
     for {
-      votes <- ZIO.effect(run(
+      votes <- ZIO.attempt(run(
         query[PollVotes]
           .filter(pv => liftQuery(pollOptionIds.toSet).contains(pv.pollOptionId))
           .groupBy(_.pollOptionId)
           .map { case (id, pv) => (id, pv.size)  }
       ).toMap).mapError(e => InternalServerError(e.toString))
-      userVotes <- ZIO.effect(run(
+      userVotes <- ZIO.attempt(run(
         query[PollVotes]
           .filter(pv => liftQuery(pollOptionIds.toSet).contains(pv.pollOptionId) && pv.userId == lift(userId))
       )).mapError(e => InternalServerError(e.toString))
@@ -91,6 +95,6 @@ case class PollVotesRepositoryLive() extends PollVotesRepository {
 
 
 object PollVotesRepositoryLive {
-  val live: ZLayer[Any, Nothing, Has[PollVotesRepository]] = ZLayer.succeed(PollVotesRepositoryLive())
+  val layer: URLayer[Any, PollVotesRepository] = ZLayer.fromFunction(PollVotesRepositoryLive.apply _)
 }
 

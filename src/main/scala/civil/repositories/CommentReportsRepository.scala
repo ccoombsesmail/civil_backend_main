@@ -10,18 +10,18 @@
 //import java.util.UUID
 //
 //trait CommentReportsRepository {
-//  def addCommentReport(commentReport: CommentReports): ZIO[Any, ErrorInfo, Unit]
+//  def addCommentReport(commentReport: CommentReports): ZIO[Any, AppError, Unit]
 //  def getCommentReport(
 //      commentId: UUID,
 //      userId: String
-//  ): ZIO[Any, ErrorInfo, CommentReportInfo]
+//  ): ZIO[Any, AppError, CommentReportInfo]
 //
 //}
 //
 //object CommentReportsRepository {
 //  def addCommentReport(
 //      CommentReport: CommentReports
-//  ): ZIO[Has[CommentReportsRepository], ErrorInfo, Unit] =
+//  ): ZIO[Has[CommentReportsRepository], AppError, Unit] =
 //    ZIO.serviceWith[CommentReportsRepository](
 //      _.addCommentReport(CommentReport)
 //    )
@@ -29,7 +29,7 @@
 //  def getCommentReport(
 //      CommentId: UUID,
 //      userId: String
-//  ): ZIO[Has[CommentReportsRepository], ErrorInfo, CommentReportInfo] =
+//  ): ZIO[Has[CommentReportsRepository], AppError, CommentReportInfo] =
 //    ZIO.serviceWith[CommentReportsRepository](
 //      _.getCommentReport(CommentId, userId)
 //    )
@@ -43,7 +43,7 @@
 //
 //  override def addCommentReport(
 //      CommentReport: CommentReports
-//  ): ZIO[Any, ErrorInfo, Unit] = {
+//  ): ZIO[Any, AppError, Unit] = {
 //    val res = for {
 //      _ <- ZIO
 //        .effect(
@@ -164,7 +164,7 @@
 //  override def getCommentReport(
 //      CommentId: UUID,
 //      userId: String
-//  ): ZIO[Any, ErrorInfo, CommentReportInfo] = {
+//  ): ZIO[Any, AppError, CommentReportInfo] = {
 //    for {
 //      voteOpt <- ZIO
 //        .effect(

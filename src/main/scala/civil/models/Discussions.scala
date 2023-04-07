@@ -1,12 +1,32 @@
 package civil.models
 
-import java.time.{LocalDateTime, Instant};
+import zio.{Random, Task, UIO, ZIO}
+import zio.json.{DeriveJsonCodec, JsonCodec}
+
+import java.time.{Instant, LocalDateTime}
 import java.util.UUID
 
 
 case class GeneralDiscussionId(
     id: UUID
  )
+
+case class DiscussionId(
+    id: UUID
+)
+
+object DiscussionId {
+
+  def random: UIO[DiscussionId] = Random.nextUUID.map(DiscussionId(_))
+
+  def fromString(id: String): Task[DiscussionId] =
+    ZIO.attempt {
+      DiscussionId(UUID.fromString(id))
+    }
+
+  implicit val codec: JsonCodec[DiscussionId] =
+    JsonCodec[UUID].transform(DiscussionId(_), _.id)
+}
 
 case class Discussions(
     id: UUID,
@@ -36,6 +56,10 @@ case class IncomingDiscussion(
     userUploadedVodUrl: Option[String]
 )
 
+object IncomingDiscussion {
+  implicit val codec: JsonCodec[IncomingDiscussion] = DeriveJsonCodec.gen[IncomingDiscussion]
+}
+
 case class OutgoingDiscussion(
     id: UUID,
     topicId: UUID,
@@ -57,3 +81,9 @@ case class OutgoingDiscussion(
     negativeComments: Long,
     totalCommentsAndReplies: Long
 )
+
+
+object OutgoingDiscussion {
+  implicit val codec: JsonCodec[OutgoingDiscussion] = DeriveJsonCodec.gen[OutgoingDiscussion]
+}
+

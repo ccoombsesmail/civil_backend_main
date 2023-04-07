@@ -28,6 +28,6 @@ object UserContentReported {
           .map(new RuntimeException(_))
       )
     } { userContentReportedAsObj =>
-      ZIO.effect(userContentReportedAsObj.toJson)
+      ZIO.attempt(userContentReportedAsObj.toJson)
     }
 }

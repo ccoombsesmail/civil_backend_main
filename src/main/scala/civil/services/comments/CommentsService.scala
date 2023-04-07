@@ -1,14 +1,12 @@
 package civil.services.comments
 
+import civil.errors.AppError
+import civil.errors.AppError.{GeneralError, InternalServerError}
 import civil.models.enums.Sentiment
 import civil.models._
 import civil.repositories.comments.CommentsRepository
 import civil.repositories.topics.DiscussionRepository
-import civil.services.{
-  AuthenticationService,
-  AuthenticationServiceLive,
-  HTMLSanitizerLive
-}
+import civil.services.{AuthenticationService, AuthenticationServiceLive, HTMLSanitizerLive}
 import zio._
 // import civil.models.enums.{Sentiment}
 import civil.repositories.UsersRepository
@@ -23,29 +21,29 @@ trait CommentsService {
       jwt: String,
       jwtType: String,
       incomingComment: IncomingComment
-  ): ZIO[Any, ErrorInfo, CommentReply]
+  ): ZIO[Any, AppError, CommentReply]
   def getComments(
       jwt: String,
       jwtType: String,
       discussionId: UUID,
       skip: Int
-     ): ZIO[Any, ErrorInfo, List[CommentNode]]
+     ): ZIO[Any, AppError, List[CommentNode]]
   def getComment(
       jwt: String,
       jwtType: String,
       commentId: UUID
-  ): ZIO[Any, ErrorInfo, CommentReply]
+  ): ZIO[Any, AppError, CommentReply]
   def getAllCommentReplies(
       jwt: String,
       jwtType: String,
       commentId: UUID
-  ): ZIO[Any, ErrorInfo, CommentWithReplies]
+  ): ZIO[Any, AppError, CommentWithReplies]
 
   def getUserComments(
       jwt: String,
       jwtType: String,
       userId: String
-  ): ZIO[Any, ErrorInfo, List[CommentNode]]
+  ): ZIO[Any, AppError, List[CommentNode]]
 }
 
 object CommentsService {
@@ -53,8 +51,8 @@ object CommentsService {
       jwt: String,
       jwtType: String,
       incomingComment: IncomingComment
-  ): ZIO[Has[CommentsService], ErrorInfo, CommentReply] =
-    ZIO.serviceWith[CommentsService](
+  ): ZIO[CommentsService, AppError, CommentReply] =
+    ZIO.serviceWithZIO[CommentsService](
       _.insertComment(jwt, jwtType, incomingComment)
     )
   def getComments(
@@ -62,20 +60,20 @@ object CommentsService {
       jwtType: String,
       discussionId: UUID,
       skip: Int
-  ): ZIO[Has[CommentsService], ErrorInfo, List[CommentNode]] =
-    ZIO.serviceWith[CommentsService](_.getComments(jwt, jwtType, discussionId, skip))
+  ): ZIO[CommentsService, AppError, List[CommentNode]] =
+    ZIO.serviceWithZIO[CommentsService](_.getComments(jwt, jwtType, discussionId, skip))
   def getComment(
       jwt: String,
       jwtType: String,
       commentId: UUID
-  ): ZIO[Has[CommentsService], ErrorInfo, CommentReply] =
-    ZIO.serviceWith[CommentsService](_.getComment(jwt, jwtType, commentId))
+  ): ZIO[CommentsService, AppError, CommentReply] =
+    ZIO.serviceWithZIO[CommentsService](_.getComment(jwt, jwtType, commentId))
   def getAllCommentReplies(
       jwt: String,
       jwtType: String,
       commentId: UUID
-  ): ZIO[Has[CommentsService], ErrorInfo, CommentWithReplies] =
-    ZIO.serviceWith[CommentsService](
+  ): ZIO[CommentsService, AppError, CommentWithReplies] =
+    ZIO.serviceWithZIO[CommentsService](
       _.getAllCommentReplies(jwt, jwtType, commentId)
     )
 
@@ -83,8 +81,8 @@ object CommentsService {
       jwt: String,
       jwtType: String,
       userId: String
-  ): ZIO[Has[CommentsService], ErrorInfo, List[CommentNode]] =
-    ZIO.serviceWith[CommentsService](_.getUserComments(jwt, jwtType, userId))
+  ): ZIO[CommentsService, AppError, List[CommentNode]] =
+    ZIO.serviceWithZIO[CommentsService](_.getUserComments(jwt, jwtType, userId))
 
 }
 
@@ -99,7 +97,7 @@ case class CommentsServiceLive(
       jwt: String,
       jwtType: String,
       incomingComment: IncomingComment
-  ): ZIO[Any, ErrorInfo, CommentReply] = {
+  ): ZIO[Any, AppError, CommentReply] = {
     // val sentiment = SentimentAnalyzer.mainSentiment(incommingComment.rawText)
 
     for {
@@ -125,7 +123,7 @@ case class CommentsServiceLive(
       jwtType: String,
       discussionId: UUID,
       skip: Int
-  ): ZIO[Any, ErrorInfo, List[CommentNode]] = {
+  ): ZIO[Any, AppError, List[CommentNode]] = {
 
     for {
       userData <- authenticationService.extractUserData(jwt, jwtType)
@@ -137,7 +135,7 @@ case class CommentsServiceLive(
       jwt: String,
       jwtType: String,
       commentId: UUID
-  ): ZIO[Any, ErrorInfo, CommentReply] = {
+  ): ZIO[Any, AppError, CommentReply] = {
     for {
       userData <- authenticationService.extractUserData(jwt, jwtType)
       comments <- commentsRepo.getComment(userData.userId, commentId)
@@ -148,7 +146,7 @@ case class CommentsServiceLive(
       jwt: String,
       jwtType: String,
       commentId: UUID
-  ): ZIO[Any, ErrorInfo, CommentWithReplies] = {
+  ): ZIO[Any, AppError, CommentWithReplies] = {
     for {
       userData <- authenticationService.extractUserData(jwt, jwtType)
       commentWithReplies <- commentsRepo.getAllCommentReplies(
@@ -163,7 +161,7 @@ case class CommentsServiceLive(
       jwt: String,
       jwtType: String,
       userId: String
-  ): ZIO[Any, ErrorInfo, List[CommentNode]] = {
+  ): ZIO[Any, AppError, List[CommentNode]] = {
     for {
       userData <- authenticationService.extractUserData(jwt, jwtType)
       comments <- commentsRepo.getUserComments(
@@ -176,22 +174,7 @@ case class CommentsServiceLive(
 }
 
 object CommentsServiceLive {
-  val live: ZLayer[Has[CommentsRepository]
-    with Has[
-      UsersRepository
-    ]
-    with Has[DiscussionRepository]
-    with Has[AuthenticationService], Throwable, Has[CommentsService]] = {
-    for {
-      commentsRepo <- ZIO.service[CommentsRepository]
-      usersRepo <- ZIO.service[UsersRepository]
-      discussionRepo <- ZIO.service[DiscussionRepository]
-      authenticationService <- ZIO.service[AuthenticationService]
-    } yield CommentsServiceLive(
-      commentsRepo,
-      usersRepo,
-      discussionRepo,
-      authenticationService
-    )
-  }.toLayer
+
+  val layer: URLayer[CommentsRepository with UsersRepository with DiscussionRepository with AuthenticationService, CommentsService] = ZLayer.fromFunction(CommentsServiceLive.apply _)
+
 }

@@ -1,25 +1,18 @@
 package civil.services
 
 import civil.config.Config
-import civil.directives.OutgoingHttp
-import civil.directives.OutgoingHttp.{
-  authenticateCivicTokenHeader,
-  getTweetInfo
-}
-import civil.models.{JwtUserClaimsData, Unauthorized, UnsafeMetadata}
+import civil.directives.OutgoingHttp.authenticateCivicTokenHeader
+import civil.errors.AppError.Unauthorized
+import civil.models.JwtUserClaimsData
 import civil.repositories.UsersRepository
 import org.elastos.did.{DID, DIDBackend, DefaultDIDAdapter}
 import pdi.jwt.{JwtAlgorithm, JwtCirce, JwtClaim}
 import org.json4s.jackson.JsonMethods
 
-import scala.util.{Failure, Success, Try}
+import scala.util.{Failure, Success}
 import org.json4s.{DefaultFormats, Formats}
-import sttp.client3.{Response, ResponseException}
 import zio._
 
-import reflect.ClassTag
-import scala.concurrent.{Await, Future}
-import scala.concurrent.duration._
 import scala.language.postfixOps
 
 trait AuthenticationService {
@@ -39,12 +32,12 @@ trait AuthenticationService {
 
 object AuthenticationService {
 
-  def decodeDIDJWT(jwt: String, did: String): RIO[Has[AuthenticationService], JwtUserClaimsData] =
-    ZIO.serviceWith[AuthenticationService](_.decodeDIDJWT(jwt, did))
+  def decodeDIDJWT(jwt: String, did: String): RIO[AuthenticationService, JwtUserClaimsData] =
+    ZIO.serviceWithZIO[AuthenticationService](_.decodeDIDJWT(jwt, did))
 
   def extractUserData(jwt: String,
-                      jwtType: String):  ZIO[Has[AuthenticationService], Unauthorized, JwtUserClaimsData]  =
-    ZIO.serviceWith[AuthenticationService](_.extractUserData(jwt,  jwtType))
+                      jwtType: String):  ZIO[AuthenticationService, Unauthorized, JwtUserClaimsData]  =
+    ZIO.serviceWithZIO[AuthenticationService](_.extractUserData(jwt,  jwtType))
 }
 
 case class AuthenticationServiceLive()
@@ -85,6 +78,7 @@ case class AuthenticationServiceLive()
           "Must Have An Active CAPTCHA pass to give civility points"
         )
       ))
+    ZIO.unit
   }
   override def civicAuthentication(
       jwt: String
@@ -119,7 +113,7 @@ case class AuthenticationServiceLive()
   override def decodeClerkJWT(
       jwt: String
   ): ZIO[Any, Throwable, JwtUserClaimsData] = {
-    val decodedJwt = ZIO.effect(jwt match {
+    val decodedJwt = ZIO.attempt(jwt match {
       case s"Bearer $encodedJwt" =>
         JwtCirce.decode(
           encodedJwt,
@@ -181,6 +175,6 @@ case class AuthenticationServiceLive()
 }
 
 object AuthenticationServiceLive {
-  val live: ZLayer[Any, Throwable, Has[AuthenticationService]] =
+  val live: ZLayer[Any, Throwable, AuthenticationService] =
     ZLayer.succeed(AuthenticationServiceLive())
 }

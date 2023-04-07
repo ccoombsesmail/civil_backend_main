@@ -31,6 +31,6 @@ object CommentCivilityGiven {
           .map(new RuntimeException(_))
       )
   } { newFollowerAsObj =>
-    ZIO.effect(newFollowerAsObj.toJson)
+    ZIO.attempt(newFollowerAsObj.toJson)
   }
 }

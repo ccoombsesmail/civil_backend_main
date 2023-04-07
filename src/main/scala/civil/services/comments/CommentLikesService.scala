@@ -1,24 +1,26 @@
 package civil.services.comments
 
-import civil.models.{CommentLiked, CommentLikes, ErrorInfo, InternalServerError, UpdateCommentLikes}
+import civil.errors.AppError
+import civil.errors.AppError.GeneralError
+import civil.models.{CommentLiked, CommentLikes, AppError, UpdateCommentLikes}
 import civil.models.NotifcationEvents.{CommentLike, GivingUserNotificationData}
 import civil.repositories.comments.CommentLikesRepository
 import civil.services.{AuthenticationServiceLive, KafkaProducerServiceLive}
 import io.scalaland.chimney.dsl.TransformerOps
-import zio.{Has, ZIO, ZLayer}
+import zio.{URLayer, ZIO, ZLayer}
 
 trait CommentLikesService {
   def addRemoveCommentLikeOrDislike(
       jwt: String,
       jwtType: String,
       commentLikeDislikeData: UpdateCommentLikes
-  ): ZIO[Any, ErrorInfo, CommentLiked]
+  ): ZIO[Any, AppError, CommentLiked]
 
   def addRemoveTribunalCommentLikeOrDislike(
       jwt: String,
       jwtType: String,
       commentLikeDislikeData: UpdateCommentLikes
-  ): ZIO[Any, ErrorInfo, CommentLiked]
+  ): ZIO[Any, AppError, CommentLiked]
 }
 
 object CommentLikesService {
@@ -26,8 +28,8 @@ object CommentLikesService {
       jwt: String,
       jwtType: String,
       commentLikeDislikeData: UpdateCommentLikes
-  ): ZIO[Has[CommentLikesService], ErrorInfo, CommentLiked] =
-    ZIO.serviceWith[CommentLikesService](
+  ): ZIO[CommentLikesService, AppError, CommentLiked] =
+    ZIO.serviceWithZIO[CommentLikesService](
       _.addRemoveCommentLikeOrDislike(jwt, jwtType, commentLikeDislikeData)
     )
 
@@ -35,8 +37,8 @@ object CommentLikesService {
       jwt: String,
       jwtType: String,
       commentLikeDislikeData: UpdateCommentLikes
-  ): ZIO[Has[CommentLikesService], ErrorInfo, CommentLiked] =
-    ZIO.serviceWith[CommentLikesService](
+  ): ZIO[CommentLikesService, AppError, CommentLiked] =
+    ZIO.serviceWithZIO[CommentLikesService](
       _.addRemoveTribunalCommentLikeOrDislike(
         jwt,
         jwtType,
@@ -53,7 +55,7 @@ case class CommentLikesServiceLive(commentLikesRepo: CommentLikesRepository)
       jwt: String,
       jwtType: String,
       commentLikeDislikeData: UpdateCommentLikes
-  ): ZIO[Any, ErrorInfo, CommentLiked] = {
+  ): ZIO[Any, AppError, CommentLiked] = {
     val kafka = new KafkaProducerServiceLive()
 
     for {
@@ -69,7 +71,7 @@ case class CommentLikesServiceLive(commentLikesRepo: CommentLikesRepository)
       (likeData, comment) = data
       _ <- ZIO.when(likeData.likeState == 1)(
         ZIO
-          .effect(
+          .attempt(
             kafka.publish(
               CommentLike(
                 eventType = "CommentLike",
@@ -89,7 +91,7 @@ case class CommentLikesServiceLive(commentLikesRepo: CommentLikesRepository)
             )
           ))
           .mapError(e => {
-            InternalServerError(e.toString)
+            GeneralError(e.toString)
           })
     } yield likeData
   }
@@ -98,7 +100,7 @@ case class CommentLikesServiceLive(commentLikesRepo: CommentLikesRepository)
       jwt: String,
       jwtType: String,
       commentLikeDislikeData: UpdateCommentLikes
-  ): ZIO[Any, ErrorInfo, CommentLiked] = {
+  ): ZIO[Any, AppError, CommentLiked] = {
     for {
       userData <- authenticationService.extractUserData(jwt, jwtType)
       likeData <- commentLikesRepo.addRemoveTribunalCommentLikeOrDislike(
@@ -115,11 +117,7 @@ case class CommentLikesServiceLive(commentLikesRepo: CommentLikesRepository)
 }
 
 object CommentLikesServiceLive {
-  val live: ZLayer[Has[CommentLikesRepository], Nothing, Has[
-    CommentLikesService
-  ]] = {
-    for {
-      commentLikesRepo <- ZIO.service[CommentLikesRepository]
-    } yield CommentLikesServiceLive(commentLikesRepo)
-  }.toLayer
+
+  val layer: URLayer[CommentLikesRepository, CommentLikesService] = ZLayer.fromFunction(CommentLikesServiceLive.apply _)
+
 }

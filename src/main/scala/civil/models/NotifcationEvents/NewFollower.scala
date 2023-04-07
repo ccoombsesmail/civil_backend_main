@@ -18,7 +18,7 @@ object NewFollower {
   val newFollowerSerde: Serde[Any, NewFollower] = Serde.string.inmapM { newFollowerAsString =>
     ZIO.fromEither(newFollowerAsString.fromJson[NewFollower].left.map(new RuntimeException(_)))
   } { newFollowerAsObj =>
-    ZIO.effect(newFollowerAsObj.toJson)
+    ZIO.attempt(newFollowerAsObj.toJson)
   }
 }
 

@@ -1,5 +1,7 @@
 package civil.models
 
+import zio.json.{DeriveJsonCodec, JsonCodec}
+
 import java.util.UUID
 
 case class TribunalVotes(
@@ -14,3 +16,7 @@ case class TribunalVote(
     voteAgainst: Option[Boolean],
     voteFor: Option[Boolean]
 )
+
+object TribunalVote {
+  implicit val codec: JsonCodec[TribunalVote] = DeriveJsonCodec.gen[TribunalVote]
+}

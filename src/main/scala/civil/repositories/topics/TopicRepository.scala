@@ -1,23 +1,18 @@
 package civil.repositories.topics
 
-import civil.models.{Discussions, ErrorInfo, InternalServerError, OutgoingTopic, Recommendations, TopicLikes, TopicVods, Topics, Users, _}
+import civil.errors.AppError
+import civil.errors.AppError.InternalServerError
+import civil.models.{Discussions, OutgoingTopic, Recommendations, TopicLikes, TopicVods, Topics, Users, _}
 import civil.directives.OutgoingHttp
 import civil.repositories.QuillContextHelper
 import civil.repositories.recommendations.RecommendationsRepository
 import io.scalaland.chimney.dsl._
 import zio.{ZIO, _}
-import io.circe.syntax._
-import io.getquill.Ord.desc
 import io.getquill._
-import io.getquill.context.jdbc._
-import io.getquill.{Literal, SnakeCase}
 
 import java.util.UUID
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
-import java.time.Instant
-import java.time.format.DateTimeFormatter
-
 
 
 case class TopicWithLinkData(
@@ -139,7 +134,7 @@ case class TopicRepoHelpers(
   ): ZIO[Any, InternalServerError, List[OutgoingTopic]] =
     for {
       likes <- ZIO
-        .effect(
+        .attempt(
           run(query[TopicLikes].filter(_.userId == lift(requestingUserID)))
         )
         .mapError(e => InternalServerError(e.toString))
@@ -147,18 +142,18 @@ case class TopicRepoHelpers(
         m + (t.topicId -> t.value)
       }
       topicsUsersVodsJoin <- ZIO
-        .effect(run(topicsUsersVodsLinksJoin(fromUserId).drop(lift(skip)).take(5).sortBy(_._1._1._1.createdAt)(Ord.desc)
+        .attempt(run(topicsUsersVodsLinksJoin(fromUserId).drop(lift(skip)).take(5).sortBy(_._1._1._1.createdAt)(Ord.desc)
         ).map {
           case (((t, u), v), l) =>
             (t, u, v, l)
         })
         .mapError(e => InternalServerError(e.toString))
 
-      outgoingTopics <- ZIO.foreachParN(10)(topicsUsersVodsJoin)(row => {
+      outgoingTopics <- ZIO.foreachPar(topicsUsersVodsJoin)(row => {
         val (topic, user, vod, linkData) = row
 
         ZIO
-          .effect(
+          .attempt(
             topic
               .into[OutgoingTopic]
               .withFieldConst(_.createdByIconSrc, user.iconSrc.get)
@@ -181,7 +176,7 @@ case class TopicRepoHelpers(
               .transform
           )
           .mapError(e => InternalServerError(e.getMessage))
-      })
+      }).withParallelism(10)
     } yield outgoingTopics
 }
 
@@ -189,55 +184,55 @@ trait TopicRepository {
   def insertTopic(
       topic: Topics,
       externalContentData: Option[ExternalLinks]
-  ): ZIO[Any, ErrorInfo, OutgoingTopic]
-  def getTopics: ZIO[Any, ErrorInfo, List[OutgoingTopic]]
+  ): ZIO[Any, AppError, OutgoingTopic]
+  def getTopics: ZIO[Any, AppError, List[OutgoingTopic]]
   def getTopicsAuthenticated(
       requestingUserID: String,
       userData: JwtUserClaimsData,
       skip: Int
-  ): ZIO[Any, ErrorInfo, List[OutgoingTopic]]
+  ): ZIO[Any, AppError, List[OutgoingTopic]]
 
   def getTopic(
       id: UUID,
       requestingUserID: String
-  ): ZIO[Any, ErrorInfo, OutgoingTopic]
+  ): ZIO[Any, AppError, OutgoingTopic]
 
   def getUserTopics(
       requestingUserId: String,
       userId: String
-  ): ZIO[Any, ErrorInfo, List[OutgoingTopic]]
+  ): ZIO[Any, AppError, List[OutgoingTopic]]
 }
 
 object TopicRepository {
   def insertTopic(
       topic: Topics,
       externalContentData: Option[ExternalLinks]
-  ): ZIO[Has[TopicRepository], ErrorInfo, OutgoingTopic] =
-    ZIO.serviceWith[TopicRepository](_.insertTopic(topic, externalContentData))
+  ): ZIO[TopicRepository, AppError, OutgoingTopic] =
+    ZIO.serviceWithZIO[TopicRepository](_.insertTopic(topic, externalContentData))
 
-  def getTopics: ZIO[Has[TopicRepository], ErrorInfo, List[OutgoingTopic]] =
-    ZIO.serviceWith[TopicRepository](_.getTopics)
+  def getTopics: ZIO[TopicRepository, AppError, List[OutgoingTopic]] =
+    ZIO.serviceWithZIO[TopicRepository](_.getTopics)
 
   def getTopicsAuthenticated(
       requestingUserID: String,
       userData: JwtUserClaimsData,
       skip: Int
-  ): ZIO[Has[TopicRepository], ErrorInfo, List[OutgoingTopic]] =
-    ZIO.serviceWith[TopicRepository](
+  ): ZIO[TopicRepository, AppError, List[OutgoingTopic]] =
+    ZIO.serviceWithZIO[TopicRepository](
       _.getTopicsAuthenticated(requestingUserID, userData, skip)
     )
 
   def getTopic(
       id: UUID,
       requestingUserID: String
-  ): ZIO[Has[TopicRepository], ErrorInfo, OutgoingTopic] =
-    ZIO.serviceWith[TopicRepository](_.getTopic(id, requestingUserID))
+  ): ZIO[TopicRepository, AppError, OutgoingTopic] =
+    ZIO.serviceWithZIO[TopicRepository](_.getTopic(id, requestingUserID))
 
   def getUserTopics(
       requestingUserId: String,
       userId: String
-  ): ZIO[Has[TopicRepository], ErrorInfo, List[OutgoingTopic]] =
-    ZIO.serviceWith[TopicRepository](_.getUserTopics(requestingUserId, userId))
+  ): ZIO[TopicRepository, AppError, List[OutgoingTopic]] =
+    ZIO.serviceWithZIO[TopicRepository](_.getUserTopics(requestingUserId, userId))
 }
 
 case class TopicRepositoryLive(
@@ -245,13 +240,13 @@ case class TopicRepositoryLive(
 ) extends TopicRepository {
   import QuillContextHelper.ctx._
 
-  val helpers = TopicRepoHelpers(recommendationsRepository)
+  private val helpers = TopicRepoHelpers(recommendationsRepository)
   import helpers._
 
   override def insertTopic(
       topic: Topics,
       externalLinks: Option[ExternalLinks]
-  ): ZIO[Any, ErrorInfo, OutgoingTopic] = {
+  ): ZIO[Any, AppError, OutgoingTopic] = {
     for {
       user <- ZIO
         .fromOption(
@@ -265,14 +260,14 @@ case class TopicRepositoryLive(
       topicWithLinkData <-
         if (externalLinks.isEmpty)
           ZIO
-            .effect(transaction {
+            .attempt(transaction {
               val inserted = run(
                 query[Topics]
-                  .insert(lift(topic.copy(editorState = topic.editorState)))
+                  .insertValue(lift(topic.copy(editorState = topic.editorState)))
                   .returning(inserted => inserted)
               )
               run(
-                query[Discussions].insert(lift(getDefaultDiscussion(inserted)))
+                query[Discussions].insertValue(lift(getDefaultDiscussion(inserted)))
               )
               TopicWithLinkData(
                 inserted,
@@ -282,18 +277,18 @@ case class TopicRepositoryLive(
             .mapError(e => InternalServerError(e.toString))
         else
           ZIO
-            .effect(transaction {
+            .attempt(transaction {
               val inserted = run(
                 query[Topics]
-                  .insert(lift(topic))
+                  .insertValue(lift(topic))
                   .returning(inserted => inserted)
               )
               run(
-                query[Discussions].insert(lift(getDefaultDiscussion(inserted)))
+                query[Discussions].insertValue(lift(getDefaultDiscussion(inserted)))
               )
               val linkData = run(
                 query[ExternalLinks]
-                  .insert(lift(externalLinks.get.copy(topicId = inserted.id)))
+                  .insertValue(lift(externalLinks.get.copy(topicId = inserted.id)))
                   .returning(inserted => inserted)
               )
               TopicWithLinkData(
@@ -306,7 +301,7 @@ case class TopicRepositoryLive(
       linkData = topicWithLinkData.externalLinks
       _ = topic.userUploadedVodUrl.map(url =>
         run(
-          query[TopicVods].insert(
+          query[TopicVods].insertValue(
             lift(TopicVods(topic.createdByUserId, url, topic.id))
           )
         )
@@ -316,7 +311,7 @@ case class TopicRepositoryLive(
       )
 
       outgoingTopic <- ZIO
-        .effect(
+        .attempt(
           topic
             .into[OutgoingTopic]
             .withFieldConst(_.createdByIconSrc, user.iconSrc.getOrElse(""))
@@ -345,7 +340,7 @@ case class TopicRepositoryLive(
 
   }
 
-  override def getTopics: ZIO[Any, ErrorInfo, List[OutgoingTopic]] = {
+  override def getTopics: ZIO[Any, AppError, List[OutgoingTopic]] = {
 
     val joined = quote {
       query[Topics]
@@ -359,18 +354,18 @@ case class TopicRepositoryLive(
 
     for {
       likes <- ZIO
-        .effect(run(query[TopicLikes]))
+        .attempt(run(query[TopicLikes]))
         .mapError(e => InternalServerError(e.toString))
       likesMap = likes.foldLeft(Map[UUID, Int]()) { (m, t) =>
         m + (t.topicId -> t.value)
       }
       topicsUsersVodsLinksJoin <- ZIO
-        .effect(run(joined).map { case (((t, u), v), l) => (t, u, v, l) })
+        .attempt(run(joined).map { case (((t, u), v), l) => (t, u, v, l) })
         .mapError(e => InternalServerError(e.toString))
       outgoingTopics <- ZIO.foreach(topicsUsersVodsLinksJoin)(row => {
         val (topic, user, vod, linkData) = row
         ZIO
-          .effect(
+          .attempt(
             topic
               .into[OutgoingTopic]
               .withFieldConst(_.createdByIconSrc, user.iconSrc.get)
@@ -402,7 +397,7 @@ case class TopicRepositoryLive(
   override def getTopic(
       id: UUID,
       requestingUserID: String
-  ): ZIO[Any, ErrorInfo, OutgoingTopic] = {
+  ): ZIO[Any, AppError, OutgoingTopic] = {
 
     val joined = quote {
       query[Topics]
@@ -417,7 +412,7 @@ case class TopicRepositoryLive(
 
     for {
       likes <- ZIO
-        .effect(
+        .attempt(
           run(
             query[TopicLikes].filter(l =>
               l.userId == lift(requestingUserID) && l.topicId == lift(id)
@@ -428,17 +423,17 @@ case class TopicRepositoryLive(
           println(e)
           ZIO.fail(e)
         })
-        .mapError(e => BadRequest(e.toString))
+        .mapError(e => InternalServerError(e.toString))
       likesMap = likes.foldLeft(Map[UUID, Int]()) { (m, t) =>
         m + (t.topicId -> t.value)
       }
       topicsUsersVodsLinkJoin <- ZIO
-        .effect(run(joined).map { case (((t, u), v), l) => (t, u, v, l) })
+        .attempt(run(joined).map { case (((t, u), v), l) => (t, u, v, l) })
         .tapError(e => {
           println(e)
           ZIO.fail(e)
         })
-        .mapError(e => BadRequest(e.toString))
+        .mapError(e => InternalServerError(e.toString))
       _ <- ZIO
         .fail(
           InternalServerError("Can't find topic details")
@@ -476,7 +471,7 @@ case class TopicRepositoryLive(
       requestingUserID: String,
       userData: JwtUserClaimsData,
       skip: Int
-  ): ZIO[Any, ErrorInfo, List[OutgoingTopic]] = {
+  ): ZIO[Any, AppError, List[OutgoingTopic]] = {
 
     getTopicsWithLikeStatus(requestingUserID, None, skip)
   }
@@ -484,8 +479,7 @@ case class TopicRepositoryLive(
   override def getUserTopics(
       requestingUserId: String,
       userId: String
-  ): ZIO[Any, ErrorInfo, List[OutgoingTopic]] = {
-    println(requestingUserId, userId)
+  ): ZIO[Any, AppError, List[OutgoingTopic]] = {
     getTopicsWithLikeStatus(requestingUserId, Some(userId), 0)
 
   }
@@ -493,11 +487,9 @@ case class TopicRepositoryLive(
 }
 
 object TopicRepositoryLive {
-  val live: ZLayer[Has[RecommendationsRepository], Nothing, Has[
+
+  val layer: URLayer[
+    RecommendationsRepository,
     TopicRepository
-  ]] = {
-    for {
-      topicRepo <- ZIO.service[RecommendationsRepository]
-    } yield TopicRepositoryLive(topicRepo)
-  }.toLayer
+  ] = ZLayer.fromFunction(TopicRepositoryLive.apply _)
 }

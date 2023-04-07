@@ -1,108 +1,74 @@
 package civil.controllers
 
-
-import java.util.UUID
-import pdi.jwt.{JwtAlgorithm, JwtCirce, JwtClaim}
-import civil.repositories.{UsersRepository, UsersRepositoryLive}
-import civil.services.{UsersService, UsersServiceLive}
-import civil.models.Users
-import civil.apis.UsersApi._
-import civil.models.ErrorInfo
-import sttp.tapir.server.ziohttp.ZioHttpInterpreter
-import zhttp.http.{Http, Request, Response}
+import civil.services.UsersService
+import civil.controllers.ParseUtils.{extractJwtData, parseBody, parseQuery}
+import civil.models.{IncomingUser, TagData, UpdateUserBio, UpdateUserIcon}
+import zhttp.http.{Http, Method, Request, Response}
 import zio._
-import zhttp.http.Method
-
-
-object UsersController  {
-
-
-    val upsertDidUserEndpointRoute: Http[Has[UsersService], Throwable, Request, Response[Any, Throwable]] = {
-     ZioHttpInterpreter().toHttp(upsertDidUserEndpoint)(incomingUser => {
-       UsersService.upsertDidUser(incomingUser)
-         .map(user => {
-           Right(user)
-         }).catchAll(e => ZIO.succeed(Left(e)))
-         .provideLayer(UsersRepositoryLive.live >>> UsersServiceLive.live)
-     })
-   }
+import zhttp.http._
+import zio.json.EncoderOps
 
 
 
-  val getUserEndpointRoute: Http[Has[UsersService], Throwable, Request, Response[Any, Throwable]] = {
-   ZioHttpInterpreter().toHttp(getUserEndpoint) { case (jwt, jwtType, userId) =>
-     UsersService.getUser(jwt, jwtType, userId)
-        .map(user => {
-          Right(user)
-        }).catchAll(e => ZIO.succeed(Left(e)))
-        .provideLayer(UsersRepositoryLive.live >>> UsersServiceLive.live)
-    }
+
+final case class UsersController(usersService: UsersService) {
+  val routes: Http[Any, Throwable, Request, Response] = Http.collectZIO[Request] {
+    case req @ Method.POST -> !! / "users" / "did-user" =>
+      for {
+        didUser <- parseBody[IncomingUser](req)
+        res <- usersService.upsertDidUser(didUser)
+      } yield Response.json(res.toJson)
+
+    case req @ Method.GET -> !! / "users" =>
+      for {
+        authDataOpt <- extractJwtData(req)
+        userId <- parseQuery[String](req, "userId")
+        user <- usersService.getUser(
+          authDataOpt.get._1,
+          authDataOpt.get._2,
+          userId
+        )
+      } yield Response.json(user.toJson)
+
+    case req @ Method.PUT -> !! / "users" =>
+      for {
+        authDataOpt <- extractJwtData(req)
+        userIconInfo <- parseBody[UpdateUserIcon](req)
+        res <- usersService.updateUserIcon(userIconInfo.username, userIconInfo.iconSrc)
+      } yield Response.json(res.toJson)
+
+    case req @ Method.PATCH -> !! / "users" / "bio-experience" =>
+      for {
+        authDataOpt <- extractJwtData(req)
+        userBioInfo <- parseBody[UpdateUserBio](req)
+        res <- usersService.updateUserBio(authDataOpt.get._1, authDataOpt.get._2, userBioInfo)
+      } yield Response.json(res.toJson)
+
+    case req@Method.POST -> !! / "users" / "upload" =>
+      for {
+        authDataOpt <- extractJwtData(req)
+        userIconInfo <- parseBody[UpdateUserIcon](req)
+        res <- usersService.updateUserIcon(userIconInfo.username, userIconInfo.iconSrc)
+      } yield Response.json(res.toJson)
+
+    case req@Method.PATCH -> !! / "users" / "tag" =>
+      for {
+        authDataOpt <- extractJwtData(req)
+        tag <- parseBody[TagData](req)
+        res <- usersService.createUserTag(authDataOpt.get._1, authDataOpt.get._2, tag.tag)
+      } yield Response.json(res.toJson)
+
+    case req@Method.PATCH -> !! / "users" / "tag-exists"=>
+      for {
+        authDataOpt <- extractJwtData(req)
+        tag <- parseQuery[String](req, "tag")
+        res <- usersService.checkIfTagExists(tag)
+      } yield Response.json(res.toJson)
   }
-
-
-  val updateUserIconEndpointRoute: Http[Has[UsersService], Throwable, Request, Response[Any, Throwable]] = {
-   ZioHttpInterpreter().toHttp(updateUserIconEndpoint)(data => { 
-      UsersService.updateUserIcon(data.username, data.iconSrc)
-        .map(user => {
-          Right(user)
-        }).catchAll(e => ZIO.succeed(Left(e)))
-        .provideLayer(UsersRepositoryLive.live >>> UsersServiceLive.live)
-    }) 
-  }
-
-  val updateUserBioInformationEndpointRoute: Http[Has[UsersService], Throwable, Request, Response[Any, Throwable]] = {
-   ZioHttpInterpreter().toHttp(updateUserBioInformationEndpoint){ case (jwt, jwtType, bioInfo) =>
-      UsersService.updateUserBio(jwt, jwtType, bioInfo)
-        .map(user => {
-          Right((user))
-        }).catchAll(e => ZIO.succeed(Left(e)))
-        .provideLayer(UsersRepositoryLive.live >>> UsersServiceLive.live)
-    }
-  }
-
-  val uploadUserIconEndpointRoute: Http[Has[UsersService], Throwable, Request, Response[Any, Throwable]] = {
-   ZioHttpInterpreter().toHttp(uploadUserIconEndpoint)(data => {
-      UsersService.updateUserIcon(data.username, data.iconSrc)
-        .map(user => {
-          Right(user)
-        }).catchAll(e => ZIO.succeed(Left(e)))
-        .provideLayer(UsersRepositoryLive.live >>> UsersServiceLive.live)
-    })
-  }
-
-  val createUserTagEndpointRoute: Http[Has[UsersService], Throwable, Request, Response[Any, Throwable]] = {
-    ZioHttpInterpreter().toHttp(createUserTagEndpoint) { case (jwt, jwtType, tagData) =>
-      UsersService.createUserTag(jwt, jwtType, tagData.tag)
-        .map(user => {
-          Right(user)
-        }).catchAll(e => ZIO.succeed(Left(e)))
-        .provideLayer(UsersRepositoryLive.live >>> UsersServiceLive.live)
-    }
-  }
-
-
-  val checkIfTagExistsEndpointRoute: Http[Has[UsersService], Throwable, Request, Response[Any, Throwable]] = {
-    ZioHttpInterpreter().toHttp(checkIfTagExistsEndpoint) { case (tag) =>
-      UsersService.checkIfTagExists(tag)
-        .map(tagExistence => {
-          Right(tagExistence)
-        }).catchAll(e => ZIO.succeed(Left(e)))
-        .provideLayer(UsersRepositoryLive.live >>> UsersServiceLive.live)
-    }
-  }
-
-  val receiveWebHookEndpointRoute: Http[Has[UsersService], Throwable, Request, Response[Any, Throwable]] = {
-   ZioHttpInterpreter().toHttp(receiveWebHookEndpoint)(event => {
-      UsersService.insertOrUpdateUserHook(event.data, event.`type`)
-        .map(user => {
-          Right(user)
-        }).catchAll(e => ZIO.succeed(Left(e)))
-        .provideLayer(UsersRepositoryLive.live >>> UsersServiceLive.live)
-    })
-  }
- 
 }
 
-
+object UsersController {
+  val layer: URLayer[UsersService, UsersController] = ZLayer.fromFunction(UsersController.apply _)
+}
 
 

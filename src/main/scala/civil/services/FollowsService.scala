@@ -1,10 +1,11 @@
 package civil.services
 
+import civil.errors.AppError
+import civil.errors.AppError.{InternalServerError, GeneralError}
+
 import civil.models.NotifcationEvents.{GivingUserNotificationData, NewFollower}
-import civil.models.{BadRequest, ErrorInfo, FollowedUserId, Follows, OutgoingUser}
-import civil.models._
+import civil.models.{BadRequest, FollowedUserId, Follows, OutgoingUser}
 import civil.repositories.FollowsRepository
-import io.scalaland.chimney.dsl.TransformerOps
 import zio._
 
 trait FollowsService {
@@ -12,12 +13,12 @@ trait FollowsService {
       jwt: String,
       jwtType: String,
       followedUserId: FollowedUserId
-  ): ZIO[Any, ErrorInfo, OutgoingUser]
+  ): ZIO[Any, AppError, OutgoingUser]
   def deleteFollow(
       jwt: String,
       jwtType: String,
       followedUserId: FollowedUserId
-  ): ZIO[Any, ErrorInfo, OutgoingUser]
+  ): ZIO[Any, AppError, OutgoingUser]
   def getAllFolowers(userId: String): Task[List[OutgoingUser]]
   def getAllFollowed(userId: String): Task[List[OutgoingUser]]
 }
@@ -27,8 +28,8 @@ object FollowsService {
       jwt: String,
       jwtType: String,
       followedUserId: FollowedUserId
-  ): ZIO[Has[FollowsService], ErrorInfo, OutgoingUser] =
-    ZIO.serviceWith[FollowsService](
+  ): ZIO[FollowsService, AppError, OutgoingUser] =
+    ZIO.serviceWithZIO[FollowsService](
       _.insertFollow(jwt, jwtType, followedUserId)
     )
 
@@ -36,20 +37,20 @@ object FollowsService {
       jwt: String,
       jwtType: String,
       followedUserId: FollowedUserId
-  ): ZIO[Has[FollowsService], ErrorInfo, OutgoingUser] =
-    ZIO.serviceWith[FollowsService](
+  ): ZIO[FollowsService, AppError, OutgoingUser] =
+    ZIO.serviceWithZIO[FollowsService](
       _.deleteFollow(jwt, jwtType, followedUserId)
     )
 
   def getAllFolowers(
       userId: String
-  ): RIO[Has[FollowsService], List[OutgoingUser]] =
-    ZIO.serviceWith[FollowsService](_.getAllFolowers(userId))
+  ): RIO[FollowsService, List[OutgoingUser]] =
+    ZIO.serviceWithZIO[FollowsService](_.getAllFolowers(userId))
 
   def getAllFollowed(
       userId: String
-  ): RIO[Has[FollowsService], List[OutgoingUser]] =
-    ZIO.serviceWith[FollowsService](_.getAllFollowed(userId))
+  ): RIO[FollowsService, List[OutgoingUser]] =
+    ZIO.serviceWithZIO[FollowsService](_.getAllFollowed(userId))
 }
 
 case class FollowsServiceLive(followsRepository: FollowsRepository)
@@ -61,22 +62,22 @@ case class FollowsServiceLive(followsRepository: FollowsRepository)
       jwt: String,
       jwtType: String,
       followedUserId: FollowedUserId
-  ): ZIO[Any, ErrorInfo, OutgoingUser] = {
+  ): ZIO[Any, AppError, OutgoingUser] = {
 
     for {
       userData <- authenticationService.extractUserData(jwt, jwtType)
       _ <- ZIO
-        .fail(BadRequest("User can't follow self"))
-        .when(userData.userId == followedUserId.followedUserId)
+        .fail(GeneralError("User can't follow self"))
+        .when(userData.userId == followedUserId.value)
       outgoingUser <- followsRepository.insertFollow(
-        Follows(userId = userData.userId, followedUserId = followedUserId.followedUserId)
+        Follows(userId = userData.userId, followedUserId = followedUserId.value)
       )
       _ <- ZIO
-        .effect(
+        .attempt(
           kafka.publish(
             NewFollower(
               eventType = "NewFollower",
-              followedUserId = followedUserId.followedUserId,
+              followedUserId = followedUserId.value,
               givingUserData = GivingUserNotificationData(
                 givingUserId = userData.userId,
                 givingUserTag = Some(userData.userCivilTag),
@@ -84,7 +85,7 @@ case class FollowsServiceLive(followsRepository: FollowsRepository)
                 givingUserUsername = userData.username
               )
             ),
-            followedUserId.followedUserId,
+            followedUserId.value,
             NewFollower.newFollowerSerde
           )
         )
@@ -95,14 +96,14 @@ case class FollowsServiceLive(followsRepository: FollowsRepository)
       jwt: String,
       jwtType: String,
       followedUserId: FollowedUserId
-  ): ZIO[Any, ErrorInfo, OutgoingUser] = {
+  ): ZIO[Any, AppError, OutgoingUser] = {
     for {
       userData <- authenticationService.extractUserData(jwt, jwtType)
       _ <- ZIO
-        .fail(BadRequest("User can't unfollow self"))
-        .when(userData.userId == followedUserId.followedUserId)
+        .fail(GeneralError("User can't unfollow self"))
+        .when(userData.userId == followedUserId.value)
       outgoingUser <- followsRepository.deleteFollow(
-        Follows(userId = userData.userId, followedUserId = followedUserId.followedUserId)
+        Follows(userId = userData.userId, followedUserId = followedUserId.value)
       )
     } yield outgoingUser
   }
@@ -116,9 +117,5 @@ case class FollowsServiceLive(followsRepository: FollowsRepository)
 }
 
 object FollowsServiceLive {
-  val live: ZLayer[Has[FollowsRepository], Throwable, Has[FollowsService]] = {
-    for {
-      followsRepo <- ZIO.service[FollowsRepository]
-    } yield FollowsServiceLive(followsRepo)
-  }.toLayer
+  val layer: URLayer[FollowsRepository, FollowsService] = ZLayer.fromFunction(FollowsServiceLive.apply _)
 }

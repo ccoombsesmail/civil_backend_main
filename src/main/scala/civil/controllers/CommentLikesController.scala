@@ -1,31 +1,36 @@
 package civil.controllers
 
-import civil.apis.CommentLikesApi.{updateCommentLikesEndpoint, updateTribunalCommentLikesEndpoint}
-import civil.repositories.comments.CommentLikesRepositoryLive
-import civil.services.comments.{CommentLikesService, CommentLikesServiceLive}
-import sttp.tapir.server.ziohttp.ZioHttpInterpreter
-import zhttp.http.{Http, Request, Response}
-import zio.{Has, ZIO}
+import civil.controllers.ParseUtils.{extractJwtData, parseBody}
+import civil.errors.AppError.JsonDecodingError
+import civil.models.UpdateCommentLikes
+import civil.services.comments.CommentLikesService
+import zhttp.http.{Http, Method, Request, Response}
+import zhttp.http._
+import zio._
+import zio.json.EncoderOps
 
+
+final case class CommentLikesController(commentCivilityService: CommentLikesService) {
+  val routes: Http[Any, Throwable, Request, Response] = Http.collectZIO[Request] {
+    case req @ Method.PUT -> !! / "comments" / "likes"  =>
+      for {
+        updateCommentLikes <- parseBody[UpdateCommentLikes](req)
+        authDataOpt <- extractJwtData(req).mapError(e => JsonDecodingError(e.toString))
+        likeGivenResponse <- commentCivilityService.addRemoveCommentLikeOrDislike(authDataOpt.get._1, authDataOpt.get._2, updateCommentLikes)
+      } yield Response.json(likeGivenResponse.toJson)
+
+    case req @ Method.PUT -> !! / "comments" / "likes-tribunal" =>
+      for {
+        updateCommentLikes <- parseBody[UpdateCommentLikes](req)
+        authDataOpt <- extractJwtData(req).mapError(e => JsonDecodingError(e.toString))
+        likeGivenResponse <- commentCivilityService.addRemoveTribunalCommentLikeOrDislike(authDataOpt.get._1, authDataOpt.get._2, updateCommentLikes)
+      } yield Response.json(likeGivenResponse.toJson)
+  }
+
+}
 
 object CommentLikesController {
-  val updateCommentLikesEndpointRoute: Http[Has[CommentLikesService], Throwable, Request, Response[Any, Throwable]] = {
-    ZioHttpInterpreter().toHttp(updateCommentLikesEndpoint) { case (jwt, jwtType, commentLikeDislikeData) =>
-      CommentLikesService.addRemoveCommentLikeOrDislike(jwt, jwtType, commentLikeDislikeData)
-        .map(likedDislikedData => {
-          Right(likedDislikedData)
-        }).catchAll(e => ZIO.succeed(Left(e)))
-        .provideLayer(CommentLikesRepositoryLive.live >>> CommentLikesServiceLive.live)
-    }
-  }
 
-  val updateTribunalCommentLikesEndpointRoute: Http[Has[CommentLikesService], Throwable, Request, Response[Any, Throwable]] = {
-    ZioHttpInterpreter().toHttp(updateTribunalCommentLikesEndpoint) { case (jwt, jwtType, commentLikeDislikeData) =>
-      CommentLikesService.addRemoveTribunalCommentLikeOrDislike(jwt, jwtType, commentLikeDislikeData)
-        .map(likedDislikedData => {
-          Right(likedDislikedData)
-        }).catchAll(e => ZIO.succeed(Left(e)))
-        .provideLayer(CommentLikesRepositoryLive.live >>> CommentLikesServiceLive.live)
-    }
-  }
+  val layer: URLayer[CommentLikesService, CommentLikesController] = ZLayer.fromFunction(CommentLikesController.apply _)
+
 }

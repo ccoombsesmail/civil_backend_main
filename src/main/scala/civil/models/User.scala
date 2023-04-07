@@ -7,7 +7,7 @@ import civil.models.enums.ClerkEventType
 import java.util.UUID
 import sttp.tapir.generic.auto._
 import sttp.tapir.Schema
-import zio.json.{DeriveJsonDecoder, DeriveJsonEncoder, JsonDecoder, JsonEncoder}
+import zio.json.{DeriveJsonCodec, DeriveJsonDecoder, DeriveJsonEncoder, JsonCodec, JsonDecoder, JsonEncoder}
 
 import java.time.LocalDateTime
 import scala.math
@@ -49,19 +49,39 @@ case class OutgoingUser(
 
 )
 
+object OutgoingUser {
+  implicit val codec: JsonCodec[OutgoingUser] = DeriveJsonCodec.gen[OutgoingUser]
+}
+
 case class IncomingUser(
     userId: String,
     username: String,
     iconSrc: Option[String]
-) {}
+)
+
+object IncomingUser {
+  implicit val codec: JsonCodec[IncomingUser] = DeriveJsonCodec.gen[IncomingUser]
+}
 
 case class UpdateUserIcon(username: String, iconSrc: String) {}
-
+object UpdateUserIcon {
+  implicit val codec: JsonCodec[UpdateUserIcon] = DeriveJsonCodec.gen[UpdateUserIcon]
+}
 case class UpdateUserBio(bio: Option[String], experience: Option[String])
-
+object UpdateUserBio {
+  implicit val codec: JsonCodec[UpdateUserBio] = DeriveJsonCodec.gen[UpdateUserBio]
+}
 case class TagData(tag: String)
 
+object TagData {
+  implicit val codec: JsonCodec[TagData] = DeriveJsonCodec.gen[TagData]
+}
+
 case class TagExists(tagExists: Boolean)
+
+object TagExists {
+  implicit val codec: JsonCodec[TagExists] = DeriveJsonCodec.gen[TagExists]
+}
 
 case class WebHookEvent(
     data: WebHookData,

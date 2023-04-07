@@ -1,15 +1,19 @@
 package civil.controllers
 
-import civil.apis.HealthCheck.healthCheckEndpoint
-import civil.services.comments.CommentCivilityService
-import sttp.tapir.server.ziohttp.ZioHttpInterpreter
-import zhttp.http.{Http, Request, Response}
-import zio.{Has, ZIO}
+import zio.ZIO
+import zhttp.http.{Http, Method, Request, Response}
+import zio._
+import zhttp.http._
+
+final case class HealthCheckController() {
+  val routes: Http[Any, Throwable, Request, Response] = Http.collectZIO[Request] {
+    case req @ Method.GET -> !! / "healthcheck" =>
+      for {
+        _ <- ZIO.succeed("success")
+      } yield Response.text("success")
+  }
+}
 
 object HealthCheckController {
-  val healthCheckEndpointRoute: Http[Has[CommentCivilityService], Throwable, Request, Response[Any, Throwable]] = {
-    ZioHttpInterpreter().toHttp(healthCheckEndpoint) { case () =>
-      ZIO.succeed(Right("success"))
-    }
-  }
+  val layer: URLayer[Any, HealthCheckController] = ZLayer.fromFunction(HealthCheckController.apply _)
 }

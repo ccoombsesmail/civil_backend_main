@@ -1,8 +1,9 @@
 package civil.repositories
 
-import civil.models.{CommentCivility, CommentLikes, Comments, ErrorInfo, InternalServerError, Reports, Topics, TribunalCommentNode, TribunalComments, TribunalCommentsReply, Users}
-import civil.models.enums.TribunalCommentType
+import civil.errors.AppError
+import civil.errors.AppError.InternalServerError
 import civil.models._
+import civil.models.enums.TribunalCommentType
 import civil.repositories.QuillContextQueries.getTribunalCommentsWithReplies
 import civil.utils.CommentsTreeConstructor
 import io.scalaland.chimney.dsl._
@@ -13,45 +14,43 @@ import java.util.UUID
 trait TribunalCommentsRepository {
   def insertComment(
       comment: TribunalComments
-  ): ZIO[Any, ErrorInfo, TribunalCommentsReply]
+  ): ZIO[Any, AppError, TribunalCommentsReply]
 
   def getComments(
       userId: String,
       contentId: UUID,
       commentType: TribunalCommentType
-  ): ZIO[Any, ErrorInfo, List[TribunalCommentNode]]
+  ): ZIO[Any, AppError, List[TribunalCommentNode]]
 
   def getCommentsBatch(
       userId: String,
       contentId: UUID
-  ): ZIO[Any, ErrorInfo, List[TribunalCommentNode]]
+  ): ZIO[Any, AppError, List[TribunalCommentNode]]
 
 }
 
 object TribunalCommentsRepository {
   def insertComment(
       comment: TribunalComments
-  ): ZIO[Has[TribunalCommentsRepository], ErrorInfo, TribunalCommentsReply] =
-    ZIO.serviceWith[TribunalCommentsRepository](_.insertComment(comment))
+  ): ZIO[TribunalCommentsRepository, AppError, TribunalCommentsReply] =
+    ZIO.serviceWithZIO[TribunalCommentsRepository](_.insertComment(comment))
 
   def getComments(
       userId: String,
       contentId: UUID,
       commentType: TribunalCommentType
-  ): ZIO[Has[TribunalCommentsRepository], ErrorInfo, List[
+  ): ZIO[TribunalCommentsRepository, AppError, List[
     TribunalCommentNode
   ]] =
-    ZIO.serviceWith[TribunalCommentsRepository](
+    ZIO.serviceWithZIO[TribunalCommentsRepository](
       _.getComments(userId, contentId, commentType)
     )
 
   def getCommentsBatch(
       userId: String,
       contentId: UUID
-  ): ZIO[Has[
-    TribunalCommentsRepository
-  ], ErrorInfo, List[TribunalCommentNode]] =
-    ZIO.serviceWith[TribunalCommentsRepository](
+  ): ZIO[TribunalCommentsRepository, AppError, List[TribunalCommentNode]] =
+    ZIO.serviceWithZIO[TribunalCommentsRepository](
       _.getCommentsBatch(userId, contentId)
     )
 
@@ -63,10 +62,10 @@ case class TribunalCommentsRepositoryLive() extends TribunalCommentsRepository {
 
   override def insertComment(
       comment: TribunalComments
-  ): ZIO[Any, ErrorInfo, TribunalCommentsReply] = {
+  ): ZIO[Any, AppError, TribunalCommentsReply] = {
     for {
       userReportsJoin <- ZIO
-        .effect(
+        .attempt(
           run(
             query[Users]
               .filter(u => u.userId == lift(comment.createdByUserId))
@@ -77,7 +76,7 @@ case class TribunalCommentsRepositoryLive() extends TribunalCommentsRepository {
         .mapError(e => InternalServerError(e.toString))
       (_, report) = userReportsJoin
       userContentJoin <- ZIO
-        .effect(
+        .attempt(
           run(
             query[Users]
               .filter(u => u.userId == lift(comment.createdByUserId))
@@ -96,10 +95,10 @@ case class TribunalCommentsRepositoryLive() extends TribunalCommentsRepository {
           TribunalCommentType.Defendant
         else TribunalCommentType.General
       insertedComment <- ZIO
-        .effect(
+        .attempt(
           run(
             query[TribunalComments]
-              .insert(
+              .insertValue(
                 lift(
                   comment.copy(
                     commentType = commentType
@@ -125,14 +124,14 @@ case class TribunalCommentsRepositoryLive() extends TribunalCommentsRepository {
       userId: String,
       contentId: UUID,
       commentType: TribunalCommentType
-  ): ZIO[Any, ErrorInfo, List[TribunalCommentNode]] = {
+  ): ZIO[Any, AppError, List[TribunalCommentNode]] = {
     getCommentsByCommentType(userId, contentId, commentType)
   }
 
   override def getCommentsBatch(
       userId: String,
       contentId: UUID
-  ): ZIO[Any, ErrorInfo, List[TribunalCommentNode]] = {
+  ): ZIO[Any, AppError, List[TribunalCommentNode]] = {
     for {
       reporterComments <- getCommentsByCommentType(
         userId,
@@ -164,7 +163,7 @@ case class TribunalCommentsRepositoryLive() extends TribunalCommentsRepository {
   ) = {
     for {
       commentsUsersJoin <- ZIO
-        .effect(
+        .attempt(
           run(
             query[TribunalComments]
               .filter(r => r.reportedContentId == lift(contentId))
@@ -184,7 +183,7 @@ case class TribunalCommentsRepositoryLive() extends TribunalCommentsRepository {
         ))
       }
       likes <- ZIO
-        .effect(
+        .attempt(
           run(query[CommentLikes].filter(cl => cl.userId == lift(userId)))
         )
         .mapError(e => InternalServerError(e.toString))
@@ -192,7 +191,7 @@ case class TribunalCommentsRepositoryLive() extends TribunalCommentsRepository {
         m + (t.commentId -> t.value)
       }
       civility <- ZIO
-        .effect(
+        .attempt(
           run(
             query[CommentCivility].filter(cc => cc.userId == lift(userId))
           )
@@ -244,31 +243,7 @@ case class TribunalCommentsRepositoryLive() extends TribunalCommentsRepository {
 }
 
 object TribunalCommentsRepositoryLive {
-  val live: ZLayer[Any, Throwable, Has[TribunalCommentsRepository]] =
-    ZLayer.succeed(TribunalCommentsRepositoryLive())
+  val layer: URLayer[Any, TribunalCommentsRepository] = ZLayer.fromFunction(TribunalCommentsRepositoryLive.apply _)
 }
 
-////****** if want to change to a join later ******/////
-//commentsLikesCivilityJoin <- ZIO
-//.effect(
-//run(
-//query[TribunalComments]
-//.filter(r => r.reportedContentId == lift(contentId))
-//.leftJoin(query[CommentLikes])
-//.on((tc, cl) => tc.id == cl.commentId).filter { case (_, like) => like.exists(_.userId == lift(userId)) }
-//  .leftJoin(query[CommentCivility])
-//  .on { case ((tc, _), cc) =>
-//  tc.userId == cc.userId && tc.id == cc.commentId
-//}
-//  )
-//  )
-//  .mapError(e => InternalServerError(e.toString))
 
-//likesMap = commentsLikesCivilityJoin.foldLeft(Map[UUID, Int]()) {
-//  (m, c) =>
-//{
-//  val commentLike = c._1
-//  if (commentLike._2.isDefined)
-//  m + (commentLike._1.id -> commentLike._2.get.value)
-//  else m
-//}

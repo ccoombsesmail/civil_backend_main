@@ -4,10 +4,28 @@ import civil.models.enums.ReportStatus.Clean
 import civil.models.enums.UserVerificationType.NO_VERIFICATION
 import civil.models.enums.{LinkType, ReportStatus, TopicCategories, UserVerificationType}
 
-import java.time.{LocalDateTime, Instant}
+import java.time.{Instant, LocalDateTime}
 import java.util.UUID
 import io.getquill.Embedded
+import zio.json.{DeriveJsonCodec, JsonCodec}
+import zio.{Random, Task, UIO, ZIO}
 
+case class TopicId(
+    id: UUID
+)
+
+object TopicId {
+
+  def random: UIO[TopicId] = Random.nextUUID.map(TopicId(_))
+
+  def fromString(id: String): Task[TopicId] =
+    ZIO.attempt {
+      TopicId(UUID.fromString(id))
+    }
+
+  implicit val codec: JsonCodec[TopicId] =
+    JsonCodec[UUID].transform(TopicId(_), _.id)
+}
 case class IncomingTopic(
     title: String,
     editorState: String,
@@ -16,8 +34,13 @@ case class IncomingTopic(
     evidenceLinks: Option[List[String]],
     category: TopicCategories,
     userUploadedImageUrl: Option[String],
-    userUploadedVodUrl: Option[String],
+    userUploadedVodUrl: Option[String]
 )
+
+object IncomingTopic {
+  implicit val codec: JsonCodec[IncomingTopic] = DeriveJsonCodec.gen[IncomingTopic]
+}
+
 
 case class ExternalContentData(
     linkType: LinkType,
@@ -45,7 +68,7 @@ case class Topics(
     updatedAt: LocalDateTime,
     topicId: Option[UUID] = None,
     discussionId: Option[UUID] = None
- ) 
+)
 
 case class OutgoingTopic(
     id: UUID,
@@ -66,12 +89,16 @@ case class OutgoingTopic(
     topicCreatorIsDidUser: Boolean,
     userVerificationType: UserVerificationType = NO_VERIFICATION,
     createdAt: LocalDateTime,
-    updatedAt: LocalDateTime,
+    updatedAt: LocalDateTime
 )
 
+object OutgoingTopic {
+  implicit val codec: JsonCodec[OutgoingTopic] = DeriveJsonCodec.gen[OutgoingTopic]
+}
+
 case class OutgoingTopicsPayload(
-  offset: Int,
-  items: List[OutgoingTopic]
+    offset: Int,
+    items: List[OutgoingTopic]
 )
 
 case class Words(topicWords: Seq[String])
