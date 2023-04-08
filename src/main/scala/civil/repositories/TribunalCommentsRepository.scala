@@ -9,7 +9,9 @@ import civil.utils.CommentsTreeConstructor
 import io.scalaland.chimney.dsl._
 import zio._
 
+import java.sql.SQLException
 import java.util.UUID
+import javax.sql.DataSource
 
 trait TribunalCommentsRepository {
   def insertComment(
@@ -56,47 +58,41 @@ object TribunalCommentsRepository {
 
 }
 
-case class TribunalCommentsRepositoryLive() extends TribunalCommentsRepository {
+case class TribunalCommentsRepositoryLive(dataSource: DataSource) extends TribunalCommentsRepository {
 
-  import QuillContextHelper.ctx._
+  import civil.repositories.QuillContext._
 
   override def insertComment(
       comment: TribunalComments
   ): ZIO[Any, AppError, TribunalCommentsReply] = {
     for {
-      userReportsJoin <- ZIO
-        .attempt(
-          run(
+      userReportsJoin <- run(
             query[Users]
               .filter(u => u.userId == lift(comment.createdByUserId))
               .leftJoin(query[Reports])
               .on(_.userId == _.userId)
-          ).head
-        )
+          )
         .mapError(e => InternalServerError(e.toString))
-      (_, report) = userReportsJoin
-      userContentJoin <- ZIO
-        .attempt(
-          run(
+        .provideEnvironment(ZEnvironment(dataSource))
+      (_, report) = userReportsJoin.head
+      userContentJoin <- run(
             query[Users]
               .filter(u => u.userId == lift(comment.createdByUserId))
               .leftJoin(query[Topics])
               .on(_.userId == _.createdByUserId)
               .leftJoin(query[Comments])
               .on(_._1.userId == _.createdByUserId)
-          ).head
         )
         .mapError(e => InternalServerError(e.toString))
-      ((user, topicOpt), commentOpt) = userContentJoin
+        .provideEnvironment(ZEnvironment(dataSource))
+      ((user, topicOpt), commentOpt) = userContentJoin.head
       commentType =
         if (report.isDefined)
           TribunalCommentType.Reporter
         else if (commentOpt.isDefined || topicOpt.isDefined)
           TribunalCommentType.Defendant
         else TribunalCommentType.General
-      insertedComment <- ZIO
-        .attempt(
-          run(
+      insertedComment <- run(
             query[TribunalComments]
               .insertValue(
                 lift(
@@ -106,9 +102,8 @@ case class TribunalCommentsRepositoryLive() extends TribunalCommentsRepository {
                 )
               )
               .returning(c => c)
-          )
         )
-        .mapError(e => InternalServerError(e.toString))
+        .mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
     } yield insertedComment
       .into[TribunalCommentsReply]
       .withFieldConst(_.createdByExperience, user.experience)
@@ -125,7 +120,7 @@ case class TribunalCommentsRepositoryLive() extends TribunalCommentsRepository {
       contentId: UUID,
       commentType: TribunalCommentType
   ): ZIO[Any, AppError, List[TribunalCommentNode]] = {
-    getCommentsByCommentType(userId, contentId, commentType)
+    getCommentsByCommentType(userId, contentId, commentType).provideEnvironment(ZEnvironment(dataSource))
   }
 
   override def getCommentsBatch(
@@ -137,22 +132,22 @@ case class TribunalCommentsRepositoryLive() extends TribunalCommentsRepository {
         userId,
         contentId,
         TribunalCommentType.Reporter
-      )
+      ).provideEnvironment(ZEnvironment(dataSource))
       generalComments <- getCommentsByCommentType(
         userId,
         contentId,
         TribunalCommentType.General
-      )
+      ).provideEnvironment(ZEnvironment(dataSource))
       defendantComments <- getCommentsByCommentType(
         userId,
         contentId,
         TribunalCommentType.Defendant
-      )
+      ).provideEnvironment(ZEnvironment(dataSource))
       juryComments <- getCommentsByCommentType(
         userId,
         contentId,
         TribunalCommentType.Jury
-      )
+      ).provideEnvironment(ZEnvironment(dataSource))
     } yield reporterComments ++ generalComments ++ defendantComments ++ juryComments
   }
 
@@ -160,90 +155,57 @@ case class TribunalCommentsRepositoryLive() extends TribunalCommentsRepository {
       userId: String,
       contentId: UUID,
       commentType: TribunalCommentType
-  ) = {
-    for {
-      commentsUsersJoin <- ZIO
-        .attempt(
-          run(
-            query[TribunalComments]
-              .filter(r => r.reportedContentId == lift(contentId))
-              .join(query[Users])
-              .on(_.createdByUserId == _.userId)
-          )
-        )
-        .mapError(e => InternalServerError(e.toString))
-      rootComments = commentsUsersJoin.filter { case (comment, _) =>
-        comment.parentId.isEmpty
-      }
-      commentIdToUserIconSrcMap = commentsUsersJoin.foldLeft(
-        Map[UUID, String]()
-      ) { (m, commentUserTuple) =>
-        m + (commentUserTuple._1.id -> commentUserTuple._2.iconSrc.getOrElse(
-          ""
-        ))
-      }
-      likes <- ZIO
-        .attempt(
-          run(query[CommentLikes].filter(cl => cl.userId == lift(userId)))
-        )
-        .mapError(e => InternalServerError(e.toString))
-      likesMap = likes.foldLeft(Map[UUID, Int]()) { (m, t) =>
-        m + (t.commentId -> t.value)
-      }
-      civility <- ZIO
-        .attempt(
-          run(
-            query[CommentCivility].filter(cc => cc.userId == lift(userId))
-          )
-        )
-        .mapError(e => InternalServerError(e.toString))
-      civilityMap = civility.foldLeft(Map[UUID, Float]()) { (m, t) =>
-        m + (t.commentId -> t.value)
-      }
-      commentsNodes = rootComments
-        .map {
-          case (comment, user) => {
-            val commentsWithDepth =
-              run(getTribunalCommentsWithReplies(lift(comment.id)))
-            val repliesWithDepth = commentsWithDepth
-              .map(c =>
-                TribunalComments.withDepthToReplyWithDepth(
-                  c,
-                  likesMap.getOrElse(c.id, 0),
-                  civilityMap.getOrElse(c.id, 0),
-                  commentIdToUserIconSrcMap(c.id),
-                  user.userId,
-                  user.experience
-                )
-              )
-              .reverse
-            val replies = commentsWithDepth
-              .map(c =>
-                TribunalComments.commentToCommentReply(
-                  c,
-                  likesMap.getOrElse(c.id, 0),
-                  civilityMap.getOrElse(c.id, 0),
-                  commentIdToUserIconSrcMap(c.id),
-                  user.userId,
-                  user.experience
-                )
-              )
+  ): ZIO[Any, InternalServerError, List[TribunalCommentNode]] = (for {
+    commentsWithUserLikesCivility <- run(
+        query[TribunalComments]
+          .filter(c => c.reportedContentId == lift(contentId) && c.parentId.isEmpty)
+          .filter(_.commentType == lift(commentType))
+          .join(query[Users])
+          .on(_.createdByUserId == _.userId)
+          .leftJoin(query[CommentLikes].filter(_.userId == lift(userId)))
+          .on(_._1.id == _.commentId)
+          .leftJoin(query[CommentCivility].filter(_.userId == lift(userId)))
+          .on(_._1._1.id == _.commentId)
+    ).mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
 
-            val tc = CommentsTreeConstructor
-            val replyTree =
-              tc.constructTribunal(repliesWithDepth, replies).toList.head
-            replyTree
-          }
-        }
-        .filter(node => node.data.commentType == commentType)
-        .sortWith((t1, t2) => t2.data.createdAt.isBefore(t1.data.createdAt))
-    } yield commentsNodes
-  }
+
+    commentsNodes <- ZIO.collectAll(commentsWithUserLikesCivility.map {
+        case (((comment, user), maybeLike), maybeCivility) =>
+          val likes = maybeLike.map(_.value).getOrElse(0)
+          val civility = maybeCivility.map(_.value).getOrElse(0f)
+
+          for {
+            commentsWithDepth <- run(getTribunalCommentsWithReplies(lift(comment.id)))
+            repliesWithDepth = commentsWithDepth.map { c =>
+              TribunalComments.withDepthToReplyWithDepth(
+                c,
+                likes,
+                civility,
+                c.userIconSrc.getOrElse(""),
+                c.userId,
+                c.userExperience
+              )
+            }.reverse
+            replies = commentsWithDepth.map { c =>
+              TribunalComments.commentToCommentReply(
+                c,
+                likes,
+                civility,
+                user.iconSrc.getOrElse(""),
+                user.userId,
+                user.experience
+              )
+            }
+            tc = CommentsTreeConstructor
+            replyTree = tc.constructTribunal(repliesWithDepth, replies).toList.head
+          } yield replyTree
+      }).provideEnvironment(ZEnvironment(dataSource)).mapError(e => InternalServerError(e.toString))
+    } yield commentsNodes).provideEnvironment(ZEnvironment(dataSource)).mapError(e => InternalServerError(e.toString))
 
 }
 
 object TribunalCommentsRepositoryLive {
-  val layer: URLayer[Any, TribunalCommentsRepository] = ZLayer.fromFunction(TribunalCommentsRepositoryLive.apply _)
+  val layer: URLayer[DataSource, TribunalCommentsRepository] = ZLayer.fromFunction(TribunalCommentsRepositoryLive.apply _)
 }
 
 

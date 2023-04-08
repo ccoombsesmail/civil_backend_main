@@ -3,12 +3,10 @@ package civil.services.comments
 import civil.errors.AppError
 import civil.errors.AppError.GeneralError
 import civil.models.NotifcationEvents.{CommentCivilityGiven, GivingUserNotificationData}
-import civil.models.{AppError, UpdateCommentCivility}
 import civil.models._
 import civil.repositories.comments.CommentCivilityRepository
-import civil.services.{AuthenticationServiceLive, KafkaProducerServiceLive}
+import civil.services.{AuthenticationService, KafkaProducerServiceLive}
 import zio._
-// import civil.directives.SentimentAnalyzer
 
 trait CommentCivilityService {
   def addOrRemoveCommentCivility(
@@ -52,9 +50,9 @@ object CommentCivilityService {
 }
 
 case class CommentCivilityServiceLive(
-    commentCivilityRepo: CommentCivilityRepository
+    commentCivilityRepo: CommentCivilityRepository,
+    authenticationService: AuthenticationService
 ) extends CommentCivilityService {
-  val authenticationService = AuthenticationServiceLive()
   val kafka = new KafkaProducerServiceLive()
 
   override def addOrRemoveCommentCivility(
@@ -122,6 +120,6 @@ case class CommentCivilityServiceLive(
 
 object CommentCivilityServiceLive {
 
-  val layer: URLayer[CommentCivilityRepository, CommentCivilityService] = ZLayer.fromFunction(CommentCivilityServiceLive.apply _)
+  val layer: URLayer[CommentCivilityRepository with AuthenticationService , CommentCivilityService] = ZLayer.fromFunction(CommentCivilityServiceLive.apply _)
 
 }

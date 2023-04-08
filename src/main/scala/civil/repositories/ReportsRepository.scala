@@ -2,18 +2,15 @@ package civil.repositories
 
 import civil.errors.AppError
 import civil.errors.AppError.InternalServerError
-import civil.models.{
-  ReportInfo,
-  ReportTimings,
-  Reports,
-  Topics
-}
+import civil.models.{ReportInfo, ReportTimings, Reports, Topics}
 import civil.models._
 import civil.models.NotifcationEvents._
 import zio._
 
 import java.util.UUID
 import civil.services.KafkaProducerServiceLive
+
+import javax.sql.DataSource
 
 trait ReportsRepository {
   def addReport(report: Reports): ZIO[Any, AppError, Unit]
@@ -41,9 +38,9 @@ object ReportsRepository {
     )
 }
 
-case class ReportsRepositoryLive() extends ReportsRepository {
+case class ReportsRepositoryLive(dataSource: DataSource) extends ReportsRepository {
   val runtime = zio.Runtime.default
-  import QuillContextHelper.ctx._
+  import civil.repositories.QuillContext._
   val kafka = new KafkaProducerServiceLive()
 
   val REPORT_THRESHOLD = 1
@@ -51,34 +48,24 @@ case class ReportsRepositoryLive() extends ReportsRepository {
       report: Reports
   ): ZIO[Any, AppError, Unit] = {
     for {
-      topicOpt <- ZIO
-        .attempt(
-          run(
+      topics <- run(
             query[Topics].filter(t => t.id == lift(report.contentId))
-          ).headOption
-        )
-        .mapError(e => InternalServerError(e.toString))
+          ).mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
+      topicOpt = topics.headOption
       contentType = if (topicOpt.isDefined) "TOPIC" else "COMMENT"
       reportWithContentType = report.copy(contentType = contentType)
-      _ <- ZIO
-        .attempt(
-          run(
-            query[Reports].insert(lift(reportWithContentType))
+      _ <- run(
+            query[Reports].insertValue(lift(reportWithContentType))
           )
-        )
         .mapError(e => {
           InternalServerError(s"Sorry! There was an issue saving the Report \n ${e.getMessage}")
-        })
-      allReports <- ZIO
-        .attempt(
-          run(
+        }).provideEnvironment(ZEnvironment(dataSource))
+      allReports <- run(
             query[Reports].filter(r => r.contentId == lift(report.contentId))
           )
-        )
         .mapError(e => {
-          println(e)
-          InternalServerError(s"Error Getting All Reports")
-        })
+          InternalServerError(e.getMessage)
+        }).provideEnvironment(ZEnvironment(dataSource))
       _ <- ZIO.when(allReports.length >= REPORT_THRESHOLD) {
         ZIO.attempt(
           kafka.publish(
@@ -102,13 +89,11 @@ case class ReportsRepositoryLive() extends ReportsRepository {
       userId: String
   ): ZIO[Any, AppError, ReportInfo] = {
     for {
-      votes <- ZIO
-        .attempt(
-          run(
+      votes <- run(
             query[TribunalVotes].filter(tv => tv.contentId == lift(contentId))
           )
-        )
         .mapError(e => InternalServerError(e.toString))
+        .provideEnvironment(ZEnvironment(dataSource))
 
       numVotesFor = votes.count(tv => tv.voteFor.contains(true))
       numVotesAgainst = votes.count(tv => tv.voteAgainst.contains(true))
@@ -122,20 +107,17 @@ case class ReportsRepositoryLive() extends ReportsRepository {
           voteFor = None
         )
       )
-      timing <- ZIO
-        .attempt(
-          run(
+      timings <- run(
             query[ReportTimings].filter(rt => rt.contentId == lift(contentId))
-          ).headOption
-        )
+          )
         .mapError(e => InternalServerError(e.toString))
-      reports <- ZIO
-        .attempt(
-          run(
+        .provideEnvironment(ZEnvironment(dataSource))
+      timingOpt = timings.headOption
+      reports <- run(
             query[Reports].filter(tr => tr.contentId == lift(contentId))
           )
-        )
         .mapError(e => InternalServerError(e.toString))
+        .provideEnvironment(ZEnvironment(dataSource))
       reportsMap = reports.foldLeft(Map[String, Int]()) { (m, t) =>
         val m1 = if (t.toxic.isDefined) {
           if (m.contains("toxic"))
@@ -163,13 +145,13 @@ case class ReportsRepositoryLive() extends ReportsRepository {
       reportsMap.getOrElse("spam", 0),
       vote.voteAgainst,
       vote.voteFor,
-      timing.map(_.reportPeriodEnd),
-      timing.flatMap(_.deletedAt),
+      timingOpt.map(_.reportPeriodEnd),
+      timingOpt.flatMap(_.deletedAt),
       contentType = "TOPIC"
-    ).attachVotingResults(timing.map(_.reportPeriodEnd), numVotesAgainst, numVotesFor)
+    ).attachVotingResults(timingOpt.map(_.reportPeriodEnd), numVotesAgainst, numVotesFor)
   }
 }
 
 object ReportsRepositoryLive {
-  val layer: URLayer[Any, ReportsRepository] = ZLayer.fromFunction(ReportsRepositoryLive.apply _)
+  val layer: URLayer[DataSource, ReportsRepository] = ZLayer.fromFunction(ReportsRepositoryLive.apply _)
 }

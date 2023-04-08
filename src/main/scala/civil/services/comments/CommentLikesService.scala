@@ -2,12 +2,14 @@ package civil.services.comments
 
 import civil.errors.AppError
 import civil.errors.AppError.GeneralError
-import civil.models.{CommentLiked, CommentLikes, AppError, UpdateCommentLikes}
+import civil.models.{CommentLiked, CommentLikes, UpdateCommentLikes}
 import civil.models.NotifcationEvents.{CommentLike, GivingUserNotificationData}
 import civil.repositories.comments.CommentLikesRepository
-import civil.services.{AuthenticationServiceLive, KafkaProducerServiceLive}
+import civil.services.{AuthenticationService, AuthenticationServiceLive, KafkaProducerServiceLive}
 import io.scalaland.chimney.dsl.TransformerOps
 import zio.{URLayer, ZIO, ZLayer}
+
+import javax.sql.DataSource
 
 trait CommentLikesService {
   def addRemoveCommentLikeOrDislike(
@@ -47,10 +49,8 @@ object CommentLikesService {
     )
 }
 
-case class CommentLikesServiceLive(commentLikesRepo: CommentLikesRepository)
+case class CommentLikesServiceLive(commentLikesRepo: CommentLikesRepository, authenticationService: AuthenticationService)
     extends CommentLikesService {
-  val authenticationService = AuthenticationServiceLive()
-
   override def addRemoveCommentLikeOrDislike(
       jwt: String,
       jwtType: String,
@@ -118,6 +118,6 @@ case class CommentLikesServiceLive(commentLikesRepo: CommentLikesRepository)
 
 object CommentLikesServiceLive {
 
-  val layer: URLayer[CommentLikesRepository, CommentLikesService] = ZLayer.fromFunction(CommentLikesServiceLive.apply _)
+  val layer: URLayer[CommentLikesRepository with AuthenticationService, CommentLikesService] = ZLayer.fromFunction(CommentLikesServiceLive.apply _)
 
 }

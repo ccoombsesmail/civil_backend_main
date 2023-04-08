@@ -2,7 +2,8 @@ package civil.services
 
 import civil.config.Config
 import civil.directives.OutgoingHttp.authenticateCivicTokenHeader
-import civil.errors.AppError.Unauthorized
+import civil.errors.AppError
+import civil.errors.AppError.{GeneralError, Unauthorized}
 import civil.models.JwtUserClaimsData
 import civil.repositories.UsersRepository
 import org.elastos.did.{DID, DIDBackend, DefaultDIDAdapter}
@@ -13,6 +14,7 @@ import scala.util.{Failure, Success}
 import org.json4s.{DefaultFormats, Formats}
 import zio._
 
+import javax.sql.DataSource
 import scala.language.postfixOps
 
 trait AuthenticationService {
@@ -40,7 +42,7 @@ object AuthenticationService {
     ZIO.serviceWithZIO[AuthenticationService](_.extractUserData(jwt,  jwtType))
 }
 
-case class AuthenticationServiceLive()
+case class AuthenticationServiceLive(dataSource: DataSource)
     extends AuthenticationService {
   implicit val formats: Formats = DefaultFormats
 
@@ -82,7 +84,7 @@ case class AuthenticationServiceLive()
   }
   override def civicAuthentication(
       jwt: String
-  ): ZIO[Any, Throwable, JwtUserClaimsData] = {
+  ): ZIO[Any, AppError, JwtUserClaimsData] = {
     implicit val ec: scala.concurrent.ExecutionContext =
       scala.concurrent.ExecutionContext.global
 
@@ -92,11 +94,10 @@ case class AuthenticationServiceLive()
     }
 
     for {
-      res <- authenticateCivicTokenHeader(decodedJwt)
-      body <- ZIO.fromEither(res.body)
-      userData <- ZIO
-        .fromOption(UsersRepository.getUserInternal(body.pk))
-        .orElseFail(new Throwable("Civil Relevant User Information Not Found"))
+      res <- authenticateCivicTokenHeader(decodedJwt).mapError(e => GeneralError(e.toString))
+      body <- ZIO.fromEither(res.body).mapError(e => GeneralError(e.toString))
+      userDataOpt <- UsersRepository.getUserInternal(body.pk).provideEnvironment(ZEnvironment(dataSource)).mapError(e => GeneralError(e.toString))
+      userData <- ZIO.fromOption(userDataOpt).mapError(e => GeneralError(e.toString))
     } yield JwtUserClaimsData(
       userId = body.pk,
       username = body.name.getOrElse(body.pk),
@@ -175,6 +176,7 @@ case class AuthenticationServiceLive()
 }
 
 object AuthenticationServiceLive {
-  val live: ZLayer[Any, Throwable, AuthenticationService] =
-    ZLayer.succeed(AuthenticationServiceLive())
+
+  val layer: URLayer[DataSource, AuthenticationService] = ZLayer.fromFunction(AuthenticationServiceLive.apply _)
+
 }

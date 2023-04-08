@@ -17,7 +17,6 @@ case object TopicCategories extends Enum[TopicCategories] with CirceEnum[TopicCa
   val values: IndexedSeq[TopicCategories] = findValues
 
   implicit val codec: JsonCodec[TopicCategories] = DeriveJsonCodec.gen[TopicCategories]
-  implicit val codecValues: JsonCodec[IndexedSeq[TopicCategories]] = DeriveJsonCodec.gen[IndexedSeq[TopicCategories]]
 
 
 }

@@ -13,13 +13,14 @@ case class TribunalCommentNode(
 )
 
 object TribunalCommentNode {
-  implicit val codec: JsonCodec[TribunalCommentNode] = DeriveJsonCodec.gen[TribunalCommentNode]
+  implicit val codec: JsonCodec[TribunalCommentNode] =
+    DeriveJsonCodec.gen[TribunalCommentNode]
 }
 case class TribunalEntryWithDepth(comment: TribunalCommentsReply, depth: Int)
 
 object TribunalComments {
   def withDepthToReplyWithDepth(
-      commentWithDepth: TribunalCommentWithDepth,
+      commentWithDepth: TribunalCommentWithDepthAndUser,
       likeState: Int,
       civility: Float,
       iconSrc: String,
@@ -40,7 +41,7 @@ object TribunalComments {
     )
 
   def commentToCommentReply(
-      comment: TribunalCommentWithDepth,
+      comment: TribunalCommentWithDepthAndUser,
       likeState: Int,
       civility: Float,
       iconSrc: String,
@@ -74,8 +75,6 @@ case class TribunalComments(
     commentType: TribunalCommentType = TribunalCommentType.General
 )
 
-
-
 case class TribunalCommentsReply(
     id: UUID,
     editorState: String,
@@ -97,7 +96,8 @@ case class TribunalCommentsReply(
 )
 
 object TribunalCommentsReply {
-  implicit val codec: JsonCodec[TribunalCommentsReply] = DeriveJsonCodec.gen[TribunalCommentsReply]
+  implicit val codec: JsonCodec[TribunalCommentsReply] =
+    DeriveJsonCodec.gen[TribunalCommentsReply]
 }
 
 case class TribunalCommentWithDepth(
@@ -105,6 +105,7 @@ case class TribunalCommentWithDepth(
     editorState: String,
     editorTextContent: String,
     createdByUsername: String,
+    createdByUserId: String,
     sentiment: String,
     reportedContentId: UUID,
     parentId: Option[UUID],
@@ -114,6 +115,26 @@ case class TribunalCommentWithDepth(
     depth: Int,
     source: Option[String],
     commentType: TribunalCommentType
+)
+
+case class TribunalCommentWithDepthAndUser(
+    id: UUID,
+    editorState: String,
+    editorTextContent: String,
+    createdByUsername: String,
+    createdByUserId: String,
+    sentiment: String,
+    reportedContentId: UUID,
+    parentId: Option[UUID],
+    createdAt: LocalDateTime,
+    likes: Int,
+    rootId: Option[UUID],
+    depth: Int,
+    source: Option[String],
+    commentType: TribunalCommentType,
+    userIconSrc: Option[String],
+    userExperience: Option[String],
+    userId: String
 )
 
 case class TribunalCommentsBatchResponse(

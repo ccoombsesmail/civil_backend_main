@@ -2,9 +2,11 @@ package civil.repositories.comments
 
 import civil.errors.AppError.InternalServerError
 import civil.errors.AppError
-import civil.models.{CommentLiked, CommentLikes, Comments, AppError, TribunalComments}
+import civil.models.{CommentLiked, CommentLikes, Comments, TribunalComments}
 import civil.repositories.comments
-import zio.{URLayer, ZIO, ZLayer}
+import zio.{URLayer, ZEnvironment, ZIO, ZLayer}
+
+import javax.sql.DataSource
 trait CommentLikesRepository {
   def addRemoveCommentLikeOrDislike(
       commentLikeDislike: CommentLikes,
@@ -34,9 +36,8 @@ object CommentLikesRepository {
 
 }
 
-case class CommentLikesRepositoryLive() extends CommentLikesRepository {
-  import civil.repositories.QuillContextHelper.ctx._
-
+case class CommentLikesRepositoryLive(dataSource: DataSource) extends CommentLikesRepository {
+  import civil.repositories.QuillContext._
   override def addRemoveCommentLikeOrDislike(
       commentLikeDislike: CommentLikes,
       createdById: String
@@ -44,8 +45,7 @@ case class CommentLikesRepositoryLive() extends CommentLikesRepository {
     for {
 //      _ <- log.info(s"Fetching previous like state for comment id ${commentLikeDislike.commentId}")
       likeValueToAddSubtract <- getLikeValueToAddOrSubtract(commentLikeDislike)
-      comment <- ZIO
-        .attempt(
+      comment <-
           transaction {
             run(
               query[CommentLikes]
@@ -70,8 +70,7 @@ case class CommentLikesRepositoryLive() extends CommentLikesRepository {
                 .returning(c => c)
             )
           }
-        )
-        .mapError(e => InternalServerError(e.toString))
+        .mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
     } yield (
       CommentLiked(
         comment.id,
@@ -88,8 +87,7 @@ case class CommentLikesRepositoryLive() extends CommentLikesRepository {
   ): ZIO[Any, AppError, CommentLiked] = {
     for {
       likeValueToAddSubtract <- getLikeValueToAddOrSubtract(commentLikeDislike)
-      commentLikesData <- ZIO
-        .attempt(
+      commentLikesData <-
           transaction {
             run(
               query[CommentLikes]
@@ -121,27 +119,26 @@ case class CommentLikesRepositoryLive() extends CommentLikesRepository {
                 )
             )
           }
-        )
-        .mapError(e => InternalServerError(e.toString))
+        .mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
     } yield commentLikesData
   }
 
   def getLikeValueToAddOrSubtract(commentLikeDislike: CommentLikes) = {
     for {
-      previousLikeState <- ZIO
-        .attempt(
-          run(
+      previousLikeState <- run(
             query[CommentLikes].filter(cl =>
               cl.commentId == lift(
                 commentLikeDislike.commentId
               ) && cl.userId == lift(commentLikeDislike.userId)
-            )
-          ).headOption
+          )
         )
         .mapError(e => InternalServerError(e.toString))
+        .provideEnvironment(ZEnvironment(dataSource))
+      previousLikeStateResult = previousLikeState.headOption
+
 //      _ <- log.info(s"Previous like state for comment id ${commentLikeDislike.commentId} is: ${previousLikeState}")
       newLikeState = commentLikeDislike.value
-      prevLikeState = previousLikeState
+      prevLikeState = previousLikeStateResult
         .getOrElse(
           CommentLikes(
             commentLikeDislike.commentId,
@@ -167,6 +164,6 @@ case class CommentLikesRepositoryLive() extends CommentLikesRepository {
 }
 
 object CommentLikesRepositoryLive {
-  val layer: URLayer[Any, CommentLikesRepository] = ZLayer.fromFunction(CommentLikesRepositoryLive.apply _)
+  val layer: URLayer[DataSource, CommentLikesRepository] = ZLayer.fromFunction(CommentLikesRepositoryLive.apply _)
 
 }

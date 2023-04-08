@@ -21,7 +21,6 @@ trait TribunalCommentsService {
   def getComments(jwt: String, jwtType: String, contentId: UUID, commentType: TribunalCommentType): ZIO[Any, AppError, List[TribunalCommentNode]]
   def getCommentsBatch(jwt: String, jwtType: String, contentId: UUID): ZIO[Any, AppError, List[TribunalCommentNode]]
 
-  //  def addOrRemoveCommentLike(id: UUID, userId: String, increment: Boolean): Task[Liked]
 }
 
 object TribunalCommentsService {
@@ -37,12 +36,12 @@ object TribunalCommentsService {
     ZIO.serviceWithZIO[TribunalCommentsService](_.getComments(jwt, jwtType, contentId, commentType))
   def getCommentsBatch(jwt: String, jwtType: String, contentId: UUID): ZIO[TribunalCommentsService, AppError, List[TribunalCommentNode]] =
     ZIO.serviceWithZIO[TribunalCommentsService](_.getCommentsBatch(jwt, jwtType, contentId))
-//  def addOrRemoveCommentLike(id: UUID, userId: String, increment: Boolean): RIO[Has[CommentsService], Liked] =
-//    ZIO.serviceWith[CommentsService](_.addOrRemoveCommentLike(id, userId, increment))
+
 }
 
 case class TribunalCommentsServiceLive(
     tribunalCommentsRepo: TribunalCommentsRepository,
+    authenticationService: AuthenticationService
 ) extends TribunalCommentsService {
 
   override def insertComment(
@@ -50,10 +49,6 @@ case class TribunalCommentsServiceLive(
       jwtType: String,
       incomingComment: IncomingComment
   ): ZIO[Any, AppError, TribunalCommentsReply] = {
-    // val sentiment = SentimentAnalyzer.mainSentiment(incommingComment.rawText)
-
-    val authenticationService = AuthenticationServiceLive()
-
     for {
       userData <- authenticationService.extractUserData(jwt, jwtType)
       insertedComment <- tribunalCommentsRepo.insertComment(
@@ -73,7 +68,6 @@ case class TribunalCommentsServiceLive(
 
 
   override def getComments(jwt: String, jwtType: String, contentId: UUID, commentType: TribunalCommentType): ZIO[Any, AppError, List[TribunalCommentNode]] = {
-    val authenticationService = AuthenticationServiceLive()
 
     for {
       userData <- authenticationService.extractUserData(jwt, jwtType)
@@ -82,7 +76,6 @@ case class TribunalCommentsServiceLive(
   }
 
   override def getCommentsBatch(jwt: String, jwtType: String, contentId: UUID): ZIO[Any, AppError, List[TribunalCommentNode]] = {
-    val authenticationService = AuthenticationServiceLive()
 
     for {
       userData <- authenticationService.extractUserData(jwt, jwtType)
@@ -94,6 +87,6 @@ case class TribunalCommentsServiceLive(
 
 object TribunalCommentsServiceLive {
 
-  val layer: URLayer[TribunalCommentsRepository with UsersRepository, TribunalCommentsService] = ZLayer.fromFunction(TribunalCommentsServiceLive.apply _)
+  val layer: URLayer[TribunalCommentsRepository with UsersRepository with AuthenticationService, TribunalCommentsService] = ZLayer.fromFunction(TribunalCommentsServiceLive.apply _)
 
 }

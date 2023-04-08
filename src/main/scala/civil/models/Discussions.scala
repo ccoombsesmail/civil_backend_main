@@ -11,6 +11,10 @@ case class GeneralDiscussionId(
     id: UUID
  )
 
+object GeneralDiscussionId {
+  implicit val codec: JsonCodec[GeneralDiscussionId] = DeriveJsonCodec.gen[GeneralDiscussionId]
+}
+
 case class DiscussionId(
     id: UUID
 )
@@ -45,6 +49,9 @@ case class Discussions(
     discussionId: Option[UUID] = None
    )
 
+object Discussions {
+  implicit val codec: JsonCodec[Discussions] = DeriveJsonCodec.gen[Discussions]
+}
 case class IncomingDiscussion(
     topicId: String,
     title: String,
@@ -53,7 +60,9 @@ case class IncomingDiscussion(
     externalContentData: Option[ExternalContentData],
     evidenceLinks: Option[List[String]],
     userUploadedImageUrl: Option[String],
-    userUploadedVodUrl: Option[String]
+    userUploadedVodUrl: Option[String],
+    discussionKeyWords: Seq[String] = Seq(),
+    discussionId: Option[UUID] = None
 )
 
 object IncomingDiscussion {

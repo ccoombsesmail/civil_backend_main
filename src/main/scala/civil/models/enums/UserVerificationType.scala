@@ -1,6 +1,7 @@
 package civil.models.enums
 
 import enumeratum.{CirceEnum, Enum, EnumEntry, QuillEnum}
+import zio.json.{DeriveJsonCodec, JsonCodec}
 
 
 sealed trait UserVerificationType extends EnumEntry
@@ -14,6 +15,9 @@ case object UserVerificationType extends Enum[UserVerificationType] with CirceEn
   case object NO_VERIFICATION  extends UserVerificationType
 
   val values: IndexedSeq[UserVerificationType] = findValues
+
+  implicit val codec: JsonCodec[UserVerificationType] = DeriveJsonCodec.gen[UserVerificationType]
+
 
 }
 

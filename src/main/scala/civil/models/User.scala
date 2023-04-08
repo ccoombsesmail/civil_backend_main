@@ -1,16 +1,11 @@
 package civil.models
 
 import civil.directives.OutgoingHttp.Permissions
-import civil.models.ClerkModels.ClerkUserPatch
 import civil.models.enums.ClerkEventType
 
-import java.util.UUID
-import sttp.tapir.generic.auto._
-import sttp.tapir.Schema
 import zio.json.{DeriveJsonCodec, DeriveJsonDecoder, DeriveJsonEncoder, JsonCodec, JsonDecoder, JsonEncoder}
 
 import java.time.LocalDateTime
-import scala.math
 import scala.math.{exp, round}
 
 case class Users(
@@ -24,9 +19,12 @@ case class Users(
     bio: Option[String],
     experience: Option[String],
     isDidUser: Boolean,
-    id: Int = 200
-
-                )
+    id: Int = 200,
+    numFollowers: Option[Int] = None,
+    numFollowed: Option[Int] = None,
+    numPosts: Option[Int] = None,
+    permissions: Permissions = Permissions(false, false)
+)
 
 case class OutgoingUser(
     userId: String,
@@ -206,6 +204,8 @@ case class JwtUserClaimsData(
 case class UserLevel(exp: Double, level: Int, pointsForNextLevel: Double)
 
 object UserLevel {
+  implicit val codec: JsonCodec[UserLevel] = DeriveJsonCodec.gen[UserLevel]
+
   val LEVELS: Double = 40.0
   val xp_for_first_level: Double = 5.0
   val xp_for_last_level: Double = 1000000.0

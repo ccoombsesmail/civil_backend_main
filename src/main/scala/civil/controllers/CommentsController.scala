@@ -1,15 +1,9 @@
 package civil.controllers
 
-import civil.apis.CommentsApi._
 import civil.controllers.ParseUtils.{extractJwtData, parseBody, parseCommentId, parseDiscussionId, parseSkip}
 import civil.errors.AppError.JsonDecodingError
 import civil.models.IncomingComment
-import civil.repositories.UsersRepositoryLive
-import civil.repositories.comments.CommentsRepositoryLive
-import civil.repositories.topics.DiscussionsRepositoryLive
-import civil.services.AuthenticationServiceLive
-import civil.services.comments.{CommentLikesService, CommentsService, CommentsServiceLive}
-import sttp.tapir.server.ziohttp.ZioHttpInterpreter
+import civil.services.comments.CommentsService
 import zhttp.http.{Http, Method, Request, Response}
 import zio._
 import zio.json.EncoderOps

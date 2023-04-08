@@ -1,6 +1,5 @@
 package civil.directives
 
-import akka.Done
 import akka.actor.typed.ActorSystem
 import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.scaladsl.adapter._
@@ -22,15 +21,14 @@ import civil.models.ClerkModels.{ClerkResponse, ClerkUserPatch, CreateClerkUser}
 import io.circe.syntax.EncoderOps
 import io.circe.generic.auto._
 import io.scalaland.chimney.dsl.TransformerOps
-import sttp.model.HeaderNames.ContentType
 
 import java.util.UUID
 import scala.util.{Failure, Success}
 import sttp.client3.httpclient.zio.HttpClientZioBackend
 import sttp.client3._
 import sttp.client3.circe._
-
 import zio.ZIO
+import zio.json.{DeriveJsonCodec, JsonCodec}
 
 
 
@@ -141,6 +139,11 @@ object OutgoingHttp {
         faceIdPassActive: Boolean,
         captchaPassActive: Boolean
                         )
+
+  object Permissions {
+    implicit val codec: JsonCodec[Permissions] = DeriveJsonCodec.gen[Permissions]
+  }
+
   case class AuthRes(
       pk: String,
       permissions: Permissions,
@@ -170,85 +173,4 @@ object OutgoingHttp {
 
   }
 
-
-  def createClerkUser(user: CreateClerkUser) = {
-    val form = FormData(user.toMap)
-    val httpRequest = HttpRequest(
-      uri = s"https://api.clerk.dev/v1/users",
-      method = HttpMethods.POST,
-      entity = form.toEntity
-    )
-      .withHeaders(AcceptJson)
-      .addCredentials(createOAuth2BearerToken("test_NVpuvoQPIVbP5ALMSCBxeIAnwMHV5L8gmt"))
-
-    val future =
-      Source
-        .single(httpRequest) //: HttpRequest
-        .mapAsync(1)(Http()(actorSystem.toClassic).singleRequest(_)) //: HttpResponse
-        .flatMapConcat(extractEntityData) //: ByteString
-        .runWith(Sink.fold(ByteString.empty)(_ ++ _)).map(_.utf8String) map { result =>
-        result
-      }
-    future
-  }
-
-  def updateClerkUserMetaData(userId: String, userTag: Option[String]) = {
-
-
-    val httpRequest = HttpRequest(
-      uri = s"https://api.clerk.dev/v1/users/${userId}",
-      method = HttpMethods.GET,
-//      entity = form.toEntity
-    )
-      .withHeaders(AcceptJson)
-      .addCredentials(createOAuth2BearerToken("test_NVpuvoQPIVbP5ALMSCBxeIAnwMHV5L8gmt"))
-    val future =
-      Source
-        .single(httpRequest) //: HttpRequest
-        .mapAsync(1)(Http()(actorSystem.toClassic).singleRequest(_)) //: HttpResponse
-        .flatMapConcat(extractEntityData) //: ByteString
-        .runWith(Sink.fold(ByteString.empty)(_ ++ _)).map(_.utf8String) map { result =>
-        println(result)
-        val res = JsonMethods.parse(result).extract[ClerkResponse]
-        println(res)
-        res
-      }
-
-    future onComplete {
-      case Success(user) => {
-
-
-        val j = user.into[ClerkUserPatch]
-          .withFieldConst(_.public_metadata, PublicMetadata(userCivilTag = userTag))
-          .withFieldConst(_.private_metadata, PrivateMetadata())
-          .withFieldConst(_.unsafe_metadata, UnsafeMetadata())
-          .transform.asJson
-        val httpRequest = HttpRequest(
-          uri = s"https://api.clerk.dev/v1/users/${userId}",
-          method = HttpMethods.PATCH,
-        )
-          .withEntity(ByteString(j.toString()))
-          .withHeaders(AcceptJson)
-          .addCredentials(createOAuth2BearerToken("test_NVpuvoQPIVbP5ALMSCBxeIAnwMHV5L8gmt"))
-        val futurePatch =
-          Source
-            .single(httpRequest) //: HttpRequest
-            .mapAsync(1)(Http()(actorSystem.toClassic).singleRequest(_)) //: HttpResponse
-            .flatMapConcat(extractEntityData) //: ByteString
-            .runWith(Sink.fold(ByteString.empty)(_ ++ _)).map(_.utf8String) map { result =>
-            result
-          }
-
-        futurePatch onComplete {
-          case Success(d) => println(d)
-          case Failure(exception) => println(exception.toString)
-        }
-
-      }
-      case Failure(exception) => println(exception.toString)
-
-    }
-
-    future
-  }
 }

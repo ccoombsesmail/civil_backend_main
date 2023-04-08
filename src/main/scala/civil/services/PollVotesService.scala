@@ -35,8 +35,7 @@ object PollVotesService {
 }
 
 
-case class PollVotesServiceLive(pollVotesRepo: PollVotesRepository) extends PollVotesService {
-  val authenticationService = AuthenticationServiceLive()
+case class PollVotesServiceLive(pollVotesRepo: PollVotesRepository, authenticationService: AuthenticationService) extends PollVotesService {
 
   override def createPollVote(jwt: String, jwtType: String, pollVotes: IncomingPollVote): ZIO[Any, AppError, OutgoingPollVote] = {
     for {
@@ -70,6 +69,6 @@ case class PollVotesServiceLive(pollVotesRepo: PollVotesRepository) extends Poll
 
 object PollVotesServiceLive {
 
-  val layer: URLayer[PollVotesRepository, PollVotesService] = ZLayer.fromFunction(PollVotesServiceLive.apply _)
+  val layer: URLayer[PollVotesRepository with AuthenticationService, PollVotesService] = ZLayer.fromFunction(PollVotesServiceLive.apply _)
 
 }

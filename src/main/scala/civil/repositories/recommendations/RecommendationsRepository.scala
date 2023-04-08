@@ -1,14 +1,14 @@
 package civil.repositories.recommendations
 
-import civil.models.{OutgoingRecommendations, Recommendations, Discussions, Topics}
+import civil.models.{Discussions, OutgoingRecommendations, Recommendations, Topics}
 import civil.errors.AppError
 import civil.errors.AppError.InternalServerError
-import civil.repositories.QuillContextHelper
 import io.getquill.Ord
 import zio._
 import io.scalaland.chimney.dsl._
 
 import java.util.UUID
+import javax.sql.DataSource
 
 trait RecommendationsRepository {
   def insertRecommendation(rec: Recommendations): Task[Unit]
@@ -26,17 +26,19 @@ object RecommendationsRepository {
 }
 
 
-case class RecommendationsRepositoryLive() extends RecommendationsRepository {
-  import QuillContextHelper.ctx._
-  import QuillContextHelper.ctx.extras._
+case class RecommendationsRepositoryLive(dataSource: DataSource) extends RecommendationsRepository {
+  import civil.repositories.QuillContext._
+  import civil.repositories.QuillContext.extras._
 
   override def insertRecommendation(rec: Recommendations): Task[Unit] = {
-    run(query[Recommendations].insertValue(lift(rec)))
+    run(query[Recommendations].insertValue(lift(rec))).mapError(e => InternalServerError(e.toString))
+      .provideEnvironment(ZEnvironment(dataSource))
     ZIO.unit
   }
 
   override def batchInsertRecommendation(recs: List[Recommendations]): Task[Unit] = {
-    run(liftQuery(recs).foreach(e => query[Recommendations].insertValue(e)))
+    run(liftQuery(recs).foreach(e => query[Recommendations].insertValue(e))).mapError(e => InternalServerError(e.toString))
+      .provideEnvironment(ZEnvironment(dataSource))
     ZIO.unit
   }
 
@@ -52,19 +54,19 @@ case class RecommendationsRepositoryLive() extends RecommendationsRepository {
     }
 
     for {
-      outgoingRecs <- ZIO.attempt(
-        run(q).map({ case (rec, topic, subtopic) =>
-          rec.into[OutgoingRecommendations]
-            .withFieldConst(_.topic, topic)
-            .withFieldConst(_.discussion, subtopic)
-            .transform
-        })
-      ).mapError(e => InternalServerError(e.toString))
-    } yield outgoingRecs
+      outgoingRecs <- run(q).mapError(e => InternalServerError(e.toString))
+        .provideEnvironment(ZEnvironment(dataSource))
+      out = outgoingRecs.map { case (rec, topic, subtopic) =>
+        rec.into[OutgoingRecommendations]
+        .withFieldConst (_.topic, topic)
+        .withFieldConst (_.discussion, subtopic)
+        .transform
+      }
+    } yield out
   }
 
 }
 
 object RecommendationsRepositoryLive {
-  val layer: URLayer[Any, RecommendationsRepository] = ZLayer.fromFunction(RecommendationsRepositoryLive.apply _)
+  val layer: URLayer[DataSource, RecommendationsRepository] = ZLayer.fromFunction(RecommendationsRepositoryLive.apply _)
 }

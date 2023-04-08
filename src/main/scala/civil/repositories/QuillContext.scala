@@ -1,41 +1,52 @@
 package civil.repositories
-import cats.conversions.all.autoWidenFunctor
-import civil.config.Config
-import civil.models.{CommentWithDepth, CommentWithDepthAndUser, TribunalCommentWithDepth}
-import com.zaxxer.hikari.{HikariConfig, HikariDataSource}
-import io.getquill.{PostgresJdbcContext, PostgresZioJdbcContext, Query, SnakeCase}
-import io.circe._
-import io.circe.parser._
-import scalaz.Leibniz.subst
-import zio.ZIO
+import civil.models.{CommentWithDepthAndUser, TribunalCommentWithDepth, TribunalCommentWithDepthAndUser}
+import com.typesafe.config.ConfigFactory
+import io.getquill.context.ZioJdbc.DataSourceLayer
+import io.getquill.{PostgresZioJdbcContext, Query, SnakeCase}
+import zio.{System, ZLayer}
 
-
-import java.sql.Types
-import java.sql.Timestamp
 import java.util.UUID
-import java.time.Instant
-
-class QuillContext extends PostgresZioJdbcContext(SnakeCase) with QuillCodecs
-
-object QuillContextHelper extends QuillContext {
-  lazy val pgDataSource = new org.postgresql.ds.PGSimpleDataSource()
-  val pass = Config().getString("civil.pass")
-  pgDataSource.setUser("postgres")
-  pgDataSource.setPassword(pass)
-  println(Config().getString("civil.databaseUrl"))
-  pgDataSource.setUrl(Config().getString("civil.databaseUrl"))
-  val config = new HikariConfig()
-  config.setDataSource(pgDataSource)
-  lazy val ctx = new PostgresJdbcContext(SnakeCase, new HikariDataSource(config))
+import javax.sql.DataSource
+import scala.jdk.CollectionConverters.MapHasAsJava
 
 
+object QuillContext extends PostgresZioJdbcContext(SnakeCase) with QuillCodecs {
+  val dataSourceLayer: ZLayer[Any, Nothing, DataSource] =
+    ZLayer {
+      for {
+        herokuURL <- System.env("DATABASE_URL").orDie
+        localDBConfig = Map(
+          "dataSource.user"     -> "postgres",
+          "dataSource.password" -> "postgres",
+          "dataSource.url"      -> "jdbc:postgresql://localhost:5433/civil_main"
+        )
+        config = ConfigFactory.parseMap(
+          localDBConfig.updated("dataSourceClassName", "org.postgresql.ds.PGSimpleDataSource").asJava
+        )
+      } yield DataSourceLayer.fromConfig(config).orDie
+    }.flatten
 
 }
 
 
-object QuillContextQueries extends QuillContext {
+//object QuillContextHelper extends QuillContext {
+//  lazy val pgDataSource = new org.postgresql.ds.PGSimpleDataSource()
+//  val pass = Config().getString("civil.pass")
+//  pgDataSource.setUser("postgres")
+//  pgDataSource.setPassword(pass)
+//  println(Config().getString("civil.databaseUrl"))
+//  pgDataSource.setUrl(Config().getString("civil.databaseUrl"))
+//  val config = new HikariConfig()
+//  config.setDataSource(pgDataSource)
+//  lazy val ctx = new PostgresJdbcContext(SnakeCase, new HikariDataSource(config))
+//
+//}
+
+
+object QuillContextQueries {
+  import QuillContext._
   val getCommentsWithReplies = quote { (id: UUID) =>
-    infix"""
+    sql"""
      WITH RECURSIVE comments_tree as (
       select
         c1.id,
@@ -130,12 +141,13 @@ object QuillContextQueries extends QuillContext {
   }
 
   val getTribunalCommentsWithReplies = quote { (id: UUID) =>
-    infix"""
+    sql"""
      WITH RECURSIVE comments_tree as (
       select
         c1.id,
         c1.editor_state,
         c1.created_by_username,
+        c1.created_by_user_id,
         c1.sentiment,
         c1.reported_content_id,
         c1.parent_id,
@@ -144,7 +156,10 @@ object QuillContextQueries extends QuillContext {
         c1.root_id,
         c1.source,
         c1.comment_type,
-        0 as depth
+        0 as depth,
+        u1.icon_src as user_icon_src,
+        u1.experience as user_experience,
+        u1.user_id
       from tribunal_comments c1
        where c1.id = $id
 
@@ -154,6 +169,7 @@ object QuillContextQueries extends QuillContext {
         c2.id,
         c2.editor_state,
         c2.created_by_username,
+        c2.created_by_user_id,
         c2.sentiment,
         c2.reported_content_id,
         c2.parent_id,
@@ -162,11 +178,15 @@ object QuillContextQueries extends QuillContext {
         c2.root_id,
         c2.source,
         c2.comment_type,
-        depth + 1
+        depth + 1,
+        u2.icon_src as user_icon_src,
+        u2.experience as user_experience,
+        u2.user_id
       from tribunal_comments c2
+      join users u2 on c2.created_by_user_id = u2.user_id
       join comments_tree ct on ct.id = c2.parent_id
 
     ) select * from comments_tree
-      """.as[Query[TribunalCommentWithDepth]]
+      """.pure.as[Query[TribunalCommentWithDepthAndUser]]
   }
 }

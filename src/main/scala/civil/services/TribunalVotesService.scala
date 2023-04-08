@@ -20,11 +20,9 @@ object TribunalVotesService {
 }
 
 
-case class TribunalVotesServiceLive(tribunalVotesRepo: TribunalVotesRepository) extends TribunalVotesService {
+case class TribunalVotesServiceLive(tribunalVotesRepo: TribunalVotesRepository, authenticationService: AuthenticationService) extends TribunalVotesService {
 
   override def addTribunalVote(jwt: String, jwtType: String, tribunalVote: TribunalVote): ZIO[Any, AppError, TribunalVote] = {
-    val authenticationService = AuthenticationServiceLive()
-
     for {
       userData <- authenticationService.extractUserData(jwt, jwtType)
       vote <- tribunalVotesRepo.addTribunalVote(
@@ -40,6 +38,6 @@ case class TribunalVotesServiceLive(tribunalVotesRepo: TribunalVotesRepository) 
 
 
 object TribunalVotesServiceLive {
-  val layer: URLayer[TribunalVotesRepository, TribunalVotesService] = ZLayer.fromFunction(TribunalVotesServiceLive.apply _)
+  val layer: URLayer[TribunalVotesRepository with AuthenticationService, TribunalVotesService] = ZLayer.fromFunction(TribunalVotesServiceLive.apply _)
 }
 

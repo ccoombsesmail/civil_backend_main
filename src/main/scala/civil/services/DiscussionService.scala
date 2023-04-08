@@ -84,8 +84,6 @@ case class DiscussionServiceLive(
     discussionRepository: DiscussionRepository,
     authService: AuthenticationService
 ) extends DiscussionService {
-  val authenticationService = AuthenticationServiceLive()
-
   override def insertDiscussion(
       jwt: String,
       jwtType: String,
@@ -93,7 +91,7 @@ case class DiscussionServiceLive(
   ): ZIO[Any, AppError, Discussions] = {
 
     for {
-      userData <- authenticationService.extractUserData(jwt, jwtType)
+      userData <- authService.extractUserData(jwt, jwtType)
       uuid = UUID.randomUUID()
       discussion <- discussionRepository.insertDiscussion(
         incomingDiscussion

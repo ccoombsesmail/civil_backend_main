@@ -34,7 +34,11 @@ case class IncomingTopic(
     evidenceLinks: Option[List[String]],
     category: TopicCategories,
     userUploadedImageUrl: Option[String],
-    userUploadedVodUrl: Option[String]
+    userUploadedVodUrl: Option[String],
+    topicWords: Seq[String] = Seq(),
+    reportStatus: String = Clean.entryName,
+    topicId: Option[UUID] = None,
+    discussionId: Option[UUID] = None
 )
 
 object IncomingTopic {
@@ -48,6 +52,10 @@ case class ExternalContentData(
     embedId: Option[String],
     thumbImgUrl: Option[String]
 )
+
+object ExternalContentData {
+  implicit val codec: JsonCodec[ExternalContentData] = DeriveJsonCodec.gen[ExternalContentData]
+}
 
 case class Topics(
     id: UUID,
@@ -69,6 +77,10 @@ case class Topics(
     topicId: Option[UUID] = None,
     discussionId: Option[UUID] = None
 )
+
+object Topics {
+  implicit val codec: JsonCodec[Topics] = DeriveJsonCodec.gen[Topics]
+}
 
 case class OutgoingTopic(
     id: UUID,

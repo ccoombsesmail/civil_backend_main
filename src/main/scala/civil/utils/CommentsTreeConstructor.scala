@@ -1,7 +1,6 @@
 package civil.utils
 
 import civil.models.{CommentNode, CommentReply, EntryWithDepth, TribunalCommentNode, TribunalCommentsReply, TribunalEntryWithDepth}
-import civil.models._
 
 import java.util.UUID
 import scala.annotation.tailrec

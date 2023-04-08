@@ -5,8 +5,10 @@ import civil.errors.AppError
 import civil.models.{TopicLiked, UpdateTopicLikes}
 import civil.models.NotifcationEvents.{GivingUserNotificationData, TopicLike}
 import civil.repositories.topics.TopicLikesRepository
-import civil.services.{AuthenticationServiceLive, KafkaProducerServiceLive}
+import civil.services.{AuthenticationService, AuthenticationServiceLive, KafkaProducerServiceLive}
 import zio.{URLayer, ZIO, ZLayer}
+
+import javax.sql.DataSource
 
 trait TopicLikesService {
   def addRemoveTopicLikeOrDislike(
@@ -28,7 +30,7 @@ object TopicLikesService {
 
 }
 
-case class TopicLikesServiceLive(topicLikesRep: TopicLikesRepository)
+case class TopicLikesServiceLive(topicLikesRep: TopicLikesRepository, authenticationService: AuthenticationService)
     extends TopicLikesService {
   val kafka = new KafkaProducerServiceLive()
 
@@ -37,7 +39,6 @@ case class TopicLikesServiceLive(topicLikesRep: TopicLikesRepository)
       jwtType: String,
       topicLikeDislikeData: UpdateTopicLikes
   ): ZIO[Any, AppError, TopicLiked] = {
-    val authenticationService = AuthenticationServiceLive()
     for {
       userData <- authenticationService.extractUserData(jwt, jwtType).mapError(e => InternalServerError(e.toString))
       data <- topicLikesRep
@@ -76,6 +77,6 @@ case class TopicLikesServiceLive(topicLikesRep: TopicLikesRepository)
 
 object TopicLikesServiceLive {
 
-  val layer: URLayer[TopicLikesRepository, TopicLikesService] = ZLayer.fromFunction(TopicLikesServiceLive.apply _)
+  val layer: URLayer[TopicLikesRepository with AuthenticationService, TopicLikesService] = ZLayer.fromFunction(TopicLikesServiceLive.apply _)
 
 }

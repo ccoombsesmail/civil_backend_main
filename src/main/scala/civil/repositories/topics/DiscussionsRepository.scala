@@ -3,11 +3,12 @@ package civil.repositories.topics
 import civil.models.{Comments, Discussions, ExternalLinksDiscussions, OutgoingDiscussion, Users, _}
 import civil.errors.AppError
 import civil.errors.AppError.InternalServerError
-import civil.repositories.QuillContextHelper
+import civil.repositories.QuillContext.run
 import zio._
 import io.scalaland.chimney.dsl._
 
 import java.util.UUID
+import javax.sql.DataSource
 
 case class DiscussionWithLinkData(
     discussion: Discussions,
@@ -69,8 +70,9 @@ object DiscussionRepository {
     )
 }
 
-case class DiscussionRepositoryLive() extends DiscussionRepository {
-  import QuillContextHelper.ctx._
+case class DiscussionRepositoryLive(dataSource: DataSource)
+    extends DiscussionRepository {
+  import civil.repositories.QuillContext._
 
   override def insertDiscussion(
       discussion: Discussions,
@@ -78,109 +80,100 @@ case class DiscussionRepositoryLive() extends DiscussionRepository {
   ): ZIO[Any, AppError, Discussions] = {
 
     for {
-      discussionWithLinkData <-
-        if (externalLinks.isEmpty)
-          ZIO
-            .attempt(transaction {
-              val inserted = run(
-                query[Discussions]
-                  .insertValue(lift(discussion))
-                  .returning(inserted => inserted)
-              )
-              DiscussionWithLinkData(
-                inserted,
-                None
-              )
-            })
-            .mapError(e => InternalServerError(e.toString))
-        else
-          ZIO
-            .attempt(transaction {
-              val inserted = run(
-                query[Discussions]
-                  .insertValue(lift(discussion))
-                  .returning(inserted => inserted)
-              )
-              val linkData = run(
-                query[ExternalLinksDiscussions]
-                  .insertValue(
-                    lift(externalLinks.get.copy(discussionId = inserted.id))
-                  )
-                  .returning(inserted => inserted)
-              )
-              DiscussionWithLinkData(
-                inserted,
-                Some(linkData)
-              )
-            })
-            .mapError(e => InternalServerError(e.toString))
-    } yield discussionWithLinkData.discussion
+      _ <- ZIO
+        .when(externalLinks.isEmpty)(
+          run(
+            query[Discussions]
+              .insertValue(lift(discussion))
+              .returning(inserted => inserted)
+          )
+        )
+        .mapError(e => InternalServerError(e.toString))
+        .provideEnvironment(ZEnvironment(dataSource))
+      _ <- ZIO
+        .when(externalLinks.isDefined)(transaction {
+          val inserted = run(
+            query[Discussions]
+              .insertValue(lift(discussion))
+              .returning(inserted => inserted)
+          )
+          inserted.map(t => {
+            run(
+              query[ExternalLinksDiscussions]
+                .insertValue(
+                  lift(externalLinks.get.copy(discussionId = t.id))
+                )
+            )
+          })
+
+        })
+        .mapError(e => InternalServerError(e.toString))
+        .provideEnvironment(ZEnvironment(dataSource))
+    } yield discussion
   }
 
   override def getDiscussions(
       topicId: UUID,
       skip: Int
-
-                             ): ZIO[Any, AppError, List[OutgoingDiscussion]] = {
+  ): ZIO[Any, AppError, List[OutgoingDiscussion]] = {
 
     for {
-      discussionsUsersLinksJoin <- ZIO
-        .attempt(
-          run(
-            query[Discussions]
-              .filter(d => d.topicId == lift(topicId))
-              .join(query[Users])
-              .on(_.createdByUserId == _.userId)
-              .leftJoin(query[ExternalLinksDiscussions])
-              .on { case ((d, _), l) => d.id == l.discussionId }
-              .map { case ((d, u), l) => (d, u, l) }
-              .drop(lift(skip)).take(10)          )
-        )
+      discussionsUsersLinksJoin <- run(
+        query[Discussions]
+          .filter(d => d.topicId == lift(topicId))
+          .join(query[Users])
+          .on(_.createdByUserId == _.userId)
+          .leftJoin(query[ExternalLinksDiscussions])
+          .on { case ((d, _), l) => d.id == l.discussionId }
+          .map { case ((d, u), l) => (d, u, l) }
+          .drop(lift(skip))
+          .take(10)
+      )
         .mapError(e => InternalServerError(e.toString))
-
-      discussions <- ZIO
-        .attempt(discussionsUsersLinksJoin.map { case (d, u, linkData) =>
-          val createdByIconSrc = u.iconSrc
-          val commentNumbers = run(
+        .provideEnvironment(ZEnvironment(dataSource))
+      discussions <- ZIO.collectAll(discussionsUsersLinksJoin.map { case (d, u, linkData) =>
+        val createdByIconSrc = u.iconSrc
+        for {
+          commentNumbers <- run(
             query[Comments]
               .filter(c => c.discussionId == lift(d.id) && c.parentId.isEmpty)
               .groupBy(c => c.sentiment)
               .map { case (sentiment, comments) =>
                 (sentiment, comments.size)
               }
-          ).toMap
-
-          val totalCommentsAndReplies =
-            run(query[Comments].filter(c => c.discussionId == lift(d.id)).size)
-          val positiveComments = commentNumbers.getOrElse("POSITIVE", 0L)
-          val neutralComments = commentNumbers.getOrElse("NEUTRAL", 0L)
-          val negativeComments = commentNumbers.getOrElse("NEGATIVE", 0L)
-          d.into[OutgoingDiscussion]
-            .withFieldConst(_.liked, false)
-            .withFieldConst(_.createdByIconSrc, createdByIconSrc.getOrElse(""))
-            .withFieldConst(_.positiveComments, positiveComments)
-            .withFieldConst(_.neutralComments, neutralComments)
-            .withFieldConst(_.negativeComments, negativeComments)
-            .withFieldConst(
-              _.allComments,
-              negativeComments + neutralComments + positiveComments
-            )
-            .withFieldConst(_.totalCommentsAndReplies, totalCommentsAndReplies)
-            .withFieldConst(
-              _.externalContentData,
-              linkData.map(data =>
-                ExternalContentData(
-                  linkType = data.linkType,
-                  embedId = data.embedId,
-                  externalContentUrl = data.externalContentUrl,
-                  thumbImgUrl = data.thumbImgUrl
-                )
+          )
+          commentNumbersMap = commentNumbers.toMap
+          totalCommentsAndReplies <- run(query[Comments].filter(c => c.discussionId == lift(d.id)).size)
+          positiveComments = commentNumbersMap.getOrElse("POSITIVE", 0L)
+          neutralComments = commentNumbersMap.getOrElse("NEUTRAL", 0L)
+          negativeComments = commentNumbersMap.getOrElse("NEGATIVE", 0L)
+        } yield d.into[OutgoingDiscussion]
+          .withFieldConst(_.liked, false)
+          .withFieldConst(_.createdByIconSrc, createdByIconSrc.getOrElse(""))
+          .withFieldConst(_.positiveComments, positiveComments)
+          .withFieldConst(_.neutralComments, neutralComments)
+          .withFieldConst(_.negativeComments, negativeComments)
+          .withFieldConst(
+            _.allComments,
+            negativeComments + neutralComments + positiveComments
+          )
+          .withFieldConst(_.totalCommentsAndReplies, totalCommentsAndReplies)
+          .withFieldConst(
+            _.externalContentData,
+            linkData.map(data =>
+              ExternalContentData(
+                linkType = data.linkType,
+                embedId = data.embedId,
+                externalContentUrl = data.externalContentUrl,
+                thumbImgUrl = data.thumbImgUrl
               )
             )
-            .transform
-        })
-        .mapError(e => InternalServerError(e.toString))
-    } yield discussions
+          )
+          .transform
+      }).mapError(e => InternalServerError(e.toString))
+        .provideEnvironment(ZEnvironment(dataSource))
+      } yield discussions
+
   }
 
   override def getDiscussion(
@@ -188,9 +181,7 @@ case class DiscussionRepositoryLive() extends DiscussionRepository {
   ): ZIO[Any, AppError, OutgoingDiscussion] = {
 
     for {
-      discussionsUsersLinksJoin <- ZIO
-        .attempt(
-          run(
+      discussionsUsersLinksJoin <- run(
             query[Discussions]
               .filter(d => d.id == lift(id))
               .join(query[Users])
@@ -198,9 +189,9 @@ case class DiscussionRepositoryLive() extends DiscussionRepository {
               .leftJoin(query[ExternalLinksDiscussions])
               .on { case ((d, _), l) => d.id == l.discussionId }
               .map { case ((d, u), l) => (d, u, l) }
-          )
         )
         .mapError(e => InternalServerError(e.toString))
+        .provideEnvironment(ZEnvironment(dataSource))
 
       discussionUserLinks <- ZIO
         .fromOption(discussionsUsersLinksJoin.headOption)
@@ -208,26 +199,21 @@ case class DiscussionRepositoryLive() extends DiscussionRepository {
       iconSrc = discussionUserLinks._2
       discussion = discussionUserLinks._1
       linkData = discussionUserLinks._3
-      commentNumbers <- ZIO
-        .attempt(
-          run(
+      commentNumbers <- run(
             query[Comments]
               .filter(c => c.discussionId == lift(id) && c.parentId.isEmpty)
               .groupBy(c => c.sentiment)
               .map { case (sentiment, comments) =>
                 (sentiment, comments.size)
               }
-          ).toMap
         )
-        .mapError(e => InternalServerError(e.toString))
-      numCommentsAndReplies <- ZIO
-        .attempt(
-          run(query[Comments].filter(c => c.discussionId == lift(id))).size
-        )
-        .mapError(e => InternalServerError(e.toString))
-      positiveComments = commentNumbers.getOrElse("POSITIVE", 0L)
-      neutralComments = commentNumbers.getOrElse("NEUTRAL", 0L)
-      negativeComments = commentNumbers.getOrElse("NEGATIVE", 0L)
+        .mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
+      commentNumbersMap = commentNumbers.toMap
+      numCommentsAndReplies <- run(query[Comments].filter(c => c.discussionId == lift(id)))
+        .mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
+      positiveComments = commentNumbersMap.getOrElse("POSITIVE", 0L)
+      neutralComments = commentNumbersMap.getOrElse("NEUTRAL", 0L)
+      negativeComments = commentNumbersMap.getOrElse("NEGATIVE", 0L)
     } yield discussion
       .into[OutgoingDiscussion]
       .withFieldConst(_.liked, false)
@@ -239,7 +225,7 @@ case class DiscussionRepositoryLive() extends DiscussionRepository {
         _.allComments,
         negativeComments + neutralComments + positiveComments
       )
-      .withFieldConst(_.totalCommentsAndReplies, numCommentsAndReplies.toLong)
+      .withFieldConst(_.totalCommentsAndReplies, numCommentsAndReplies.size.toLong)
       .withFieldConst(
         _.externalContentData,
         linkData.map(data =>
@@ -258,12 +244,9 @@ case class DiscussionRepositoryLive() extends DiscussionRepository {
       topicId: UUID
   ): ZIO[Any, AppError, GeneralDiscussionId] = {
     for {
-      discussion <- ZIO
-        .fromOption(
-          run(query[Discussions].filter(_.topicId == lift(topicId))).headOption
-        )
-        .orElseFail(InternalServerError("Cannot Find Discussion"))
-    } yield GeneralDiscussionId(discussion.id)
+      discussionQuery <- run(query[Discussions].filter(_.topicId == lift(topicId))) .mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
+      dis <- ZIO.fromOption(discussionQuery.headOption).mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
+    } yield GeneralDiscussionId(dis.id)
   }
 
   override def getUserDiscussions(
@@ -272,8 +255,7 @@ case class DiscussionRepositoryLive() extends DiscussionRepository {
   ): ZIO[Any, AppError, List[OutgoingDiscussion]] = {
 
     for {
-      discussionsUsersLinksJoin <- ZIO
-        .attempt(
+      discussionsUsersLinksJoin <-
           run(
             query[Discussions]
               .filter(d =>
@@ -286,11 +268,8 @@ case class DiscussionRepositoryLive() extends DiscussionRepository {
               .leftJoin(query[ExternalLinksDiscussions])
               .on { case ((d, _), l) => d.id == l.discussionId }
               .map { case ((d, u), l) => (d, u, l) }
-          )
-        )
-        .mapError(e => InternalServerError(e.toString))
-      discussions <- ZIO
-        .attempt(discussionsUsersLinksJoin.map { case (d, u, linkData) =>
+        ).mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
+      discussions = discussionsUsersLinksJoin.map { case (d, u, linkData) =>
           val createdByIconSrc = u.iconSrc
           d.into[OutgoingDiscussion]
             .withFieldConst(_.liked, false)
@@ -312,13 +291,13 @@ case class DiscussionRepositoryLive() extends DiscussionRepository {
               )
             )
             .transform
-        })
-        .mapError(e => InternalServerError(e.toString))
+        }
     } yield discussions
 
   }
 }
 
 object DiscussionRepositoryLive {
-  val layer: URLayer[Any, DiscussionRepository] = ZLayer.fromFunction(DiscussionRepositoryLive.apply _)
+  val layer: URLayer[DataSource, DiscussionRepository] =
+    ZLayer.fromFunction(DiscussionRepositoryLive.apply _)
 }

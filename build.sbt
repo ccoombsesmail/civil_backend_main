@@ -4,9 +4,10 @@ val circeVersion = "0.14.5"
 val akkaVersion = "2.8.0"
 val akkaHttpVersion = "10.5.0"
 val akkaHttpCirceVersion = "1.39.2"
-val zioVersion = "2.0.10"
+val zioVersion = "2.0.0"
 val zioConfigVersion = "3.0.7"
 
+ThisBuild / scalaVersion     := "2.13.8"
 
 flywayUrl := "jdbc:postgresql://localhost:5433/civil_main"
 flywayUser := "postgres"
@@ -18,16 +19,15 @@ dockerExposedPorts ++= Seq(8090)
 mainClass in (Compile, run) := Some("civil.Civil")
 
 Global / onChangedBuildSource := ReloadOnSourceChanges
-ThisBuild / scalaVersion := "2.13.5"
-// ThisBuild / sbtPlugin := true
 Compile / unmanagedSourceDirectories := (Compile / scalaSource).value :: Nil
 
-//ThisBuild / assemblyMergeStrategy in assembly := {
-//  case PathList("META-INF", xs @ _*) => MergeStrategy.defaultMergeStrategy
-//  case PathList("reference.conf")    => MergeStrategy.concat
-//  case x                             => MergeStrategy.last
-//
-//}
+
+ThisBuild / fork := true
+
+ThisBuild / javaOptions ++= Seq(
+  "--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED"
+)
+
 ThisBuild / assemblyMergeStrategy := {
   case PathList("module-info.class") => MergeStrategy.discard
   case x if x.endsWith("/module-info.class") => MergeStrategy.discard
@@ -44,14 +44,15 @@ inThisBuild(
   List(
     version := "0.2.0",
     organization := "ccoombsesmail",
-    dependencyOverrides += "org.scala-lang" % "scala-collection-compat" % "2.13.6",
+//    dependencyOverrides += "org.scala-lang" % "scala-collection-compat" % "2.13.6",
+    dependencyOverrides += "dev.zio" %% "zio" % "2.0.0",
     libraryDependencies ++= Seq(
       "dev.zio" %% "zio" % zioVersion,
-      "dev.zio" %% "zio-config" % zioConfigVersion,
-      "dev.zio" %% "zio-config-magnolia" % zioConfigVersion,
-      "dev.zio" %% "zio-config-typesafe" % zioConfigVersion,
-      "dev.zio" %% "zio-streams" % zioVersion,
-      "dev.zio" %% "zio-kafka" % "2.1.3",
+//      "dev.zio" %% "zio-config" % zioConfigVersion,
+//      "dev.zio" %% "zio-config-magnolia" % zioConfigVersion,
+//      "dev.zio" %% "zio-config-typesafe" % zioConfigVersion,
+//      "dev.zio" %% "zio-streams" % zioVersion,
+      "dev.zio" %% "zio-kafka" % zioVersion,
       "dev.zio" %% "zio-json" % "0.4.2",
       "org.postgresql" % "postgresql" % "42.5.4"
     )
@@ -69,6 +70,7 @@ lazy val root = project
   .settings(
     name := "civil",
     assembly / mainClass := Some("civil.Civil"),
+    dependencyOverrides += "dev.zio" %% "zio" % "2.0.0",
     libraryDependencies ++= Seq(
       "ch.megard" %% "akka-http-cors" % "1.2.0",
       "io.d11"                %% "zhttp"                             % "2.0.0-RC9",

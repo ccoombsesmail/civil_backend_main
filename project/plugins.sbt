@@ -12,3 +12,4 @@ addSbtPlugin("com.eed3si9n"     % "sbt-buildinfo"       % "0.9.0")
 
 addSbtPlugin("io.github.scala-ts" % "sbt-scala-ts" % "0.5.15")
 addSbtPlugin("ch.epfl.scala" % "sbt-scalafix" % "0.10.4")
+addSbtPlugin("net.virtual-void" % "sbt-dependency-graph" % "0.10.0-RC1")

@@ -6,9 +6,10 @@ import civil.errors.AppError.InternalServerError
 import civil.models.{OutgoingPollVote, PollVotes}
 import civil.services.{PollVotesService, PollVotesServiceLive}
 import io.scalaland.chimney.dsl.TransformerOps
-import zio.{URLayer, ZIO, ZLayer}
+import zio.{URLayer, ZEnvironment, ZIO, ZLayer}
 
 import java.util.UUID
+import javax.sql.DataSource
 
 trait PollVotesRepository {
   def createPollVote(pollVotes: PollVotes): ZIO[Any, AppError, OutgoingPollVote]
@@ -37,56 +38,57 @@ object PollVotesRepository {
 }
 
 
-case class PollVotesRepositoryLive() extends PollVotesRepository {
-  import QuillContextHelper.ctx._
+case class PollVotesRepositoryLive(dataSource: DataSource) extends PollVotesRepository {
+  import civil.repositories.QuillContext._
 
 
   override def createPollVote(pollVotes: PollVotes): ZIO[Any, AppError, OutgoingPollVote] = {
     for {
-      vote <- ZIO.attempt(run(
+      vote <- run(
         query[PollVotes]
           .insertValue(lift(pollVotes))
           .returning(r => r)
-      )).mapError(e => InternalServerError(e.toString))
-      totalVotes <- ZIO.attempt(run(
+      ).mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
+      totalVotes <- run(
         query[PollVotes].filter(_.pollOptionId == lift(pollVotes.pollOptionId))
-      ).length).mapError(e => InternalServerError(e.toString))
-    } yield vote.into[OutgoingPollVote].withFieldConst(_.voteCast, true).withFieldConst(_.totalVotes, totalVotes).transform
+      ).mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
+     } yield vote.into[OutgoingPollVote].withFieldConst(_.voteCast, true).withFieldConst(_.totalVotes, totalVotes.length).transform
   }
 
   override def deletePollVote(pollOptionId: UUID, userId: String): ZIO[Any, AppError, OutgoingPollVote] = {
     for {
-      vote <- ZIO.attempt(run(
+      vote <- run(
         query[PollVotes]
           .filter(_.pollOptionId == lift(pollOptionId))
           .delete
           .returning(r => r)
-      )).mapError(e => InternalServerError(e.toString))
-      totalVotes <- ZIO.attempt(run(
+      ).mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
+      totalVotes <- run(
         query[PollVotes].filter(_.pollOptionId == lift(pollOptionId))
-      ).length).mapError(e => InternalServerError(e.toString))
-    } yield vote.into[OutgoingPollVote].withFieldConst(_.voteCast, false).withFieldConst(_.totalVotes, totalVotes).transform
+      ).mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
+    } yield vote.into[OutgoingPollVote].withFieldConst(_.voteCast, false).withFieldConst(_.totalVotes, totalVotes.length).transform
   }
 
   override def getPollVoteData(pollOptionIds: List[UUID], userId: String): ZIO[Any, AppError, List[OutgoingPollVote]] = {
     for {
-      votes <- ZIO.attempt(run(
+      votes <- run(
         query[PollVotes]
           .filter(pv => liftQuery(pollOptionIds.toSet).contains(pv.pollOptionId))
           .groupBy(_.pollOptionId)
           .map { case (id, pv) => (id, pv.size)  }
-      ).toMap).mapError(e => InternalServerError(e.toString))
-      userVotes <- ZIO.attempt(run(
+      ).mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
+      totalVotesMap = votes.toMap
+      userVotes <- run(
         query[PollVotes]
           .filter(pv => liftQuery(pollOptionIds.toSet).contains(pv.pollOptionId) && pv.userId == lift(userId))
-      )).mapError(e => InternalServerError(e.toString))
+      ).mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
       voteMap = userVotes.foldLeft(Map[UUID, PollVotes]()) { (m, pv) =>
         m + (pv.pollOptionId -> pv)
       }
       res = pollOptionIds.map(id => OutgoingPollVote(
         pollOptionId = id,
         voteCast = voteMap.contains(id),
-        totalVotes = votes.getOrElse(id, 0L).toInt
+        totalVotes = totalVotesMap.getOrElse(id, 0L).toInt
       ))
     } yield res
   }
@@ -95,6 +97,6 @@ case class PollVotesRepositoryLive() extends PollVotesRepository {
 
 
 object PollVotesRepositoryLive {
-  val layer: URLayer[Any, PollVotesRepository] = ZLayer.fromFunction(PollVotesRepositoryLive.apply _)
+  val layer: URLayer[DataSource, PollVotesRepository] = ZLayer.fromFunction(PollVotesRepositoryLive.apply _)
 }
 

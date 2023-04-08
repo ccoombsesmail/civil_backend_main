@@ -1,5 +1,5 @@
 package civil.models
-import civil.repositories.QuillContextHelper.insertMeta
+import civil.repositories.QuillContext.insertMeta
 import zio.json.{DeriveJsonCodec, JsonCodec}
 
 import java.util.UUID

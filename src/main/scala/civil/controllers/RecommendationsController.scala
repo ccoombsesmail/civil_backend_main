@@ -1,16 +1,12 @@
 package civil.controllers
 
-import civil.apis.RecommendationsApi.getAllRecommendationsEndpoint
-import civil.repositories.recommendations.RecommendationsRepositoryLive
-import civil.services.{RecommendationsService, RecommendationsServiceLive}
-import sttp.tapir.server.ziohttp.ZioHttpInterpreter
+import civil.services.RecommendationsService
 import zhttp.http.{Http, Request, Response}
-import zio.{URLayer, ZIO, ZLayer}
+import zio.{URLayer, ZLayer}
 import zhttp.http._
 import zio.json.EncoderOps
 
 import java.util.UUID
-import civil.controllers.ParseUtils._
 
 
 final case class RecommendationsController(recommendationsService: RecommendationsService) {

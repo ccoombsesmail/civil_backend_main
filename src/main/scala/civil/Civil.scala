@@ -169,12 +169,12 @@ object Civil extends zio.ZIOAppDefault {
         TribunalCommentsController.layer,
         TribunalCommentsServiceLive.layer,
         TribunalCommentsRepositoryLive.layer,
-        TribunalVotesController.layer,
-        TribunalVotesServiceLive.layer,
-        TribunalVotesRepositoryLive.layer,
         UsersController.layer,
         UsersServiceLive.layer,
         UsersRepositoryLive.layer,
+        QuillContext.dataSourceLayer,
+        AuthenticationServiceLive.layer,
+        PollsRepositoryLive.layer
       )
 
   }

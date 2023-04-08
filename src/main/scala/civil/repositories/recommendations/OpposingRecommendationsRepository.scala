@@ -1,17 +1,14 @@
 package civil.repositories.recommendations
 
-import civil.models.{OpposingRecommendations, OutGoingOpposingRecommendations, Discussions, Topics, UrlsForTFIDFConversion}
+import civil.models.{Discussions, OpposingRecommendations, OutGoingOpposingRecommendations, Topics, UrlsForTFIDFConversion}
 import civil.errors.AppError
-import civil.directives.OutgoingHttp
-import civil.models._
-import civil.repositories.QuillContextHelper
+import civil.errors.AppError.InternalServerError
 import io.getquill.Ord
 import zio._
 import io.scalaland.chimney.dsl._
 
 import java.util.UUID
-import scala.util.{Failure, Success}
-import scala.concurrent.ExecutionContext.Implicits.global
+import javax.sql.DataSource
 
 trait OpposingRecommendationsRepository {
   def insertOpposingRecommendation(opposingRec: OpposingRecommendations): ZIO[Any, AppError, Unit]
@@ -26,35 +23,36 @@ object OpposingRecommendationsRepository {
 }
 
 
-case class OpposingRecommendationsRepositoryLive() extends OpposingRecommendationsRepository {
-  import QuillContextHelper.ctx._
-  import QuillContextHelper.ctx.extras._
+case class OpposingRecommendationsRepositoryLive(dataSource: DataSource) extends OpposingRecommendationsRepository {
+
+  import civil.repositories.QuillContext._
+  import civil.repositories.QuillContext.extras._
 
   override def insertOpposingRecommendation(opposingRec: OpposingRecommendations): ZIO[Any, AppError, Unit] = {
-    val recommendedContentIdIsDiscussion = opposingRec.recommendedContentId.map((recId) => {
-      val isDiscussion = run(query[Discussions].filter(st => st.id == lift(recId))).nonEmpty
-      isDiscussion
-    })
-    opposingRec.recommendedContentId.foreach(recId => {
-        val (topic, topicLink) = run(query[Topics].filter(t => t.id == lift(opposingRec.targetContentId)).leftJoin(query[ExternalLinks]).on(_.id == _.topicId)).head
-        val (recTopic, recTopicLink) = run(
-          query[Topics].filter(t => t.id == lift(recId)).leftJoin(query[ExternalLinks]).on(_.id == _.topicId)
-      ).head
-        val fut = for {
-          recContentUrl <- recTopicLink.map(data => data.externalContentUrl)
-          contentUrl <-  topicLink.map(data => data.externalContentUrl)
-          f = OutgoingHttp.sendHTTPToMLService("tfidf", UrlsForTFIDFConversion(contentUrl, recContentUrl))
-        } yield f
-        fut.foreach(f => {
-          f onComplete {
-            case Success(score) => {
-              val recToBeInserted = opposingRec.copy(isDiscussion = recommendedContentIdIsDiscussion.getOrElse(false), similarityScore = score.score)
-              run(query[OpposingRecommendations].insertValue(lift(recToBeInserted)))
-            }
-            case Failure(t) => println("An error has occurred: " + t.getMessage)
-          }
-        })
-    })
+//    val recommendedContentIdIsDiscussion = opposingRec.recommendedContentId.map((recId) => {
+//      val isDiscussion = run(query[Discussions].filter(st => st.id == lift(recId))).nonEmpty
+//      isDiscussion
+//    })
+//    opposingRec.recommendedContentId.foreach(recId => {
+//        val (topic, topicLink) = run(query[Topics].filter(t => t.id == lift(opposingRec.targetContentId)).leftJoin(query[ExternalLinks]).on(_.id == _.topicId)).head
+//        val (recTopic, recTopicLink) = run(
+//          query[Topics].filter(t => t.id == lift(recId)).leftJoin(query[ExternalLinks]).on(_.id == _.topicId)
+//      ).head
+//        val fut = for {
+//          recContentUrl <- recTopicLink.map(data => data.externalContentUrl)
+//          contentUrl <-  topicLink.map(data => data.externalContentUrl)
+//          f = OutgoingHttp.sendHTTPToMLService("tfidf", UrlsForTFIDFConversion(contentUrl, recContentUrl))
+//        } yield f
+//        fut.foreach(f => {
+//          f onComplete {
+//            case Success(score) => {
+//              val recToBeInserted = opposingRec.copy(isDiscussion = recommendedContentIdIsDiscussion.getOrElse(false), similarityScore = score.score)
+//              run(query[OpposingRecommendations].insertValue(lift(recToBeInserted)))
+//            }
+//            case Failure(t) => println("An error has occurred: " + t.getMessage)
+//          }
+//        })
+//    })
     ZIO.unit
   }
 
@@ -69,20 +67,22 @@ case class OpposingRecommendationsRepositoryLive() extends OpposingRecommendatio
       } yield (rec, t, st)
     }
 
-    val outgoingRecs = run(q).map({ case (rec, topic, discussion) =>
-      rec.into[OutGoingOpposingRecommendations]
-      .withFieldConst(_.topic, topic)
-      .withFieldConst(_.discussion, discussion)
-      .withFieldConst(_.id, UUID.randomUUID())
-      .transform
-    })
+    for  {
+      outgoingRecs <- run(q).mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
+      out = outgoingRecs.map { case (rec, topic, discussion) =>
+        rec.into[OutGoingOpposingRecommendations]
+          .withFieldConst(_.topic, topic)
+          .withFieldConst(_.discussion, discussion)
+          .withFieldConst(_.id, UUID.randomUUID())
+          .transform
+      }
+    } yield out
 
-    ZIO.succeed(outgoingRecs)
 
   }
 
 }
 
 object OpposingRecommendationsRepositoryLive {
-  val layer: URLayer[Any, OpposingRecommendationsRepository] = ZLayer.fromFunction(OpposingRecommendationsRepositoryLive.apply _)
+  val layer: URLayer[DataSource, OpposingRecommendationsRepository] = ZLayer.fromFunction(OpposingRecommendationsRepositoryLive.apply _)
 }

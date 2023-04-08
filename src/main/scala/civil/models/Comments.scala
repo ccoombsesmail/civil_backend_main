@@ -1,6 +1,7 @@
 package civil.models
 
 import civil.models.enums.ReportStatus.Clean
+import civil.models.enums.TribunalCommentType
 
 import java.time.LocalDateTime
 import java.util.UUID
@@ -121,8 +122,10 @@ case class IncomingComment(
     rootId: Option[UUID],
     source: Option[String],
     toxicityStatus: Option[String] = None,
-    topicId: UUID
-)
+    topicId: UUID,
+    commentType: TribunalCommentType = TribunalCommentType.General
+
+                          )
 
 
 object IncomingComment {

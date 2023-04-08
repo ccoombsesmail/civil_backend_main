@@ -1,12 +1,9 @@
 package civil.controllers
 
-import civil.apis.EnumsApi.getAllEnumsEndpoint
 import civil.models.enums.TopicCategories
-import sttp.tapir.server.ziohttp.ZioHttpInterpreter
 import zhttp.http.{Http, Request, Response}
 import zio._
 import zhttp.http._
-import zio._
 import zio.json.EncoderOps
 
 final case class EnumsController() {

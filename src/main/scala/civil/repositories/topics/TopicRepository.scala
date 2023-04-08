@@ -4,15 +4,15 @@ import civil.errors.AppError
 import civil.errors.AppError.InternalServerError
 import civil.models.{Discussions, OutgoingTopic, Recommendations, TopicLikes, TopicVods, Topics, Users, _}
 import civil.directives.OutgoingHttp
-import civil.repositories.QuillContextHelper
 import civil.repositories.recommendations.RecommendationsRepository
 import io.scalaland.chimney.dsl._
 import zio.{ZIO, _}
 import io.getquill._
 
 import java.util.UUID
+import javax.sql.DataSource
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 
 
 case class TopicWithLinkData(
@@ -20,12 +20,14 @@ case class TopicWithLinkData(
     externalLinks: Option[ExternalLinks]
 )
 case class TopicRepoHelpers(
-    recommendationsRepository: RecommendationsRepository
+    recommendationsRepository: RecommendationsRepository,
+    dataSource: DataSource
 ) {
 
-  import QuillContextHelper.ctx._
+  import civil.repositories.QuillContext._
+  implicit val ec: ExecutionContext = ExecutionContext.global
 
-  def topicsUsersVodsLinksJoin(fromUserId: Option[String]) = {
+  private def topicsUsersVodsLinksJoin(fromUserId: Option[String]): Quoted[Query[(((Topics, Users), Option[TopicVods]), Option[ExternalLinks])]] = {
     fromUserId match {
       case Some(userId) =>
         quote {
@@ -68,17 +70,18 @@ case class TopicRepoHelpers(
     userUploadedImageUrl = None
   )
 
-  def runTopicMlPipeline(url: String, insertedTopic: Topics): Future[Unit] =
+  def runTopicMlPipeline(url: String, insertedTopic: Topics): ZIO[Any, Throwable, Unit] = {
+
     for {
-      words <- OutgoingHttp.getTopicWordsFromMLService("get-topic-words", url)
-      targetTopicKeyWords = run(
+      words <- ZIO.fromFuture { _ => OutgoingHttp.getTopicWordsFromMLService("get-topic-words", url) }
+      targetTopicKeyWords <- run(
         query[Topics]
           .filter(t => t.id == lift(insertedTopic.id))
           .update(
             _.topicWords -> lift(words.topicWords)
           )
           .returning(t => (t.id, t.topicWords))
-      )
+      ).mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
       recommendedTopics <- getSimilarTopics(targetTopicKeyWords, url)
 
       recommendations = recommendedTopics.recs
@@ -97,34 +100,40 @@ case class TopicRepoHelpers(
         .toList
       _ = recommendationsRepository.batchInsertRecommendation(recommendations)
     } yield ()
+  }
 
-  def getSimilarTopics(
+  private def getSimilarTopics(
       targetTopicData: (UUID, Seq[String]),
       contentUrl: String
   ) = {
     val targetTopicKeyWords = targetTopicData._2.toSet
-    val allTopicData = run(
-      query[Topics]
-        .filter(t => t.id != lift(targetTopicData._1))
-        .join(query[ExternalLinks])
-        .on(_.id == _.topicId)
-        .map { case (t, el) => (t.id, t.topicWords, el.externalContentUrl) }
-    )
-    val potentialRecommendationIds = allTopicData
-      .filter({ case (id, words, externalContentUrl) =>
-        val wordsAsSet = words.toSet
-        val numWordsIntersecting =
-          targetTopicKeyWords.intersect(wordsAsSet).size
-        numWordsIntersecting > 2
-      })
-      .map(d => (d._1.toString, d._3))
-      .toMap
-    OutgoingHttp.getSimilarityScoresBatch(
-      "tfidf-batch",
-      contentUrl,
-      targetTopicData._1,
-      potentialRecommendationIds
-    )
+
+    for {
+      allTopicData  <- run(
+          query[Topics]
+          .filter(t => t.id != lift(targetTopicData._1))
+          .join(query[ExternalLinks])
+          .on(_.id == _.topicId)
+          .map {case (t, el) => (t.id, t.topicWords, el.externalContentUrl)}
+      ).provideEnvironment(ZEnvironment(dataSource))
+      potentialRecommendationIds = allTopicData
+        .filter({ case (id, words, externalContentUrl) =>
+          val wordsAsSet = words.toSet
+          val numWordsIntersecting =
+            targetTopicKeyWords.intersect(wordsAsSet).size
+          numWordsIntersecting > 2
+        })
+        .map(d => (d._1.toString, d._3))
+        .toMap
+      recs <- ZIO.fromFuture { _ =>
+        OutgoingHttp.getSimilarityScoresBatch(
+          "tfidf-batch",
+          contentUrl,
+          targetTopicData._1,
+          potentialRecommendationIds
+        )}
+    } yield recs
+
   }
 
   def getTopicsWithLikeStatus(
@@ -133,23 +142,20 @@ case class TopicRepoHelpers(
       skip: Int = 0
   ): ZIO[Any, InternalServerError, List[OutgoingTopic]] =
     for {
-      likes <- ZIO
-        .attempt(
-          run(query[TopicLikes].filter(_.userId == lift(requestingUserID)))
-        )
-        .mapError(e => InternalServerError(e.toString))
+      likes <- run(query[TopicLikes].filter(_.userId == lift(requestingUserID)))
+        .mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
       likesMap = likes.foldLeft(Map[UUID, Int]()) { (m, t) =>
         m + (t.topicId -> t.value)
       }
-      topicsUsersVodsJoin <- ZIO
-        .attempt(run(topicsUsersVodsLinksJoin(fromUserId).drop(lift(skip)).take(5).sortBy(_._1._1._1.createdAt)(Ord.desc)
-        ).map {
+      topicsUsersVodsJoin <- run(topicsUsersVodsLinksJoin(fromUserId).drop(lift(skip)).take(5).sortBy(_._1._1._1.createdAt)(Ord.desc))
+        .mapError(e => InternalServerError(e.toString))
+        .provideEnvironment(ZEnvironment(dataSource))
+
+        tuvj = topicsUsersVodsJoin.map {
           case (((t, u), v), l) =>
             (t, u, v, l)
-        })
-        .mapError(e => InternalServerError(e.toString))
-
-      outgoingTopics <- ZIO.foreachPar(topicsUsersVodsJoin)(row => {
+        }
+      outgoingTopics <- ZIO.foreachPar(tuvj)(row => {
         val (topic, user, vod, linkData) = row
 
         ZIO
@@ -236,82 +242,74 @@ object TopicRepository {
 }
 
 case class TopicRepositoryLive(
-    recommendationsRepository: RecommendationsRepository
+    recommendationsRepository: RecommendationsRepository,
+    dataSource: DataSource
 ) extends TopicRepository {
-  import QuillContextHelper.ctx._
 
-  private val helpers = TopicRepoHelpers(recommendationsRepository)
+  private val helpers = TopicRepoHelpers(recommendationsRepository, dataSource)
   import helpers._
+  import civil.repositories.QuillContext._
 
   override def insertTopic(
-      topic: Topics,
+      incomingTopic: Topics,
       externalLinks: Option[ExternalLinks]
   ): ZIO[Any, AppError, OutgoingTopic] = {
     for {
-      user <- ZIO
-        .fromOption(
+      userQuery <-
           run(
-            query[Users].filter(u => u.userId == lift(topic.createdByUserId))
-          ).headOption
-        )
+            query[Users].filter(u => u.userId == lift(incomingTopic.createdByUserId))
+          )
         .mapError(_ =>
           InternalServerError("There Was A Problem Identifying The User")
-        )
-      topicWithLinkData <-
-        if (externalLinks.isEmpty)
-          ZIO
-            .attempt(transaction {
+        ).provideEnvironment(ZEnvironment(dataSource))
+      user <- ZIO.fromOption(userQuery.headOption).mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
+      _ <- ZIO.when(externalLinks.isEmpty)(transaction {
               val inserted = run(
                 query[Topics]
-                  .insertValue(lift(topic.copy(editorState = topic.editorState)))
+                  .insertValue(lift(incomingTopic))
                   .returning(inserted => inserted)
               )
-              run(
-                query[Discussions].insertValue(lift(getDefaultDiscussion(inserted)))
-              )
-              TopicWithLinkData(
-                inserted,
-                None
-              )
+              inserted.map(t => {
+                run(
+                  query[Discussions].insertValue(lift(getDefaultDiscussion(t)))
+                )
+              })
             })
-            .mapError(e => InternalServerError(e.toString))
-        else
-          ZIO
-            .attempt(transaction {
+            .mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
+      _ <- ZIO.when(externalLinks.isDefined)(transaction {
               val inserted = run(
                 query[Topics]
-                  .insertValue(lift(topic))
+                  .insertValue(lift(incomingTopic))
                   .returning(inserted => inserted)
               )
-              run(
-                query[Discussions].insertValue(lift(getDefaultDiscussion(inserted)))
-              )
-              val linkData = run(
-                query[ExternalLinks]
-                  .insertValue(lift(externalLinks.get.copy(topicId = inserted.id)))
-                  .returning(inserted => inserted)
-              )
-              TopicWithLinkData(
-                inserted,
-                Some(linkData)
-              )
+              inserted.map(t => {
+                run(
+                  query[Discussions].insertValue(lift(getDefaultDiscussion(t)))
+                )
+                run(
+                  query[ExternalLinks]
+                    .insertValue(lift(externalLinks.get.copy(topicId = t.id)))
+                )
+              })
             })
-            .mapError(e => InternalServerError(e.toString))
-      topic = topicWithLinkData.topic
+            .mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
+
+      topicWithLinkData = TopicWithLinkData(incomingTopic, externalLinks)
+
+      topic: Topics = topicWithLinkData.topic
       linkData = topicWithLinkData.externalLinks
       _ = topic.userUploadedVodUrl.map(url =>
         run(
           query[TopicVods].insertValue(
             lift(TopicVods(topic.createdByUserId, url, topic.id))
           )
-        )
+        ).mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
       )
       _ = topicWithLinkData.externalLinks.map(el =>
-        runTopicMlPipeline(el.externalContentUrl, topic)
+        runTopicMlPipeline(el.externalContentUrl, topic).mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
       )
 
-      outgoingTopic <- ZIO
-        .attempt(
+      outgoingTopic =
           topic
             .into[OutgoingTopic]
             .withFieldConst(_.createdByIconSrc, user.iconSrc.getOrElse(""))
@@ -330,12 +328,6 @@ case class TopicRepositoryLive(
               )
             )
             .transform
-        )
-        .mapError(_ =>
-          InternalServerError(
-            "There Was A Problem Identifying Saving The Topic"
-          )
-        )
     } yield outgoingTopic
 
   }
@@ -353,15 +345,14 @@ case class TopicRepositoryLive(
     }
 
     for {
-      likes <- ZIO
-        .attempt(run(query[TopicLikes]))
-        .mapError(e => InternalServerError(e.toString))
+      likes <- run(query[TopicLikes])
+        .mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
       likesMap = likes.foldLeft(Map[UUID, Int]()) { (m, t) =>
         m + (t.topicId -> t.value)
       }
-      topicsUsersVodsLinksJoin <- ZIO
-        .attempt(run(joined).map { case (((t, u), v), l) => (t, u, v, l) })
-        .mapError(e => InternalServerError(e.toString))
+      joinedVals <- run(joined).mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
+      topicsUsersVodsLinksJoin = joinedVals.map { case (((t, u), v), l) => (t, u, v, l) }
+
       outgoingTopics <- ZIO.foreach(topicsUsersVodsLinksJoin)(row => {
         val (topic, user, vod, linkData) = row
         ZIO
@@ -411,35 +402,24 @@ case class TopicRepositoryLive(
     }
 
     for {
-      likes <- ZIO
-        .attempt(
-          run(
+      likes <- run(
             query[TopicLikes].filter(l =>
               l.userId == lift(requestingUserID) && l.topicId == lift(id)
             )
-          )
         )
-        .tapError(e => {
-          println(e)
-          ZIO.fail(e)
-        })
         .mapError(e => InternalServerError(e.toString))
+        .provideEnvironment(ZEnvironment(dataSource))
       likesMap = likes.foldLeft(Map[UUID, Int]()) { (m, t) =>
         m + (t.topicId -> t.value)
       }
-      topicsUsersVodsLinkJoin <- ZIO
-        .attempt(run(joined).map { case (((t, u), v), l) => (t, u, v, l) })
-        .tapError(e => {
-          println(e)
-          ZIO.fail(e)
-        })
-        .mapError(e => InternalServerError(e.toString))
+      joinedVals <- run(joined).mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
+      topicsUsersVodsLinksJoin = joinedVals.map { case (((t, u), v), l) => (t, u, v, l) }
       _ <- ZIO
         .fail(
           InternalServerError("Can't find topic details")
         )
-        .unless(topicsUsersVodsLinkJoin.nonEmpty)
-    } yield topicsUsersVodsLinkJoin
+        .unless(topicsUsersVodsLinksJoin.nonEmpty)
+    } yield topicsUsersVodsLinksJoin
       .map(row => {
         val (topic, user, vod, linkData) = row
 
@@ -489,7 +469,7 @@ case class TopicRepositoryLive(
 object TopicRepositoryLive {
 
   val layer: URLayer[
-    RecommendationsRepository,
-    TopicRepository
+    DataSource with RecommendationsRepository,
+    TopicRepository,
   ] = ZLayer.fromFunction(TopicRepositoryLive.apply _)
 }

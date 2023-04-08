@@ -28,10 +28,9 @@ object ReportsService {
 }
 
 
-case class ReportsServiceLive(reportsRepo: ReportsRepository) extends ReportsService {
+case class ReportsServiceLive(reportsRepo: ReportsRepository, authenticationService: AuthenticationService) extends ReportsService {
 
   override def addReport(jwt: String, jwtType: String, report: Report): ZIO[Any, AppError, Unit] = {
-    val authenticationService = AuthenticationServiceLive()
     for {
       userData <- authenticationService.extractUserData(jwt, jwtType)
       _ <- reportsRepo.addReport(
@@ -45,8 +44,6 @@ case class ReportsServiceLive(reportsRepo: ReportsRepository) extends ReportsSer
   }
 
   override def getReport(jwt: String, jwtType: String, contentId: UUID): ZIO[Any, AppError, ReportInfo] = {
-    val authenticationService = AuthenticationServiceLive()
-
     for {
       userData <- authenticationService.extractUserData(jwt, jwtType)
       reportInfo <- reportsRepo.getReport(contentId, userData.userId)
@@ -57,5 +54,5 @@ case class ReportsServiceLive(reportsRepo: ReportsRepository) extends ReportsSer
 
 
 object ReportsServiceLive {
-  val layer: URLayer[ReportsRepository, ReportsService] = ZLayer.fromFunction(ReportsServiceLive.apply _)
+  val layer: URLayer[ReportsRepository with AuthenticationService, ReportsService] = ZLayer.fromFunction(ReportsServiceLive.apply _)
 }

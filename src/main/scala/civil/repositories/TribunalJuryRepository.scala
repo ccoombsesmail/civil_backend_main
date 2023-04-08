@@ -1,10 +1,12 @@
 package civil.repositories
 
-import civil.models.{AppError, InternalServerError, TribunalJuryMembers}
-import civil.models.InternalServerError
-import zio.{ZIO, ZLayer}
+import civil.errors.AppError
+import civil.errors.AppError.InternalServerError
+import civil.models.TribunalJuryMembers
+import zio.{URLayer, ZEnvironment, ZIO, ZLayer}
 
 import java.util.UUID
+import javax.sql.DataSource
 
 trait TribunalJuryRepository {
   def insertJuryMember(
@@ -27,21 +29,19 @@ object TribunalJuryRepository {
 
 
 
-case class TribunalJuryRepositoryLive() extends TribunalJuryRepository {
-  import QuillContextHelper.ctx._
-
+case class TribunalJuryRepositoryLive(dataSource: DataSource) extends TribunalJuryRepository {
+  import civil.repositories.QuillContext._
   override def insertJuryMember(userId: String, contentId: UUID): ZIO[Any, AppError, Unit] = {
     for {
-      _ <- ZIO.attempt(run(
-        query[TribunalJuryMembers].insert(lift(TribunalJuryMembers(userId, contentId, contentType = "TOPIC" )))
-      )).mapError(e => InternalServerError(e.toString))
+      _ <- run(
+        query[TribunalJuryMembers].insertValue(lift(TribunalJuryMembers(userId, contentId, contentType = "TOPIC" )))
+      ).mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
     } yield ()
   }
 }
 
 
 object TribunalJuryRepositoryLive {
-  val live: ZLayer[Any, Throwable, TribunalJuryRepository] =
-    ZLayer.succeed(TribunalJuryRepositoryLive())
+  val layer: URLayer[DataSource, TribunalJuryRepository] = ZLayer.fromFunction(TribunalJuryRepositoryLive.apply _)
 }
 

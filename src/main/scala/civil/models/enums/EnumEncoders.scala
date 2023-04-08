@@ -1,12 +1,11 @@
 package civil.models.enums
 
-import civil.repositories.{QuillContext, QuillContextHelper}
+import civil.repositories.QuillContext.{Encoder, Index, PrepareRow, encoder}
 import org.postgresql.util.PGobject
 
 import java.sql.Types
 
 object EnumEncoders {
-  import QuillContextHelper.ctx._
 
 
   implicit val topicCategoriesEncoder: Encoder[TopicCategories] = encoder[TopicCategories](

@@ -3,8 +3,9 @@ package civil.repositories.topics
 import civil.errors.AppError.InternalServerError
 import civil.errors.AppError
 import civil.models.{TopicLiked, TopicLikes, Topics, UpdateTopicLikes}
-import civil.repositories.QuillContextHelper
-import zio.{URLayer, ZIO, ZLayer}
+import zio.{URLayer, ZEnvironment, ZIO, ZLayer}
+
+import javax.sql.DataSource
 
 trait TopicLikesRepository {
   def addRemoveTopicLikeOrDislike(
@@ -24,17 +25,17 @@ object TopicLikesRepository {
 
 }
 
-case class TopicLikesRepositoryLive() extends TopicLikesRepository {
-  import QuillContextHelper.ctx._
+case class TopicLikesRepositoryLive(dataSource: DataSource) extends TopicLikesRepository {
+  import civil.repositories.QuillContext._
 
   override def addRemoveTopicLikeOrDislike(
       topicLikeDislikeData: UpdateTopicLikes,
       userId: String
   ): ZIO[Any, AppError, (TopicLiked, Topics)] = {
     for {
-      previousLikeState <- ZIO.attempt(run(
+      previousLikeState <- run(
         query[TopicLikes].filter(tl => tl.topicId == lift(topicLikeDislikeData.id) && tl.userId == lift(userId))
-      )).mapError(e => InternalServerError(e.toString))
+      ).mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
       newLikeState = topicLikeDislikeData.value
       prevLikeState = previousLikeState.headOption.getOrElse(TopicLikes(topicLikeDislikeData.id, userId, 0)).value
       stateCombo = s"$prevLikeState$newLikeState"
@@ -48,11 +49,11 @@ case class TopicLikesRepositoryLive() extends TopicLikesRepository {
         case _ => 0
       }
       _ <- ZIO.when(likeValueToAdd == 0)(ZIO.fail(InternalServerError("Invalid like value")))
-        topic <- ZIO.attempt(
-        transaction {
+        .mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
+        topic <- transaction {
           run(
             query[TopicLikes]
-              .insertValue(TopicLikes(topicLikeDislikeData.id, userId, topicLikeDislikeData.value))
+              .insertValue(lift(TopicLikes(topicLikeDislikeData.id, userId, topicLikeDislikeData.value)))
               .onConflictUpdate(_.topicId, _.userId)((t, e) => t.value -> e.value)
               .returning(r => r)
           )
@@ -61,8 +62,7 @@ case class TopicLikesRepositoryLive() extends TopicLikesRepository {
             .update(topic => topic.likes -> (topic.likes + lift(likeValueToAdd)))
             .returning(t => t)
           )
-        }
-      ).mapError(e => InternalServerError(e.toString))
+        }.mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
     } yield (TopicLiked(topic.id, topic.likes, topicLikeDislikeData.value), topic)
   }
 
@@ -70,6 +70,6 @@ case class TopicLikesRepositoryLive() extends TopicLikesRepository {
 
 object TopicLikesRepositoryLive {
 
-  val layer: URLayer[Any, TopicLikesRepository] = ZLayer.fromFunction(TopicLikesRepositoryLive.apply _)
+  val layer: URLayer[DataSource, TopicLikesRepository] = ZLayer.fromFunction(TopicLikesRepositoryLive.apply _)
 
 }

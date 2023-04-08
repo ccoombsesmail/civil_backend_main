@@ -4,6 +4,7 @@ import civil.errors.AppError
 import civil.errors.AppError.{GeneralError, InternalServerError}
 import civil.models.enums.Sentiment
 import civil.models._
+import civil.models.enums.ReportStatus.Clean
 import civil.repositories.comments.CommentsRepository
 import civil.repositories.topics.DiscussionRepository
 import civil.services.{AuthenticationService, AuthenticationServiceLive, HTMLSanitizerLive}
@@ -111,6 +112,7 @@ case class CommentsServiceLive(
           .withFieldConst(_.sentiment, Sentiment.POSITIVE.toString)
           .withFieldConst(_.discussionId, incomingComment.contentId)
           .withFieldConst(_.createdByUserId, userData.userId)
+          .withFieldConst(_.reportStatus, Clean.toString)
           .transform,
         userData
       )

@@ -1,24 +1,20 @@
 package civil.repositories
 
-import civil.errors.AppError.InternalServerError
-import civil.models.enums.ClerkEventType
-import civil.models._
 import civil.errors.AppError
-import civil.services.{UsersService, UsersServiceLive}
-import io.scalaland.chimney.dsl._
+import civil.errors.AppError.InternalServerError
+import civil.models._
+import io.scalaland.chimney.dsl.TransformerOps
 import zio._
 
-import java.time.{LocalDateTime, ZoneId}
+import java.sql.SQLException
+import java.time.LocalDateTime
 import java.util.UUID
+import javax.sql.DataSource
 
 trait UsersRepository {
   def upsertDidUser(
       incomingUser: IncomingUser
   ): ZIO[Any, AppError, OutgoingUser]
-  def insertOrUpdateUserHook(
-      webHookData: WebHookData,
-      eventType: ClerkEventType
-  ): ZIO[Any, AppError, Unit]
   def getUser(
       id: String,
       requesterId: String
@@ -37,7 +33,7 @@ trait UsersRepository {
       commentId: UUID,
       civility: Int,
       removeCivility: Boolean
-  ): Task[CivilityGivenResponse]
+  ):  ZIO[Any, AppError, CivilityGivenResponse]
 
   def createUserTag(userId: String, tag: String): ZIO[Any, AppError, OutgoingUser]
   def checkIfTagExists(tag: String): ZIO[Any, AppError, TagExists]
@@ -49,14 +45,6 @@ object UsersRepository {
       incomingUser: IncomingUser
   ): ZIO[UsersRepository, AppError, OutgoingUser] =
     ZIO.serviceWithZIO[UsersRepository](_.upsertDidUser(incomingUser))
-
-  def insertOrUpdateUserHook(
-      webHookData: WebHookData,
-      eventType: ClerkEventType
-  ): ZIO[UsersRepository, AppError, Unit] =
-    ZIO.serviceWithZIO[UsersRepository](
-      _.insertOrUpdateUserHook(webHookData, eventType)
-    )
 
   def getUser(
       id: String,
@@ -90,24 +78,24 @@ object UsersRepository {
       commentId: UUID,
       civility: Int,
       removeCivility: Boolean
-  ): RIO[UsersRepository, CivilityGivenResponse] =
+  ): ZIO[UsersRepository, AppError, CivilityGivenResponse] =
     ZIO.serviceWithZIO[UsersRepository](
       _.addOrRemoveCivility(userId, commentId, civility, removeCivility)
     )
 
-  import QuillContextHelper.ctx._
+  import civil.repositories.QuillContext._
 
-  def getUserInternal(userId: String): Option[Users] = {
-    val q = quote {
-      query[Users].filter(u => u.userId == lift(userId))
-    }
-    run(q).headOption
+
+  def getUserInternal(userId: String): ZIO[DataSource, SQLException, Option[Users]] = {
+    for {
+      user <- run(query[Users].filter(u => u.userId == lift(userId)))
+    } yield user.headOption
   }
 
 }
 
-case class UsersRepositoryLive() extends UsersRepository {
-  import QuillContextHelper.ctx._
+case class UsersRepositoryLive(dataSource: DataSource) extends UsersRepository {
+  import civil.repositories.QuillContext._
 
   val profile_img_map = Map(
     "profile_img_1" -> "https://civil-dev.s3.us-west-1.amazonaws.com/profile_images/64_1.png",
@@ -132,9 +120,7 @@ case class UsersRepositoryLive() extends UsersRepository {
       incomingUser: IncomingUser
   ): ZIO[Any, AppError, OutgoingUser] = {
     for {
-      upsertedUser <- ZIO
-        .attempt(
-          run(
+      upsertedUser <- run(
             query[Users]
               .insertValue(
                 lift(
@@ -162,9 +148,10 @@ case class UsersRepositoryLive() extends UsersRepository {
                 (t, e) => t.iconSrc -> e.iconSrc
               )
               .returning(u => u)
-          )
+
         )
         .mapError(e => InternalServerError(e.getMessage))
+        .provideEnvironment(ZEnvironment(dataSource))
     } yield upsertedUser
       .into[OutgoingUser]
       .withFieldConst(_.isFollowing, Some(false))
@@ -173,97 +160,38 @@ case class UsersRepositoryLive() extends UsersRepository {
 
   }
 
-  override def insertOrUpdateUserHook(
-      webHookData: WebHookData,
-      eventType: ClerkEventType
-  ): ZIO[Any, AppError, Unit] = {
-    for {
-      _ <- ZIO
-        .when(eventType == ClerkEventType.UserCreated)(
-          ZIO.attempt(
-            run(
-              query[Users].insertValue(
-                lift(
-                  Users(
-                    webHookData.id,
-                    webHookData.username.get,
-                    None,
-                    Some(webHookData.profile_image_url),
-                    13.60585f,
-                    LocalDateTime.now(),
-                    false,
-                    None,
-                    None,
-                    false
-                  )
-                )
-              )
-            )
-          )
-        )
-        .mapError(e =>
-          InternalServerError(e.toString)
-        )
-      username = webHookData.username.get
-      _ = println(webHookData.unsafe_metadata)
-      _ <- ZIO
-        .when(eventType == ClerkEventType.UserUpdated)(
-          ZIO.attempt(
-            run(
-              query[Users]
-                .filter(u => u.userId == lift(webHookData.id))
-                .update(
-                  _.iconSrc -> lift(Option(webHookData.profile_image_url)),
-                  _.username -> lift(username),
-                  _.tag -> lift(webHookData.unsafe_metadata.userCivilTag)
-                )
-                .returning(r => r)
-            )
-          )
-        )
-        .mapError(e => InternalServerError(e.toString))
-
-    } yield ()
-
-  }
-
   override def getUser(
       id: String,
       requesterId: String
   ): ZIO[Any, AppError, OutgoingUser] = {
     for {
-      user <- ZIO
-        .fromOption(
-          run(query[Users].filter(u => u.userId == lift(id))).headOption
-        )
-        .orElseFail(InternalServerError("Couldn't locate user info"))
-      isFollowing <- ZIO
-        .attempt(
+      userQuery <- run(query[Users].filter(u => u.userId == lift(id))).mapError(e => InternalServerError(e.toString))
+        .provideEnvironment(ZEnvironment(dataSource))
+      user <- ZIO.fromOption(userQuery.headOption).orElseFail(InternalServerError("Could Not Locate User"))
+      isFollowing <-
           run(
             query[Follows].filter(f =>
               f.userId == lift(requesterId) && f.followedUserId == lift(id)
             ).nonEmpty
-        ))
+        )
         .mapError(e => InternalServerError(e.toString))
-      following <- ZIO
-        .attempt(
-          run(
+        .provideEnvironment(ZEnvironment(dataSource))
+      following <- run(
             query[Follows].filter(f =>
               f.userId == lift(requesterId)
             ).size
-          ))
+          )
         .mapError(e => InternalServerError(e.toString))
-      followed <- ZIO
-        .attempt(
+        .provideEnvironment(ZEnvironment(dataSource))
+      followed <-
           run(
             query[Follows].filter(f =>
               f.followedUserId == lift(requesterId)
             ).size
-          ))
+          )
         .mapError(e => InternalServerError(e.toString))
-      numPosts <- ZIO
-        .attempt(
-          run(
+        .provideEnvironment(ZEnvironment(dataSource))
+      numPosts <- run(
             query[Topics].filter(t =>
               t.createdByUserId == lift(requesterId)
             ).map(_.createdByUserId) ++ query[Discussions].filter(st =>
@@ -271,14 +199,15 @@ case class UsersRepositoryLive() extends UsersRepository {
             ).map(_.createdByUserId) ++ query[Comments].filter(c =>
             c.createdByUserId == lift(requesterId)
             ).map(_.createdByUserId)
-          ).size)
+          )
         .mapError(e => InternalServerError(e.toString))
+        .provideEnvironment(ZEnvironment(dataSource))
     } yield user
       .into[OutgoingUser]
       .withFieldConst(_.isFollowing, Some(isFollowing))
       .withFieldConst(_.numFollowed, Some(following.toInt))
       .withFieldConst(_.numFollowers, Some(followed.toInt))
-      .withFieldConst(_.numPosts, Some(numPosts))
+      .withFieldConst(_.numPosts, Some(numPosts.size))
       .withFieldComputed(_.userLevelData, u => {
         Some(UserLevel.apply(u.civility.toDouble))
         })
@@ -290,16 +219,15 @@ case class UsersRepositoryLive() extends UsersRepository {
       iconSrc: String
   ): ZIO[Any, AppError, OutgoingUser] = {
     for {
-      user <- ZIO
-        .attempt(
+      user <-
           run(
             query[Users]
               .filter(u => u.username == lift(username))
               .update(user => user.iconSrc -> lift(Option(iconSrc)))
               .returning(r => r)
-          )
+
         )
-        .mapError(e => InternalServerError(e.toString))
+        .mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
     } yield user
       .into[OutgoingUser]
       .withFieldConst(_.isFollowing, Some(false))
@@ -314,8 +242,7 @@ case class UsersRepositoryLive() extends UsersRepository {
   ): ZIO[Any, AppError, OutgoingUser] = {
 
     for {
-      user <- ZIO
-        .attempt(
+      user <-
           run(
             query[Users]
               .filter(u => u.userId == lift(userId))
@@ -324,9 +251,9 @@ case class UsersRepositoryLive() extends UsersRepository {
                 _.experience -> lift(bioInfo.experience)
               )
               .returning(u => u)
-          )
+
         )
-        .mapError(e => InternalServerError(e.toString))
+        .mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
     } yield user
       .into[OutgoingUser]
       .withFieldConst(_.isFollowing, Some(false))
@@ -339,17 +266,12 @@ case class UsersRepositoryLive() extends UsersRepository {
       commentId: UUID,
       civility: Int,
       removeCivility: Boolean
-  ): Task[CivilityGivenResponse] = {
+  ): ZIO[Any, AppError, CivilityGivenResponse] = {
 
-    val commentCivilityStatus = removeCivility match {
-      case true  => None
-      case false => Some(civility == 1)
-    }
-
-    val comment = run(query[Comments].filter(c => c.id == lift(commentId))).head
-
-    val q = quote {
-      query[Users]
+    for {
+      commentQuery <- run(query[Comments].filter(c => c.id == lift(commentId))).mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
+      comment <- ZIO.fromOption(commentQuery.headOption).mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
+      res <- run(query[Users]
         .filter(u => u.userId == lift(userId))
         .update(user => user.civility -> (user.civility + lift(civility)))
         .returning(user =>
@@ -359,20 +281,19 @@ case class UsersRepositoryLive() extends UsersRepository {
             lift(comment.rootId)
           )
         )
-    }
-    val c = run(q)
-    ZIO.succeed(c)
+      ).mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
+    } yield res
   }
 
   override def createUserTag(userId: String, tag: String): ZIO[Any, AppError, OutgoingUser] = {
 
     for {
-      user <- ZIO.attempt(run(
+      user <- run(
         query[Users]
           .filter(u => u.userId == lift(userId) && u.tag.isEmpty)
           .update(_.tag -> lift(Option(tag)))
           .returning(u => u)
-      )).mapError(_ => InternalServerError("Cannot Update Tag More Than Once"))
+      ).mapError(_ => InternalServerError("Cannot Update Tag More Than Once")).provideEnvironment(ZEnvironment(dataSource))
     } yield user.into[OutgoingUser]
       .withFieldConst(_.isFollowing, None)
       .withFieldComputed(_.userLevelData, u => Some(UserLevel.apply(u.civility.toDouble)))
@@ -381,13 +302,13 @@ case class UsersRepositoryLive() extends UsersRepository {
 
   override def checkIfTagExists(tag: String): ZIO[Any, AppError, TagExists] = {
     for {
-      user <- ZIO.attempt(run(
+      userQuery <- run(
         query[Users].filter(u => u.tag == lift(Option(tag)))
-      ).headOption).mapError(e => InternalServerError(e.toString))
-    } yield TagExists(tagExists=user.isDefined)
+      ).mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
+    } yield TagExists(tagExists=userQuery.nonEmpty)
   }
 }
 
 object UsersRepositoryLive {
-  val layer: URLayer[Any, UsersRepository] = ZLayer.fromFunction(UsersRepositoryLive.apply _)
+  val layer: URLayer[DataSource, UsersRepository] = ZLayer.fromFunction(UsersRepositoryLive.apply _)
 }

@@ -3,22 +3,13 @@ package civil.services
 import cats.implicits.catsSyntaxOptionId
 import civil.errors.AppError
 import civil.errors.AppError.GeneralError
-import civil.models.{
-  Comment,
-  Comments,
-  Discussion,
-  Discussions,
-  SearchResult,
-  Topic,
-  Topics,
-  User,
-  Users
-}
-import civil.repositories.QuillContextHelper
+import civil.models.{Comment, Comments, Discussion, Discussions, SearchResult, Topic, Topics, User, Users}
 import civil.repositories.comments.CommentsRepository
 import civil.repositories.topics.{DiscussionRepository, TopicRepository}
 import io.scalaland.chimney.dsl.TransformerOps
-import zio.{URLayer, ZIO, ZLayer}
+import zio.{URLayer, ZEnvironment, ZIO, ZLayer}
+
+import javax.sql.DataSource
 
 trait SearchService {
   def searchAll(filterText: String): ZIO[Any, AppError, List[SearchResult]]
@@ -45,10 +36,11 @@ object SearchService {
 case class SearchServiceLive(
     topicRepository: TopicRepository,
     discussionRepository: DiscussionRepository,
-    commentsRepository: CommentsRepository
+    commentsRepository: CommentsRepository,
+    dataSource: DataSource
 ) extends SearchService {
 
-  import QuillContextHelper.ctx._
+  import civil.repositories.QuillContext._
 
   override def searchAll(
       filterText: String
@@ -102,7 +94,7 @@ case class SearchServiceLive(
           .take(5)
     }
     for {
-      res <- ZIO.attempt(run(q)).mapError(e => GeneralError(e.getMessage))
+      res <- run(q).mapError(e => GeneralError(e.getMessage)).provideEnvironment(ZEnvironment(dataSource))
     } yield res.map {
       case ((id, textContent, createdByUserId, topicId, discussionId), u) =>
         (topicId, discussionId) match {
@@ -132,8 +124,7 @@ case class SearchServiceLive(
     val filter: String = s"%$filterText%"
 
     for {
-      res <- ZIO
-        .attempt(
+      res <-
           run(
             query[Users]
               .filter(u =>
@@ -142,9 +133,8 @@ case class SearchServiceLive(
                 ))
               )
               .map(u => (u.userId, u.tag, u.bio, u.username, u.iconSrc))
-          )
         )
-        .mapError(e => GeneralError(e.getMessage))
+        .mapError(e => GeneralError(e.getMessage)).provideEnvironment(ZEnvironment(dataSource))
       users = res.map { case (userId, tag, bio, username, iconSrc) =>
         User(userId, iconSrc, tag, username, bio)
       }
@@ -154,7 +144,7 @@ case class SearchServiceLive(
 
 object SearchServiceLive {
   val layer: URLayer[
-    TopicRepository with DiscussionRepository with CommentsRepository,
+    TopicRepository with DiscussionRepository with CommentsRepository with DataSource,
     SearchService
   ] = ZLayer.fromFunction(SearchServiceLive.apply _)
 }

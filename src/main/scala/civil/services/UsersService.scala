@@ -11,8 +11,6 @@ import zio._
 trait UsersService {
   def upsertDidUser(incomingUser: IncomingUser): ZIO[Any, AppError, OutgoingUser]
 
-  def insertOrUpdateUserHook(webHookData: WebHookData, eventType: ClerkEventType):  ZIO[Any, AppError, Unit]
-
   def getUser(jwt: String, jwtType: String, id: String):  ZIO[Any, AppError, OutgoingUser]
   def updateUserIcon(username: String, iconSrc: String):  ZIO[Any, AppError, OutgoingUser]
   def updateUserBio(jwt: String, jwtType: String, bioInfo: UpdateUserBio): ZIO[Any, AppError, OutgoingUser]
@@ -27,8 +25,6 @@ object UsersService {
   def upsertDidUser(incomingUser: IncomingUser): ZIO[UsersService, AppError, OutgoingUser]=
     ZIO.serviceWithZIO[UsersService](_.upsertDidUser(incomingUser))
 
-  def insertOrUpdateUserHook(webHookData: WebHookData, eventType: ClerkEventType): ZIO[UsersService, AppError, Unit] =
-    ZIO.serviceWithZIO[UsersService](_.insertOrUpdateUserHook(webHookData, eventType))
   
   def getUser(jwt: String, jwtType: String, id: String):  ZIO[UsersService, AppError, OutgoingUser] =
     ZIO.serviceWithZIO[UsersService](_.getUser(jwt, jwtType, id))
@@ -52,17 +48,12 @@ object UsersService {
 
 
 
-case class UsersServiceLive(usersRepository: UsersRepository) extends UsersService  {
+case class UsersServiceLive(usersRepository: UsersRepository, authenticationService: AuthenticationService) extends UsersService  {
   implicit val ec: scala.concurrent.ExecutionContext =
     scala.concurrent.ExecutionContext.global
-  val authenticationService = AuthenticationServiceLive()
 
   override def upsertDidUser(incomingUser: IncomingUser): ZIO[Any, AppError, OutgoingUser] = {
     usersRepository.upsertDidUser(incomingUser)
-  }
-
-  override def insertOrUpdateUserHook(webHookData: WebHookData, eventType: ClerkEventType): ZIO[Any, AppError, Unit] = {
-    usersRepository.insertOrUpdateUserHook(webHookData, eventType)
   }
 
   override def getUser(jwt: String, jwtType: String, id: String): ZIO[Any, AppError, OutgoingUser] = {
@@ -99,5 +90,5 @@ case class UsersServiceLive(usersRepository: UsersRepository) extends UsersServi
 
 
 object UsersServiceLive {
-  val layer: URLayer[UsersRepository, UsersService] = ZLayer.fromFunction(UsersServiceLive.apply _)
+  val layer: URLayer[UsersRepository with AuthenticationService, UsersService] = ZLayer.fromFunction(UsersServiceLive.apply _)
 }

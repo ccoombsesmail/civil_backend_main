@@ -53,9 +53,8 @@ object FollowsService {
     ZIO.serviceWithZIO[FollowsService](_.getAllFollowed(userId))
 }
 
-case class FollowsServiceLive(followsRepository: FollowsRepository)
+case class FollowsServiceLive(followsRepository: FollowsRepository, authenticationService: AuthenticationService)
     extends FollowsService {
-  val authenticationService = AuthenticationServiceLive()
   val kafka = new KafkaProducerServiceLive()
 
   override def insertFollow(
@@ -117,5 +116,5 @@ case class FollowsServiceLive(followsRepository: FollowsRepository)
 }
 
 object FollowsServiceLive {
-  val layer: URLayer[FollowsRepository, FollowsService] = ZLayer.fromFunction(FollowsServiceLive.apply _)
+  val layer: URLayer[FollowsRepository with AuthenticationService, FollowsService] = ZLayer.fromFunction(FollowsServiceLive.apply _)
 }

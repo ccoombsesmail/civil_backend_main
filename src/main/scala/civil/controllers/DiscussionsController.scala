@@ -31,7 +31,7 @@ final case class DiscussionsController(discussionsService: DiscussionService) {
       for {
         id <- parseDiscussionId(discussionId)
         authDataOpt <- extractJwtData(req).mapError(e => JsonDecodingError(e.toString))
-        discussion <- discussionsService.getDiscussion(id.id)
+        discussion <- discussionsService.getDiscussion(authDataOpt.get._1, authDataOpt.get._2, id.id)
       } yield Response.json(discussion.toJson)
 
     case req @ Method.GET -> !! / "discussions" / "general" / topicId =>

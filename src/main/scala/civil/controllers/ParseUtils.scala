@@ -1,15 +1,13 @@
 package civil.controllers
 
-import cats.conversions.all.autoWidenFunctor
-import cats.implicits.toFoldableOps
+
 import civil.errors.AppError
 import civil.errors.AppError.JsonDecodingError
 import civil.models.{CommentId, DiscussionId, FollowedUserId, TopicId}
 import zhttp.http.Request
-import zio.{IO, Random, Task, UIO, ZIO}
+import zio.{IO, Task, ZIO}
 import zio.json.{DecoderOps, JsonCodec, JsonDecoder}
 
-import java.util.UUID
 
 
 case class Skip(value: Int)
