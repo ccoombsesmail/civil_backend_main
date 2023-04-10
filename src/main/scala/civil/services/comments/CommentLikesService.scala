@@ -70,8 +70,6 @@ case class CommentLikesServiceLive(commentLikesRepo: CommentLikesRepository, aut
       )
       (likeData, comment) = data
       _ <- ZIO.when(likeData.likeState == 1)(
-        ZIO
-          .attempt(
             kafka.publish(
               CommentLike(
                 eventType = "CommentLike",
@@ -89,10 +87,10 @@ case class CommentLikesServiceLive(commentLikesRepo: CommentLikesRepository, aut
               commentLikeDislikeData.createdByUserId,
               CommentLike.commentLikeSerde
             )
-          ))
+          )
           .mapError(e => {
             GeneralError(e.toString)
-          })
+          }).forkDaemon
     } yield likeData
   }
 

@@ -7,7 +7,7 @@ import io.scalaland.chimney.dsl.TransformerOps
 import zio._
 
 import java.sql.SQLException
-import java.time.LocalDateTime
+import java.time.{LocalDateTime, ZoneId, ZonedDateTime}
 import java.util.UUID
 import javax.sql.DataSource
 
@@ -97,7 +97,7 @@ object UsersRepository {
 case class UsersRepositoryLive(dataSource: DataSource) extends UsersRepository {
   import civil.repositories.QuillContext._
 
-  val profile_img_map = Map(
+  private val profile_img_map = Map(
     "profile_img_1" -> "https://civil-dev.s3.us-west-1.amazonaws.com/profile_images/64_1.png",
     "profile_img_2" -> "https://civil-dev.s3.us-west-1.amazonaws.com/profile_images/64_2.png",
     "profile_img_3" -> "https://civil-dev.s3.us-west-1.amazonaws.com/profile_images/64_3.png",
@@ -134,8 +134,7 @@ case class UsersRepositoryLive(dataSource: DataSource) extends UsersRepository {
                       )
                     ),
                     13.60585f,
-                    LocalDateTime
-                      .now(),
+                    ZonedDateTime.now(ZoneId.systemDefault()),
                     false,
                     None,
                     None,
@@ -156,6 +155,7 @@ case class UsersRepositoryLive(dataSource: DataSource) extends UsersRepository {
       .into[OutgoingUser]
       .withFieldConst(_.isFollowing, Some(false))
       .withFieldComputed(_.userLevelData, u => Some(UserLevel.apply(u.civility.toDouble)))
+      .enableDefaultValues
       .transform
 
   }
@@ -211,6 +211,7 @@ case class UsersRepositoryLive(dataSource: DataSource) extends UsersRepository {
       .withFieldComputed(_.userLevelData, u => {
         Some(UserLevel.apply(u.civility.toDouble))
         })
+      .enableDefaultValues
       .transform
   }
 
@@ -232,6 +233,7 @@ case class UsersRepositoryLive(dataSource: DataSource) extends UsersRepository {
       .into[OutgoingUser]
       .withFieldConst(_.isFollowing, Some(false))
       .withFieldComputed(_.userLevelData, u => Some(UserLevel.apply(u.civility.toDouble)))
+      .enableDefaultValues
       .transform
 
   }
@@ -258,6 +260,7 @@ case class UsersRepositoryLive(dataSource: DataSource) extends UsersRepository {
       .into[OutgoingUser]
       .withFieldConst(_.isFollowing, Some(false))
       .withFieldComputed(_.userLevelData, u => Some(UserLevel.apply(u.civility.toDouble)))
+      .enableDefaultValues
       .transform
   }
 
@@ -297,6 +300,7 @@ case class UsersRepositoryLive(dataSource: DataSource) extends UsersRepository {
     } yield user.into[OutgoingUser]
       .withFieldConst(_.isFollowing, None)
       .withFieldComputed(_.userLevelData, u => Some(UserLevel.apply(u.civility.toDouble)))
+      .enableDefaultValues
       .transform
   }
 

@@ -1,44 +1,51 @@
 package civil.controllers
 
 import civil.controllers.ParseUtils.{extractJwtData, parseBody, parseTopicId}
+import civil.errors.AppError
+import civil.errors.AppError.{InternalServerError, JsonDecodingError}
 import civil.models.IncomingTopic
 import civil.services.topics.TopicService
-import zhttp.http._
+import zio.http._
 import zio._
+import zio.http.model.{HTTP_CHARSET, Method, Status}
 import zio.json.EncoderOps
 
 
 final case class TopicsController(topicService: TopicService) {
-  val routes: Http[Any, Throwable, Request, Response] = Http.collectZIO[Request] {
-    case req @ Method.POST -> !! / "topics" =>
-      for {
-        authDataOpt <- extractJwtData(req)
+  val routes: Http[Any, AppError, Request, Response] = Http.collectZIO[Request] {
+    case req @ Method.POST -> !! / "api" / "v1" / "topics" =>
+      (for {
+        authData <- extractJwtData(req)
+        (jwt, jwtType) = authData
         incomingTopic <- parseBody[IncomingTopic](req)
-        res <- topicService.insertTopic(authDataOpt.get._1, authDataOpt.get._2, incomingTopic)
-      } yield Response.json(res.toJson)
+        res <- topicService.insertTopic(jwt, jwtType, incomingTopic)
+      } yield Response.json(res.toJson)).catchAll(_.toResponse)
 
-    case req @ Method.GET -> !! / "topics" =>
-      for {
-        authDataOpt <- extractJwtData(req)
+    case req @ Method.GET -> !! / "api" / "v1" / "topics" =>
+      (for {
+        authData <- extractJwtData(req)
+        (jwt, jwtType) = authData
+        _ = println(req.url.queryParams("skip").head.toInt)
         topics <- topicService.getTopicsAuthenticated(
-          authDataOpt.get._1,
-          authDataOpt.get._2,
+          jwt, jwtType,
           req.url.queryParams("skip").head.toInt
         )
-      } yield Response.json(topics.toJson)
+      } yield Response.json(topics.toJson)).catchAll(_.toResponse)
 
-    case req @ Method.GET -> !! / "topics" / "user" / userId =>
-      for {
-        authDataOpt <- extractJwtData(req)
-        res <- topicService.getUserTopics(authDataOpt.get._1, authDataOpt.get._2, userId)
-      } yield Response.json(res.toJson)
+    case req @ Method.GET -> !! / "api" / "v1" / "topics" / "user" / userId =>
+      (for {
+        authData <- extractJwtData(req)
+        (jwt, jwtType) = authData
+        res <- topicService.getUserTopics(jwt, jwtType, userId)
+      } yield Response.json(res.toJson)).catchAll(_.toResponse)
 
-    case req @ Method.GET -> !! / "topics" / topicId =>
-      for {
-        authDataOpt <- extractJwtData(req)
+    case req @ Method.GET -> !! / "api" / "v1" / "topics" / topicId =>
+      (for {
+        authData <- extractJwtData(req)
+        (jwt, jwtType) = authData
         topicId <- parseTopicId(topicId)
-        res <- topicService.getTopic(authDataOpt.get._1, authDataOpt.get._2, topicId.id)
-      } yield Response.json(res.toJson)
+        res <- topicService.getTopic(jwt, jwtType, topicId.id)
+      } yield Response.json(res.toJson)).catchAll(_.toResponse)
   }
 }
 

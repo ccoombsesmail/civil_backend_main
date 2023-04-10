@@ -9,6 +9,8 @@ import civil.repositories.comments.CommentsRepository
 import civil.repositories.topics.DiscussionRepository
 import civil.services.{AuthenticationService, AuthenticationServiceLive, HTMLSanitizerLive}
 import zio._
+
+import java.time.{ZoneId, ZonedDateTime}
 // import civil.models.enums.{Sentiment}
 import civil.repositories.UsersRepository
 import io.scalaland.chimney.dsl._
@@ -107,7 +109,7 @@ case class CommentsServiceLive(
         incomingComment
           .into[Comments]
           .withFieldConst(_.id, UUID.randomUUID())
-          .withFieldConst(_.createdAt, LocalDateTime.now())
+          .withFieldConst(_.createdAt, ZonedDateTime.now(ZoneId.systemDefault()))
           .withFieldConst(_.likes, 0)
           .withFieldConst(_.sentiment, Sentiment.POSITIVE.toString)
           .withFieldConst(_.discussionId, incomingComment.contentId)

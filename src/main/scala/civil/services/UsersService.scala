@@ -57,8 +57,6 @@ case class UsersServiceLive(usersRepository: UsersRepository, authenticationServ
   }
 
   override def getUser(jwt: String, jwtType: String, id: String): ZIO[Any, AppError, OutgoingUser] = {
-    println(id)
-    println(jwt)
     for {
       userData <- authenticationService.extractUserData(jwt, jwtType)
       outgoingUser <- usersRepository.getUser(id, userData.userId)

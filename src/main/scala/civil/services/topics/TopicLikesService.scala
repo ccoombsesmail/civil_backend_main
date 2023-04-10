@@ -48,8 +48,6 @@ case class TopicLikesServiceLive(topicLikesRep: TopicLikesRepository, authentica
       (updatedLikeData, topic) = data
       _ <- ZIO
         .when(updatedLikeData.likeState == 1)(
-          ZIO
-            .attempt(
               kafka.publish(
                 TopicLike(
                   eventType = "TopicLike",
@@ -65,11 +63,12 @@ case class TopicLikesServiceLive(topicLikesRep: TopicLikesRepository, authentica
                 topic.createdByUserId,
                 TopicLike.topicLikeSerde
               )
-            )
+
         )
         .mapError(e => {
+          println(e)
           InternalServerError(e.toString)
-        })
+        }).forkDaemon
     } yield updatedLikeData
   }
 

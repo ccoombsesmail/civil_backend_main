@@ -8,9 +8,9 @@ import scala.annotation.tailrec
 object CommentsTreeConstructor {
 
   def construct[A](
-      nodes: Seq[EntryWithDepth],
-      rawNode: Seq[CommentReply]
-  ): Seq[CommentNode] = {
+      nodes: List[EntryWithDepth],
+      rawNode: List[CommentReply]
+  ): List[CommentNode] = {
     val nodesByParent = rawNode.groupBy(_.parentId)
     // val topNodes = nodesByParent.getOrElse(None, Seq.empty)
     val maxDepth = nodes.headOption.map(_.depth).getOrElse(0)
@@ -18,9 +18,9 @@ object CommentsTreeConstructor {
   }
 
   def constructTribunal[A](
-      nodes: Seq[TribunalEntryWithDepth],
-      rawNode: Seq[TribunalCommentsReply]
-  ): Seq[TribunalCommentNode] = {
+      nodes: List[TribunalEntryWithDepth],
+      rawNode: List[TribunalCommentsReply]
+  ): List[TribunalCommentNode] = {
     val nodesByParent = rawNode.groupBy(_.parentId)
     // val topNodes = nodesByParent.getOrElse(None, Seq.empty)
     val maxDepth = nodes.headOption.map(_.depth).getOrElse(0)
@@ -30,15 +30,15 @@ object CommentsTreeConstructor {
   @tailrec
   private def buildFromBottom(
       depth: Int,
-      remaining: Seq[EntryWithDepth],
-      nodesByParent: Map[Option[UUID], Seq[CommentReply]],
+      remaining: List[EntryWithDepth],
+      nodesByParent: Map[Option[UUID], List[CommentReply]],
       processedNodesById: Map[UUID, CommentNode]
-  ): Seq[CommentNode] = {
+  ): List[CommentNode] = {
     val (nodesOnCurrentDepth, rest) = remaining.span(_.depth == depth)
     val newProcessedNodes = nodesOnCurrentDepth.map { n =>
       val nodeId = n.comment.id
       val children = nodesByParent
-        .getOrElse(Some(nodeId), Seq.empty)
+        .getOrElse(Some(nodeId), List.empty)
         .flatMap(c => processedNodesById.get(c.id))
       nodeId -> CommentNode(n.comment, children)
     }.toMap
@@ -51,22 +51,22 @@ object CommentsTreeConstructor {
       )
     } else {
       // top nodes
-      newProcessedNodes.values.toSeq
+      newProcessedNodes.values.toList
     }
   }
 
   @tailrec
   private def buildFromBottomTribunal(
       depth: Int,
-      remaining: Seq[TribunalEntryWithDepth],
-      nodesByParent: Map[Option[UUID], Seq[TribunalCommentsReply]],
+      remaining: List[TribunalEntryWithDepth],
+      nodesByParent: Map[Option[UUID], List[TribunalCommentsReply]],
       processedNodesById: Map[UUID, TribunalCommentNode]
-  ): Seq[TribunalCommentNode] = {
+  ): List[TribunalCommentNode] = {
     val (nodesOnCurrentDepth, rest) = remaining.span(_.depth == depth)
     val newProcessedNodes = nodesOnCurrentDepth.map { n =>
       val nodeId = n.comment.id
       val children = nodesByParent
-        .getOrElse(Some(nodeId), Seq.empty)
+        .getOrElse(Some(nodeId), List.empty)
         .flatMap(c => processedNodesById.get(c.id))
       nodeId -> TribunalCommentNode(n.comment, children)
     }.toMap
@@ -79,7 +79,7 @@ object CommentsTreeConstructor {
       )
     } else {
       // top nodes
-      newProcessedNodes.values.toSeq
+      newProcessedNodes.values.toList
     }
   }
 

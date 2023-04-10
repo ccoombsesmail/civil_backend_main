@@ -2,39 +2,32 @@ package civil.services
 
 import civil.config.Config
 import civil.errors.AppError.InternalServerError
+import org.apache.kafka.clients.producer.RecordMetadata
 import zio._
 import zio.kafka.producer.{Producer, ProducerSettings}
 import zio.kafka.serde.Serde
 
 
 trait KafkaProducerService {
-  def publish[A](message: A, userId: String, serde: Serde[Any, A], topic: String): Unit
+  def publish[A](message: A, userId: String, serde: Serde[Any, A], topic: String):  ZIO[Any, Throwable, RecordMetadata]
 }
 
 
 class KafkaProducerServiceLive extends KafkaProducerService {
 
-  override def publish[A](message: A, userId: String, serde: Serde[Any, A], topic: String = "notifications"): Unit = {
+  override def publish[A](message: A, userId: String, serde: Serde[Any, A], topic: String = "notifications"): ZIO[Any, Throwable, RecordMetadata] = {
     println(s"Publishing to $topic ")
-//    val producerEffect = for {
-//      p <- producer
-//    } yield p.produce(
-//      topic,
-//      userId,
-//      message,
-//      Serde.string,
-//      serde
-//    )
-//    val producerFlushEffect = for {
-//      p <- producer
-//    } yield p.flush
-    Producer.produce(
-      topic,
-      userId,
-      message,
-      Serde.string,
-      serde
-    )
+    (for {
+      p <- Producer.produce(
+        topic,
+        userId,
+        message,
+        Serde.string,
+        serde
+      )
+      _ = println(p)
+    } yield p).provide(KafkaProducerService.producerLayer)
+
 //    val producerEffect = {
 //      producer.produce(
 //        "notifications",

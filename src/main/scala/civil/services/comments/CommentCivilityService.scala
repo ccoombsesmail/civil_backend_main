@@ -72,9 +72,7 @@ case class CommentCivilityServiceLive(
         )
         .mapError(e => GeneralError(e.toString))
       (civilityGiven, comment) = res
-      _ <- ZIO
-        .attempt(
-          kafka.publish(
+      _ <- kafka.publish(
             CommentCivilityGiven(
               eventType = "CommentCivilityGiven",
               value = civilityData.value,
@@ -91,9 +89,8 @@ case class CommentCivilityServiceLive(
             ),
             civilityData.receivingUserId,
             CommentCivilityGiven.commentCivilityGivenSerde
-          )
         )
-        .fork
+        .forkDaemon
     } yield civilityGiven
 
   }

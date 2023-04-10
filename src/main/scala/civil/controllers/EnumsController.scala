@@ -1,15 +1,15 @@
 package civil.controllers
 
 import civil.models.enums.TopicCategories
-import zhttp.http.{Http, Request, Response}
+import zio.http._
 import zio._
-import zhttp.http._
+import zio.http.model.Method
 import zio.json.EncoderOps
 
 final case class EnumsController() {
   val routes: Http[Any, Throwable, Request, Response] = Http.collectZIO[Request] {
-    case req @ Method.GET -> !! / "enums"  =>
-     ZIO.succeed(Response.json(TopicCategories.values.toJson))
+    case req @ Method.GET -> !! / "api" / "v1" / "enums"  =>
+     ZIO.succeed(Response.json(TopicCategories.list.toJson))
   }
 
 }

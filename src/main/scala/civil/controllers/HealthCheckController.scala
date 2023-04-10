@@ -1,16 +1,16 @@
 package civil.controllers
 
 import zio.ZIO
-import zhttp.http.{Http, Method, Request, Response}
+import zio.http._
 import zio._
-import zhttp.http._
+import zio.http.model.Method
 
 final case class HealthCheckController() {
   val routes: Http[Any, Throwable, Request, Response] = Http.collectZIO[Request] {
     case req @ Method.GET -> !! / "healthcheck" =>
-      for {
+      (for {
         _ <- ZIO.succeed("success")
-      } yield Response.text("success")
+      } yield Response.text("success"))
   }
 }
 

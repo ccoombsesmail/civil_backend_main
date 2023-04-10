@@ -4,8 +4,9 @@ val circeVersion = "0.14.5"
 val akkaVersion = "2.8.0"
 val akkaHttpVersion = "10.5.0"
 val akkaHttpCirceVersion = "1.39.2"
-val zioVersion = "2.0.0"
+val zioVersion = "2.0.8"
 val zioConfigVersion = "3.0.7"
+val ZIOHttpVersion = "0.0.5"
 
 ThisBuild / scalaVersion     := "2.13.8"
 
@@ -21,8 +22,6 @@ mainClass in (Compile, run) := Some("civil.Civil")
 Global / onChangedBuildSource := ReloadOnSourceChanges
 Compile / unmanagedSourceDirectories := (Compile / scalaSource).value :: Nil
 
-
-ThisBuild / fork := true
 
 ThisBuild / javaOptions ++= Seq(
   "--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED"
@@ -45,15 +44,15 @@ inThisBuild(
     version := "0.2.0",
     organization := "ccoombsesmail",
 //    dependencyOverrides += "org.scala-lang" % "scala-collection-compat" % "2.13.6",
-    dependencyOverrides += "dev.zio" %% "zio" % "2.0.0",
     libraryDependencies ++= Seq(
       "dev.zio" %% "zio" % zioVersion,
 //      "dev.zio" %% "zio-config" % zioConfigVersion,
 //      "dev.zio" %% "zio-config-magnolia" % zioConfigVersion,
 //      "dev.zio" %% "zio-config-typesafe" % zioConfigVersion,
 //      "dev.zio" %% "zio-streams" % zioVersion,
-      "dev.zio" %% "zio-kafka" % zioVersion,
+      "dev.zio" %% "zio-kafka" % "2.1.1",
       "dev.zio" %% "zio-json" % "0.4.2",
+      "dev.zio" %% "zio-http" % ZIOHttpVersion,
       "org.postgresql" % "postgresql" % "42.5.4"
     )
   )
@@ -70,10 +69,8 @@ lazy val root = project
   .settings(
     name := "civil",
     assembly / mainClass := Some("civil.Civil"),
-    dependencyOverrides += "dev.zio" %% "zio" % "2.0.0",
     libraryDependencies ++= Seq(
       "ch.megard" %% "akka-http-cors" % "1.2.0",
-      "io.d11"                %% "zhttp"                             % "2.0.0-RC9",
       "com.softwaremill.sttp.tapir" %% "tapir-core" % "1.2.10",
       "com.softwaremill.sttp.tapir" %% "tapir-akka-http-server" % tapirVersion,
       "com.softwaremill.sttp.tapir" %% "tapir-zio" % tapirVersion,
@@ -106,7 +103,7 @@ lazy val root = project
       "com.beachape" %% "enumeratum-quill" % enumeratumVersion,
       "io.scalaland" %% "chimney" % "0.7.1",
       "com.softwaremill.sttp.client3" %% "core" % "3.8.13",
-      "com.softwaremill.sttp.client3" %% "zio1" % "3.8.13",
+      "com.softwaremill.sttp.client3" %% "zio" % "3.8.13",
       "com.softwaremill.sttp.client3" %% "circe" % "3.8.13",
       "edu.stanford.nlp" % "stanford-corenlp" % "4.5.2" artifacts (Artifact(
         "stanford-corenlp",

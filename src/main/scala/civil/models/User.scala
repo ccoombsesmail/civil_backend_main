@@ -2,10 +2,9 @@ package civil.models
 
 import civil.directives.OutgoingHttp.Permissions
 import civil.models.enums.ClerkEventType
-
 import zio.json.{DeriveJsonCodec, DeriveJsonDecoder, DeriveJsonEncoder, JsonCodec, JsonDecoder, JsonEncoder}
 
-import java.time.LocalDateTime
+import java.time.{LocalDateTime, ZonedDateTime}
 import scala.math.{exp, round}
 
 case class Users(
@@ -14,16 +13,12 @@ case class Users(
     tag: Option[String],
     iconSrc: Option[String],
     civility: Float,
-    createdAt: LocalDateTime,
+    createdAt: ZonedDateTime,
     consortiumMember: Boolean = false,
     bio: Option[String],
     experience: Option[String],
     isDidUser: Boolean,
     id: Int = 200,
-    numFollowers: Option[Int] = None,
-    numFollowed: Option[Int] = None,
-    numPosts: Option[Int] = None,
-    permissions: Permissions = Permissions(false, false)
 )
 
 case class OutgoingUser(
@@ -32,7 +27,7 @@ case class OutgoingUser(
     tag: Option[String],
     iconSrc: Option[String],
     civility: Float,
-    createdAt: LocalDateTime,
+    createdAt: ZonedDateTime,
     consortiumMember: Boolean = false,
     isFollowing: Option[Boolean],
     bio: Option[String],

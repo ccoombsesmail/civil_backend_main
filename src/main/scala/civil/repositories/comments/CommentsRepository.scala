@@ -108,7 +108,7 @@ case class CommentsRepositoryLive(dataSource: DataSource)
       skip: Int
   ): ZIO[Any, AppError, List[CommentNode]] = {
 
-    for {
+     for {
       joinedDataQuery <- run {
         query[Comments]
           .filter(c =>
@@ -127,7 +127,10 @@ case class CommentsRepositoryLive(dataSource: DataSource)
           .drop(lift(skip))
           .take(10)
       }
-        .mapError(e => InternalServerError(e.toString))
+        .mapError(e => {
+          println(e)
+          InternalServerError(e.toString)
+        })
         .provideEnvironment(ZEnvironment(dataSource))
       commentsWithReplies <- ZIO
         .collectAll(
@@ -147,7 +150,6 @@ case class CommentsRepositoryLive(dataSource: DataSource)
                     )
                   )
                   .reverse
-
                 replies = comments
                   .map(c =>
                     Comments.commentToCommentReply(
@@ -162,10 +164,14 @@ case class CommentsRepositoryLive(dataSource: DataSource)
 
                 tc = CommentsTreeConstructor
                 replyTree = tc.construct(repliesWithDepth, replies).toList.head
+
               } yield replyTree
             }
         )
-        .mapError(e => InternalServerError(e.toString))
+        .mapError(e => {
+          println(e.toString)
+          InternalServerError(e.toString)
+        })
         .provideEnvironment(ZEnvironment(dataSource))
     } yield commentsWithReplies
 

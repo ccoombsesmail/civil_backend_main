@@ -95,7 +95,7 @@ object QuillContextQueries {
       join comments_tree ct on ct.id = c2.parent_id
 
     ) select * from comments_tree
-      """.as[Query[CommentWithDepthAndUser]]
+      """.pure.as[Query[CommentWithDepthAndUser]]
 //    infix"""
 //     WITH RECURSIVE comments_tree as (
 //      select

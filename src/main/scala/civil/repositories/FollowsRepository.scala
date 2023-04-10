@@ -73,6 +73,7 @@ case class FollowsRepositoryLive(dataSource: DataSource)
         _.userLevelData,
         u => Some(UserLevel.apply(u.civility.toDouble))
       )
+      .enableDefaultValues
       .transform
 
   }
@@ -109,6 +110,7 @@ case class FollowsRepositoryLive(dataSource: DataSource)
         _.userLevelData,
         u => Some(UserLevel.apply(u.civility.toDouble))
       )
+      .enableDefaultValues
       .transform
 
   }
@@ -128,6 +130,7 @@ case class FollowsRepositoryLive(dataSource: DataSource)
           _.userLevelData,
           u => Some(UserLevel.apply(u.civility.toDouble))
         )
+        .enableDefaultValues
         .transform
     }
   }
@@ -148,6 +151,7 @@ case class FollowsRepositoryLive(dataSource: DataSource)
           _.userLevelData,
           u => Some(UserLevel.apply(u.civility.toDouble))
         )
+        .enableDefaultValues
         .transform
     }
 

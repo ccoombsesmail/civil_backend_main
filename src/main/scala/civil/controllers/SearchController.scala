@@ -1,23 +1,23 @@
 package civil.controllers
 
 import civil.services.SearchService
-import zhttp.http.{Http, Request, Response}
+import zio.http._
+import zio.http.model.Method
 import zio.{URLayer, ZLayer}
-import zhttp.http._
 import zio.json.EncoderOps
 
 
 final case class SearchController(searchService: SearchService) {
   val routes: Http[Any, Throwable, Request, Response] = Http.collectZIO[Request] {
-    case req @ Method.GET -> !! / "search" =>
-      for {
+    case req @ Method.GET -> !! / "api" / "v1" / "search" =>
+      (for {
         res <- searchService.searchAll(req.url.queryParams("filterText").head)
-      } yield Response.json(res.toJson)
+      } yield Response.json(res.toJson)).catchAll(_.toResponse)
 
-    case req @ Method.GET -> !! / "search" / "users" =>
-      for {
+    case req @ Method.GET -> !! / "api" / "v1" / "search" / "users" =>
+      (for {
         res <- searchService.searchAllUsers(req.url.queryParams("filterText").head)
-      } yield Response.json(res.toJson)
+      } yield Response.json(res.toJson)).catchAll(_.toResponse)
   }
 }
 

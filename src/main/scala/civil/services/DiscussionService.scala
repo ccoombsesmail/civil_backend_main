@@ -1,16 +1,20 @@
 package civil.services
 
 import civil.errors.AppError
-import civil.errors.AppError.InternalServerError
-import civil.models.{Discussions, ExternalLinksDiscussions, GeneralDiscussionId, IncomingDiscussion, OutgoingDiscussion}
+import civil.models.{
+  Discussions,
+  ExternalLinksDiscussions,
+  GeneralDiscussionId,
+  IncomingDiscussion,
+  OutgoingDiscussion
+}
 
 import java.util.UUID
-import civil.repositories.topics.{DiscussionRepository, DiscussionRepositoryLive}
+import civil.repositories.topics.DiscussionRepository
 import io.scalaland.chimney.dsl._
 
-import java.time.LocalDateTime
+import java.time.{ZoneId, ZonedDateTime}
 import zio._
-
 
 trait DiscussionService {
   def insertDiscussion(
@@ -24,9 +28,11 @@ trait DiscussionService {
       topicId: UUID,
       skip: Int
   ): ZIO[Any, AppError, List[OutgoingDiscussion]]
-  def getDiscussion(jwt: String,
-                    jwtType: String,
-                    id: UUID): ZIO[Any, AppError, OutgoingDiscussion]
+  def getDiscussion(
+      jwt: String,
+      jwtType: String,
+      id: UUID
+  ): ZIO[Any, AppError, OutgoingDiscussion]
 
   def getGeneralDiscussionId(
       topicId: UUID
@@ -56,7 +62,9 @@ object DiscussionService {
       topicId: UUID,
       skip: Int
   ): ZIO[DiscussionService, AppError, List[OutgoingDiscussion]] =
-    ZIO.serviceWithZIO[DiscussionService](_.getDiscussions(jwt, jwtType, topicId, skip))
+    ZIO.serviceWithZIO[DiscussionService](
+      _.getDiscussions(jwt, jwtType, topicId, skip)
+    )
 
   def getDiscussion(
       jwt: String,
@@ -97,7 +105,10 @@ case class DiscussionServiceLive(
         incomingDiscussion
           .into[Discussions]
           .withFieldConst(_.likes, 0)
-          .withFieldConst(_.createdAt, LocalDateTime.now())
+          .withFieldConst(
+            _.createdAt,
+            ZonedDateTime.now(ZoneId.systemDefault())
+          )
           .withFieldConst(_.createdByUsername, userData.username)
           .withFieldConst(_.createdByUserId, userData.userId)
           .withFieldConst(_.id, uuid)
@@ -128,7 +139,7 @@ case class DiscussionServiceLive(
       skip: Int
   ): ZIO[Any, AppError, List[OutgoingDiscussion]] = {
     for {
-      _           <- authService.extractUserData(jwt, jwtType)
+      _ <- authService.extractUserData(jwt, jwtType)
       discussions <- discussionRepository.getDiscussions(topicId, skip)
     } yield discussions
   }
@@ -167,5 +178,8 @@ case class DiscussionServiceLive(
 }
 
 object DiscussionServiceLive {
-  val layer: URLayer[DiscussionRepository with AuthenticationService, DiscussionService] = ZLayer.fromFunction(DiscussionServiceLive.apply _)
+  val layer: URLayer[
+    DiscussionRepository with AuthenticationService,
+    DiscussionService
+  ] = ZLayer.fromFunction(DiscussionServiceLive.apply _)
 }

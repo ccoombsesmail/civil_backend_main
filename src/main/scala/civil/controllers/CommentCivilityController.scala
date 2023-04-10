@@ -4,28 +4,30 @@ import civil.errors.AppError.JsonDecodingError
 import civil.controllers.ParseUtils.{extractJwtData, parseBody}
 import civil.models.UpdateCommentCivility
 import civil.services.comments.CommentCivilityService
-import civil.services.topics.TopicLikesService
-import zhttp.http._
+import zio.http._
 import zio._
+import zio.http.model.Method
 import zio.json.EncoderOps
 
 
 
 final case class CommentCivilityController(commentCivilityService: CommentCivilityService) {
   val routes: Http[Any, Throwable, Request, Response] = Http.collectZIO[Request] {
-    case req @ Method.PUT -> !! / "comments" / "civility"  =>
-      for {
+    case req @ Method.PUT -> !! / "api" / "v1" / "comments" / "civility"  =>
+      (for {
         updateCommentCivility <- parseBody[UpdateCommentCivility](req)
-        authDataOpt <- extractJwtData(req).mapError(e => JsonDecodingError(e.toString))
-        civilityGivenResponse <- commentCivilityService.addOrRemoveCommentCivility(authDataOpt.get._1, authDataOpt.get._2, updateCommentCivility)
-      } yield Response.json(civilityGivenResponse.toJson)
+        authData <- extractJwtData(req).mapError(e => JsonDecodingError(e.toString))
+        (jwt, jwtType) = authData
+        civilityGivenResponse <- commentCivilityService.addOrRemoveCommentCivility(jwt, jwtType, updateCommentCivility)
+      } yield Response.json(civilityGivenResponse.toJson)).catchAll(_.toResponse)
 
-    case req@Method.PUT -> !! / "comments" / "civility-tribunal" =>
-      for {
+    case req@Method.PUT -> !!  / "api" / "v1" / "comments" / "civility-tribunal" =>
+      (for {
         updateCommentCivility <- parseBody[UpdateCommentCivility](req)
-        authDataOpt <- extractJwtData(req).mapError(e => JsonDecodingError(e.toString))
-        civilityGivenResponse <- commentCivilityService.addOrRemoveTribunalCommentCivility(authDataOpt.get._1, authDataOpt.get._2, updateCommentCivility)
-      } yield Response.json(civilityGivenResponse.toJson)
+        authData <- extractJwtData(req).mapError(e => JsonDecodingError(e.toString))
+        (jwt, jwtType) = authData
+        civilityGivenResponse <- commentCivilityService.addOrRemoveTribunalCommentCivility(jwt, jwtType, updateCommentCivility)
+      } yield Response.json(civilityGivenResponse.toJson)).catchAll(_.toResponse)
   }
 
 }

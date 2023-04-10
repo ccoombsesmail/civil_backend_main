@@ -4,6 +4,7 @@ import civil.errors.AppError
 import civil.errors.AppError.InternalServerError
 import civil.models.{Discussions, OutgoingTopic, Recommendations, TopicLikes, TopicVods, Topics, Users, _}
 import civil.directives.OutgoingHttp
+import civil.models.enums.TopicCategories
 import civil.repositories.recommendations.RecommendationsRepository
 import io.scalaland.chimney.dsl._
 import zio.{ZIO, _}
@@ -168,6 +169,7 @@ case class TopicRepoHelpers(
               .withFieldConst(_.topicCreatorIsDidUser, user.isDidUser)
               .withFieldConst(_.createdByTag, user.tag)
               .withFieldComputed(_.editorState, row => row.editorState)
+              .withFieldComputed(_.category, row => TopicCategories.withName(row.category))
               .withFieldConst(
                 _.externalContentData,
                 linkData.map(data =>
@@ -316,6 +318,7 @@ case class TopicRepositoryLive(
             .withFieldConst(_.likeState, 0)
             .withFieldConst(_.createdByTag, user.tag)
             .withFieldConst(_.topicCreatorIsDidUser, user.isDidUser)
+            .withFieldComputed(_.category, row => TopicCategories.withName(row.category))
             .withFieldConst(
               _.externalContentData,
               linkData.map(data =>
@@ -364,6 +367,7 @@ case class TopicRepositoryLive(
               .withFieldConst(_.userUploadedVodUrl, vod.map(v => v.vodUrl))
               .withFieldConst(_.topicCreatorIsDidUser, user.isDidUser)
               .withFieldConst(_.createdByTag, user.tag)
+              .withFieldComputed(_.category, row => TopicCategories.withName(row.category))
               .withFieldConst(
                 _.externalContentData,
                 linkData.map(data =>
@@ -430,6 +434,7 @@ case class TopicRepositoryLive(
           .withFieldConst(_.userUploadedVodUrl, None)
           .withFieldConst(_.topicCreatorIsDidUser, user.isDidUser)
           .withFieldConst(_.createdByTag, user.tag)
+          .withFieldComputed(_.category, row => TopicCategories.withName(row.category))
           .withFieldConst(
             _.externalContentData,
             linkData.map(data =>

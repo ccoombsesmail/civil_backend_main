@@ -10,7 +10,7 @@ import civil.services.AuthenticationService
 import io.scalaland.chimney.dsl._
 import zio._
 
-import java.time.LocalDateTime
+import java.time.{LocalDateTime, ZoneId, ZonedDateTime}
 import java.util.UUID
 import scala.language.postfixOps
 
@@ -92,8 +92,8 @@ case class TopicServiceLive(topicRepository: TopicRepository, pollsRepository: P
           .into[Topics]
           .withFieldConst(_.id, topicId)
           .withFieldConst(_.likes, 0)
-          .withFieldConst(_.createdAt, LocalDateTime.now())
-          .withFieldConst(_.updatedAt, LocalDateTime.now())
+          .withFieldConst(_.createdAt, ZonedDateTime.now(ZoneId.systemDefault()))
+          .withFieldConst(_.updatedAt, ZonedDateTime.now(ZoneId.systemDefault()))
           .withFieldConst(_.id, UUID.randomUUID())
           .withFieldConst(_.createdByUserId, userData.userId)
           .withFieldConst(_.createdByUsername, userData.username)
@@ -106,6 +106,7 @@ case class TopicServiceLive(topicRepository: TopicRepository, pollsRepository: P
               case Permissions(true, true)   => FACE_ID_AND_CAPTCHA_VERIFIED
             }
           )
+          .enableDefaultValues
           .transform,
         incomingTopic.externalContentData.map(_.into[ExternalLinks]
           .withFieldConst(_.topicId, topicId)

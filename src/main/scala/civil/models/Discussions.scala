@@ -3,7 +3,7 @@ package civil.models
 import zio.{Random, Task, UIO, ZIO}
 import zio.json.{DeriveJsonCodec, JsonCodec}
 
-import java.time.{Instant, LocalDateTime}
+import java.time.{Instant, LocalDateTime, ZonedDateTime}
 import java.util.UUID
 
 
@@ -35,7 +35,7 @@ object DiscussionId {
 case class Discussions(
     id: UUID,
     topicId: UUID,
-    createdAt: LocalDateTime,
+    createdAt: ZonedDateTime,
     createdByUsername: String,
     createdByUserId: String,
     title: String,
@@ -72,7 +72,7 @@ object IncomingDiscussion {
 case class OutgoingDiscussion(
     id: UUID,
     topicId: UUID,
-    createdAt: LocalDateTime,
+    createdAt: ZonedDateTime,
     createdByUsername: String,
     createdByUserId: String,
     createdByIconSrc: String,

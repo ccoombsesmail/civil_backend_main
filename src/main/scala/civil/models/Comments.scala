@@ -2,8 +2,10 @@ package civil.models
 
 import civil.models.enums.ReportStatus.Clean
 import civil.models.enums.TribunalCommentType
+import io.circe.Encoder
+import io.circe.generic.semiauto.deriveEncoder
 
-import java.time.LocalDateTime
+import java.time.{LocalDateTime, ZonedDateTime}
 import java.util.UUID
 import io.scalaland.chimney.dsl._
 import zio.{Random, Task, UIO, ZIO}
@@ -25,12 +27,17 @@ object CommentId {
     JsonCodec[UUID].transform(CommentId(_), _.id)
 }
 
-case class CommentNode(data: CommentReply, children: Seq[CommentNode])
+case class CommentNode(data: CommentReply, children: List[CommentNode])
 
 object CommentNode {
-  implicit val codec: JsonCodec[CommentNode] =
-    DeriveJsonCodec.gen[CommentNode]
+//  implicit val codec: JsonCodec[CommentNode] =
+//    DeriveJsonCodec.gen[CommentNode]
+
+  implicit val encoder: Encoder[CommentNode] = deriveEncoder[CommentNode]
+
 }
+
+
 
 case class EntryWithDepth(comment: CommentReply, depth: Int)
 
@@ -82,7 +89,7 @@ case class CommentWithDepthAndUser(
     sentiment: String,
     discussionId: UUID,
     parentId: Option[UUID],
-    createdAt: LocalDateTime,
+    createdAt: ZonedDateTime,
     likes: Int,
     rootId: Option[UUID],
     depth: Int,
@@ -104,7 +111,7 @@ case class Comments(
     discussionId: UUID,
     topicId: UUID,
     parentId: Option[UUID],
-    createdAt: LocalDateTime,
+    createdAt: ZonedDateTime,
     likes: Int,
     rootId: Option[UUID],
     source: Option[String],
@@ -141,7 +148,7 @@ case class CommentReply(
     sentiment: String,
     discussionId: UUID,
     parentId: Option[UUID],
-    createdAt: LocalDateTime,
+    createdAt: ZonedDateTime,
     likes: Int,
     rootId: Option[UUID],
     likeState: Int,
@@ -154,7 +161,10 @@ case class CommentReply(
 )
 
 object CommentReply {
-  implicit val codec: JsonCodec[CommentReply] = DeriveJsonCodec.gen[CommentReply]
+//  implicit val codec: JsonCodec[CommentReply] = DeriveJsonCodec.gen[CommentReply]
+
+  implicit val encoder: Encoder[CommentReply] = deriveEncoder[CommentReply]
+
 }
 
 
@@ -165,7 +175,7 @@ case class CommentWithDepth(
     sentiment: String,
     discussionId: UUID,
     parentId: Option[UUID],
-    createdAt: LocalDateTime,
+    createdAt: ZonedDateTime,
     likes: Int,
     rootId: Option[UUID],
     depth: Int,
@@ -180,8 +190,10 @@ case class CommentWithReplies(
 )
 
 object CommentWithReplies {
-  implicit val codec: JsonCodec[CommentWithReplies] =
-    DeriveJsonCodec.gen[CommentWithReplies]
+//  implicit val codec: JsonCodec[CommentWithReplies] =
+//    DeriveJsonCodec.gen[CommentWithReplies]
+  implicit val encoder: Encoder[CommentWithReplies] = deriveEncoder[CommentWithReplies]
+
 }
 
 case class UpdateLikes(id: UUID, userId: String, increment: Boolean)

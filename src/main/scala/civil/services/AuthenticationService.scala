@@ -13,6 +13,7 @@ import org.json4s.jackson.JsonMethods
 import scala.util.{Failure, Success}
 import org.json4s.{DefaultFormats, Formats}
 import zio._
+import zio.http.Client
 
 import javax.sql.DataSource
 import scala.language.postfixOps
@@ -25,29 +26,36 @@ trait AuthenticationService {
   ): ZIO[Any, Throwable, JwtUserClaimsData]
   def civicAuthentication(jwt: String): ZIO[Any, Throwable, JwtUserClaimsData]
 
-  def canPerformCaptchaRequiredAction(userData: JwtUserClaimsData): ZIO[Any, Unauthorized, Unit]
+  def canPerformCaptchaRequiredAction(
+      userData: JwtUserClaimsData
+  ): ZIO[Any, Unauthorized, Unit]
 
-  def extractUserData(jwt: String,
-                      jwtType: String): ZIO[Any, Unauthorized, JwtUserClaimsData]
+  def extractUserData(
+      jwt: String,
+      jwtType: String
+  ): ZIO[Any, Unauthorized, JwtUserClaimsData]
 
 }
 
 object AuthenticationService {
 
-  def decodeDIDJWT(jwt: String, did: String): RIO[AuthenticationService, JwtUserClaimsData] =
+  def decodeDIDJWT(
+      jwt: String,
+      did: String
+  ): RIO[AuthenticationService, JwtUserClaimsData] =
     ZIO.serviceWithZIO[AuthenticationService](_.decodeDIDJWT(jwt, did))
 
-  def extractUserData(jwt: String,
-                      jwtType: String):  ZIO[AuthenticationService, Unauthorized, JwtUserClaimsData]  =
-    ZIO.serviceWithZIO[AuthenticationService](_.extractUserData(jwt,  jwtType))
+  def extractUserData(
+      jwt: String,
+      jwtType: String
+  ): ZIO[AuthenticationService, Unauthorized, JwtUserClaimsData] =
+    ZIO.serviceWithZIO[AuthenticationService](_.extractUserData(jwt, jwtType))
 }
 
 case class AuthenticationServiceLive(dataSource: DataSource)
     extends AuthenticationService {
   implicit val formats: Formats = DefaultFormats
-
-  val clerk_jwt_key = Config().getString("civil.clerk_jwt_key")
-
+  private val clerk_jwt_key = Config().getString("civil.clerk_jwt_key")
 
   override def extractUserData(
       jwt: String,
@@ -62,7 +70,9 @@ case class AuthenticationServiceLive(dataSource: DataSource)
             )
           case s"CIVIC-DID" =>
             civicAuthentication(jwt).mapError(e =>
-              Unauthorized(s"Failed Civic/Solana DID Authentication Due To: ${e.toString}")
+              Unauthorized(
+                s"Failed Civic/Solana DID Authentication Due To: ${e.toString}"
+              )
             )
           case "CLERK" =>
             decodeClerkJWT(jwt).mapError(e =>
@@ -73,13 +83,16 @@ case class AuthenticationServiceLive(dataSource: DataSource)
     } yield jwtClaimsData
   }
 
-  override def canPerformCaptchaRequiredAction(userData: JwtUserClaimsData): ZIO[Any, Unauthorized, Unit] = {
+  override def canPerformCaptchaRequiredAction(
+      userData: JwtUserClaimsData
+  ): ZIO[Any, Unauthorized, Unit] = {
     ZIO.when(!userData.permissions.captchaPassActive)(
       ZIO.fail(
         Unauthorized(
           "Must Have An Active CAPTCHA pass to give civility points"
         )
-      ))
+      )
+    )
     ZIO.unit
   }
   override def civicAuthentication(
@@ -92,18 +105,28 @@ case class AuthenticationServiceLive(dataSource: DataSource)
       case s"Bearer $authString" => authString
       case _                     => jwt
     }
-
     for {
-      res <- authenticateCivicTokenHeader(decodedJwt).mapError(e => GeneralError(e.toString))
+      res <- authenticateCivicTokenHeader(decodedJwt).mapError(e =>
+        GeneralError(e.toString)
+      )
+      endTime = java.lang.System.nanoTime()
+
       body <- ZIO.fromEither(res.body).mapError(e => GeneralError(e.toString))
-      userDataOpt <- UsersRepository.getUserInternal(body.pk).provideEnvironment(ZEnvironment(dataSource)).mapError(e => GeneralError(e.toString))
-      userData <- ZIO.fromOption(userDataOpt).mapError(e => GeneralError(e.toString))
+      userDataOpt <- UsersRepository
+        .getUserInternal(body.pk)
+        .provideEnvironment(ZEnvironment(dataSource))
+        .mapError(e => GeneralError(e.toString))
+        userData <- ZIO
+        .fromOption(userDataOpt)
+        .mapError(e => GeneralError(e.toString))
     } yield JwtUserClaimsData(
       userId = body.pk,
       username = body.name.getOrElse(body.pk),
       userCivilTag = userData.tag.getOrElse(""),
       userIconSrc = body.iconUrl.getOrElse(
-        userData.iconSrc.getOrElse("https://civil-dev.s3.us-west-1.amazonaws.com/profile_img_1.png")
+        userData.iconSrc.getOrElse(
+          "https://civil-dev.s3.us-west-1.amazonaws.com/profile_img_1.png"
+        )
       ),
       civicHeadline = body.headline,
       permissions = body.permissions,
@@ -177,6 +200,7 @@ case class AuthenticationServiceLive(dataSource: DataSource)
 
 object AuthenticationServiceLive {
 
-  val layer: URLayer[DataSource, AuthenticationService] = ZLayer.fromFunction(AuthenticationServiceLive.apply _)
+  val layer: URLayer[DataSource, AuthenticationService] =
+    ZLayer.fromFunction(AuthenticationServiceLive.apply _)
 
 }

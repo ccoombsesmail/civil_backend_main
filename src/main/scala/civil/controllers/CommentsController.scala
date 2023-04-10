@@ -1,51 +1,66 @@
 package civil.controllers
 
-import civil.controllers.ParseUtils.{extractJwtData, parseBody, parseCommentId, parseDiscussionId, parseSkip}
-import civil.errors.AppError.JsonDecodingError
-import civil.models.IncomingComment
+import civil.controllers.ParseUtils.{extractJwtData, parseBody, parseCommentId, parseDiscussionId, parseQuery, parseSkip}
+import civil.errors.AppError.{InternalServerError, JsonDecodingError}
+import civil.models.{CommentNode, IncomingComment}
 import civil.services.comments.CommentsService
-import zhttp.http.{Http, Method, Request, Response}
+import io.circe.{Encoder, Json}
+import io.circe.syntax.EncoderOps
+import zio.Console.printLine
+import zio.http._
 import zio._
-import zio.json.EncoderOps
-import zhttp.http._
+import zio.http.model.Method
+import zio.json.{DeriveJsonCodec, JsonCodec}
+import io.circe.generic.semiauto._
+import io.circe.generic.auto._
+
+import java.util.UUID
 
 
 final case class CommentsController(commentsService: CommentsService) {
   val routes: Http[Any, Throwable, Request, Response] = Http.collectZIO[Request] {
-    case req @ Method.POST -> !! / "comments"  =>
-      for {
+    case req @ Method.POST -> !! / "api" / "v1" / "comments"  =>
+      (for {
         incomingComment <- parseBody[IncomingComment](req)
-        authDataOpt <- extractJwtData(req).mapError(e => JsonDecodingError(e.toString))
-        insertedComment <- commentsService.insertComment(authDataOpt.get._1, authDataOpt.get._2, incomingComment)
-      } yield Response.json(insertedComment.toJson)
+        authData <- extractJwtData(req).mapError(e => JsonDecodingError(e.toString))
+        (jwt, jwtType) = authData
+        insertedComment <- commentsService.insertComment(jwt, jwtType, incomingComment)
+      } yield Response.json(insertedComment.asJson.noSpaces)).catchAll(_.toResponse)
 
-    case req @ Method.GET -> !! / "comments" / discussionId / skip =>
-      for {
-        id <- parseDiscussionId(discussionId)
-        skip <- parseSkip(skip)
-        authDataOpt <- extractJwtData(req).mapError(e => JsonDecodingError(e.toString))
-        comments <- commentsService.getComments(authDataOpt.get._1, authDataOpt.get._2, id.id, skip.value )
-      } yield Response.json(comments.toJson)
+    case req @ Method.GET -> !!  / "api" / "v1" / "comments" =>
+      (for {
+        authData <- extractJwtData(req).mapError(e => JsonDecodingError(e.toString))
+        (jwt, jwtType) = authData
 
-    case req@Method.GET -> !! / "comments" / "replies" / commentId =>
-      for {
+        discussionIdParams <- parseQuery(req, "discussionId")
+        discussionId <- ZIO.fromOption(discussionIdParams.headOption).mapError(e => JsonDecodingError(e.toString))
+        skipParams <- parseQuery(req, "skip")
+        skip <- ZIO.fromOption(skipParams.headOption).mapError(e => JsonDecodingError(e.toString))
+        comments <- commentsService.getComments(jwt, jwtType, UUID.fromString(discussionId), skip.toInt)
+      } yield Response.json(comments.asJson.noSpaces)).catchAll(_.toResponse)
+
+    case req@Method.GET -> !! / "api" / "v1" / "comments" / "replies" / commentId =>
+      (for {
         id <- parseCommentId(commentId)
-        authDataOpt <- extractJwtData(req).mapError(e => JsonDecodingError(e.toString))
-        comments <- commentsService.getAllCommentReplies(authDataOpt.get._1, authDataOpt.get._2, id.id)
-      } yield Response.json(comments.toJson)
+        authData <- extractJwtData(req).mapError(e => JsonDecodingError(e.toString))
+        (jwt, jwtType) = authData
+        comments <- commentsService.getAllCommentReplies(jwt, jwtType, id.id)
+      } yield Response.json(comments.asJson.noSpaces)).catchAll(_.toResponse)
 
-    case req@Method.GET -> !! / "comments" / commentId =>
-      for {
+    case req@Method.GET -> !! / "api" / "v1" / "comments" / commentId =>
+      (for {
         id <- parseCommentId(commentId)
-        authDataOpt <- extractJwtData(req).mapError(e => JsonDecodingError(e.toString))
-        comments <- commentsService.getComment(authDataOpt.get._1, authDataOpt.get._2, id.id)
-      } yield Response.json(comments.toJson)
+        authData <- extractJwtData(req).mapError(e => JsonDecodingError(e.toString))
+        (jwt, jwtType) = authData
+        comments <- commentsService.getComment(jwt, jwtType, id.id)
+      } yield Response.json(comments.asJson.noSpaces)).catchAll(_.toResponse)
 
-    case req@Method.GET -> !! / "comments" / "user" / userId =>
-      for {
-        authDataOpt <- extractJwtData(req).mapError(e => JsonDecodingError(e.toString))
-        comments <- commentsService.getUserComments(authDataOpt.get._1, authDataOpt.get._2, userId)
-      } yield Response.json(comments.toJson)
+    case req@Method.GET -> !!  / "api" / "v1" / "comments" / "user" / userId =>
+      (for {
+        authData <- extractJwtData(req).mapError(e => JsonDecodingError(e.toString))
+        (jwt, jwtType) = authData
+        comments <- commentsService.getUserComments(jwt, jwtType, userId)
+      } yield Response.json(comments.asJson.noSpaces)).catchAll(_.toResponse)
   }
 
 }

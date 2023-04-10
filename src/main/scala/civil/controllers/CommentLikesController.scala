@@ -4,27 +4,30 @@ import civil.controllers.ParseUtils.{extractJwtData, parseBody}
 import civil.errors.AppError.JsonDecodingError
 import civil.models.UpdateCommentLikes
 import civil.services.comments.CommentLikesService
-import zhttp.http.{Http, Method, Request, Response}
-import zhttp.http._
+import zio.http._
+import zio.http.model.Method
+
 import zio._
 import zio.json.EncoderOps
 
 
 final case class CommentLikesController(commentCivilityService: CommentLikesService) {
   val routes: Http[Any, Throwable, Request, Response] = Http.collectZIO[Request] {
-    case req @ Method.PUT -> !! / "comments" / "likes"  =>
-      for {
+    case req @ Method.PUT -> !!  / "api" / "v1" / "comments" / "likes"  =>
+      (for {
         updateCommentLikes <- parseBody[UpdateCommentLikes](req)
-        authDataOpt <- extractJwtData(req).mapError(e => JsonDecodingError(e.toString))
-        likeGivenResponse <- commentCivilityService.addRemoveCommentLikeOrDislike(authDataOpt.get._1, authDataOpt.get._2, updateCommentLikes)
-      } yield Response.json(likeGivenResponse.toJson)
+        authData <- extractJwtData(req).mapError(e => JsonDecodingError(e.toString))
+        (jwt, jwtType) = authData
+        likeGivenResponse <- commentCivilityService.addRemoveCommentLikeOrDislike(jwt, jwtType, updateCommentLikes)
+      } yield Response.json(likeGivenResponse.toJson)).catchAll(_.toResponse)
 
-    case req @ Method.PUT -> !! / "comments" / "likes-tribunal" =>
-      for {
+    case req @ Method.PUT -> !! / "api" / "v1" / "comments" / "likes-tribunal" =>
+      (for {
         updateCommentLikes <- parseBody[UpdateCommentLikes](req)
-        authDataOpt <- extractJwtData(req).mapError(e => JsonDecodingError(e.toString))
-        likeGivenResponse <- commentCivilityService.addRemoveTribunalCommentLikeOrDislike(authDataOpt.get._1, authDataOpt.get._2, updateCommentLikes)
-      } yield Response.json(likeGivenResponse.toJson)
+        authData <- extractJwtData(req).mapError(e => JsonDecodingError(e.toString))
+        (jwt, jwtType) = authData
+        likeGivenResponse <- commentCivilityService.addRemoveTribunalCommentLikeOrDislike(jwt, jwtType, updateCommentLikes)
+      } yield Response.json(likeGivenResponse.toJson)).catchAll(_.toResponse)
   }
 
 }

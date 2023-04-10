@@ -10,6 +10,7 @@ import civil.repositories.topics._
 import civil.services.comments._
 import civil.services.topics._
 import zio._
+import zio.http.ServerConfig
 
 object Civil extends zio.ZIOAppDefault {
   implicit val ec: scala.concurrent.ExecutionContext =
@@ -129,6 +130,8 @@ object Civil extends zio.ZIOAppDefault {
       .serviceWithZIO[CivilServer](_.start)
       .provide(
         CivilServer.layer,
+        zio.http.Server.live,
+        zio.http.ServerConfig.live(ServerConfig.default.port(8090)),
         TopicLikesServiceLive.layer,
         TopicLikesController.layer,
         TopicLikesRepositoryLive.layer,

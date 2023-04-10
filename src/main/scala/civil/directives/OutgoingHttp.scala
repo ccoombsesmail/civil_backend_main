@@ -3,33 +3,29 @@ package civil.directives
 import akka.actor.typed.ActorSystem
 import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.scaladsl.adapter._
-import akka.http.javadsl.model.headers.HttpCredentials.createOAuth2BearerToken
 import akka.http.scaladsl._
 import akka.http.scaladsl.model.StatusCodes._
 import akka.http.scaladsl.model.headers.Accept
-import akka.http.scaladsl.model.{FormData, HttpEntity, HttpMethods, HttpRequest, HttpResponse, MediaRange, MediaTypes}
+import akka.http.scaladsl.model.{HttpEntity, HttpMethods, HttpRequest, HttpResponse, MediaRange, MediaTypes}
 import akka.stream.scaladsl.{Sink, Source}
 import akka.util.ByteString
-import civil.models.{IncomingRecommendations, PrivateMetadata, PublicMetadata, Score, UnsafeMetadata, UrlsForTFIDFConversion, Words}
+import civil.models.{IncomingRecommendations, Score, UrlsForTFIDFConversion, Words}
 
 import scala.concurrent.Future
 import org.json4s._
 import org.json4s.jackson.JsonMethods
 import org.json4s.jackson.Serialization
 import civil.config.Config
-import civil.models.ClerkModels.{ClerkResponse, ClerkUserPatch, CreateClerkUser}
-import io.circe.syntax.EncoderOps
 import io.circe.generic.auto._
-import io.scalaland.chimney.dsl.TransformerOps
 
 import java.util.UUID
-import scala.util.{Failure, Success}
 import sttp.client3.httpclient.zio.HttpClientZioBackend
 import sttp.client3._
 import sttp.client3.circe._
 import zio.ZIO
-import zio.json.{DeriveJsonCodec, JsonCodec}
-
+import zio.http.Client
+import zio.http.model.{HTTP_CHARSET, Headers}
+import zio.json.{DecoderOps, DeriveJsonCodec, JsonCodec}
 
 
 case class MetaData(html: Option[String], author_name: String)
@@ -152,12 +148,19 @@ object OutgoingHttp {
       headline: Option[String]
 )
 
+  object AuthRes {
+    implicit val codec: JsonCodec[AuthRes] = DeriveJsonCodec.gen[AuthRes]
+  }
+
   def authenticateCivicTokenHeader(auth: String) = {
-    println(uri"${Config().getString("civil.misc_service")}/internal/civic-auth")
+    for {
+      res <- Client.request(s"${Config().getString("civil.misc_service")}/internal/civic-auth", headers = Headers.Header.apply("Authorization", s"Bearer $auth"))
+      st <- res.body.asString(HTTP_CHARSET)
+    } yield st.fromJson[AuthRes]
     val request = basicRequest
       .get(uri"${Config().getString("civil.misc_service")}/internal/civic-auth")
       .auth.bearer(auth)
-      .header("accept","application/json").acceptEncoding("gzip, deflate, br")
+      .header("accept", "application/json").acceptEncoding("gzip, deflate, br")
       .response(asJson[AuthRes])
 
     val result = HttpClientZioBackend().flatMap { backend => {
@@ -168,7 +171,8 @@ object OutgoingHttp {
       })
       res.mapError(e => println(e.toString))
       res
-    }}
+    }
+    }
     result
 
   }

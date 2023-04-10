@@ -4,9 +4,10 @@ package civil.controllers
 import civil.errors.AppError
 import civil.errors.AppError.JsonDecodingError
 import civil.models.{CommentId, DiscussionId, FollowedUserId, TopicId}
-import zhttp.http.Request
+import zio.http._
+import zio.http.model.HTTP_CHARSET
 import zio.{IO, Task, ZIO}
-import zio.json.{DecoderOps, JsonCodec, JsonDecoder}
+import zio.json.{DecoderOps, EncoderOps, JsonCodec, JsonDecoder}
 
 
 
@@ -26,27 +27,23 @@ object ParseUtils {
 
   def parseBody[A: JsonDecoder](request: Request): IO[AppError, A] =
     for {
-      body <- request.bodyAsString.orElseFail(AppError.MissingBodyError)
-      parsed <- ZIO.from(body.fromJson[A]).mapError(AppError.JsonDecodingError)
+      stringBody <- request.body.asString(HTTP_CHARSET).mapError(e => AppError.JsonDecodingError(e.toString))
+      parsed <- ZIO.from(stringBody.fromJson[A]).mapError(e => AppError.JsonDecodingError(e.toString))
     } yield parsed
 
 
-  def extractJwtData(request: Request): IO[AppError, Option[(String, String)]] =
+  def extractJwtData(request: Request): IO[AppError, (String, String)] =
     for {
       jwt <- ZIO.fromOption(request.bearerToken).mapError(e => JsonDecodingError(e.toString))
-      jwtType <- ZIO.attempt(request.header("X-JWT-TYPE")).mapError(e => JsonDecodingError(e.toString))
-    } yield {
-      jwtType.map { case (_, jwtType) =>
-        (jwt, jwtType.toString)
-      }
-    }
+      jwtTypeHeader <- ZIO.fromOption(request.header("X-JWT-TYPE")).mapError(e => JsonDecodingError(e.toString))
+      jwtType = jwtTypeHeader.value.toString
+    } yield (jwt, jwtType)
 
-  def parseQuery[T](req: Request, paramName: String): IO[AppError, T] = {
-    req.url.queryParams
-      .collectFirst { case (k, v) if k == paramName => v }
-      .map(e => e.headOption) match {
+
+  def parseQuery(req: Request, paramName: String): IO[AppError, List[String]] = {
+    req.url.queryParams.get(paramName) match {
       case None =>  ZIO.fail(JsonDecodingError(s"Failed to parse query parameter '$paramName'"))
-      case Some(value: T) => ZIO.succeed(value)
+      case Some(value) => ZIO.succeed(value.toList)
     }
   }
 

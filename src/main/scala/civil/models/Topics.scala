@@ -4,7 +4,7 @@ import civil.models.enums.ReportStatus.Clean
 import civil.models.enums.UserVerificationType.NO_VERIFICATION
 import civil.models.enums.{LinkType, ReportStatus, TopicCategories, UserVerificationType}
 
-import java.time.{Instant, LocalDateTime}
+import java.time.{Instant, LocalDateTime, ZonedDateTime}
 import java.util.UUID
 import io.getquill.Embedded
 import zio.json.{DeriveJsonCodec, JsonCodec}
@@ -32,13 +32,9 @@ case class IncomingTopic(
     editorTextContent: String,
     externalContentData: Option[ExternalContentData],
     evidenceLinks: Option[List[String]],
-    category: TopicCategories,
+    category: String,
     userUploadedImageUrl: Option[String],
     userUploadedVodUrl: Option[String],
-    topicWords: Seq[String] = Seq(),
-    reportStatus: String = Clean.entryName,
-    topicId: Option[UUID] = None,
-    discussionId: Option[UUID] = None
 )
 
 object IncomingTopic {
@@ -66,14 +62,14 @@ case class Topics(
     editorTextContent: String,
     evidenceLinks: Option[List[String]],
     likes: Int,
-    category: TopicCategories,
+    category: String,
     userUploadedImageUrl: Option[String],
     userUploadedVodUrl: Option[String],
     topicWords: Seq[String] = Seq(),
     reportStatus: String = Clean.entryName,
     userVerificationType: UserVerificationType = NO_VERIFICATION,
-    createdAt: LocalDateTime,
-    updatedAt: LocalDateTime,
+    createdAt: ZonedDateTime,
+    updatedAt: ZonedDateTime,
     topicId: Option[UUID] = None,
     discussionId: Option[UUID] = None
 )
@@ -100,8 +96,8 @@ case class OutgoingTopic(
     reportStatus: String = ReportStatus.Clean.entryName,
     topicCreatorIsDidUser: Boolean,
     userVerificationType: UserVerificationType = NO_VERIFICATION,
-    createdAt: LocalDateTime,
-    updatedAt: LocalDateTime
+    createdAt: ZonedDateTime,
+    updatedAt: ZonedDateTime
 )
 
 object OutgoingTopic {
