@@ -4,6 +4,7 @@ import civil.errors.AppError.InternalServerError
 import civil.errors.AppError
 import civil.models.{TopicLiked, UpdateTopicLikes}
 import civil.models.NotifcationEvents.{GivingUserNotificationData, TopicLike}
+import civil.models.actions.LikedState
 import civil.repositories.topics.TopicLikesRepository
 import civil.services.{AuthenticationService, AuthenticationServiceLive, KafkaProducerServiceLive}
 import zio.{URLayer, ZIO, ZLayer}
@@ -47,7 +48,7 @@ case class TopicLikesServiceLive(topicLikesRep: TopicLikesRepository, authentica
         ).mapError(e => InternalServerError(e.toString))
       (updatedLikeData, topic) = data
       _ <- ZIO
-        .when(updatedLikeData.likeState == 1)(
+        .when(updatedLikeData.likeState == LikedState)(
               kafka.publish(
                 TopicLike(
                   eventType = "TopicLike",

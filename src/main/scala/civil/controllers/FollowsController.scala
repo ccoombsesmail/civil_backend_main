@@ -2,7 +2,6 @@ package civil.controllers
 
 import civil.services.FollowsService
 import civil.controllers.ParseUtils._
-import civil.errors.AppError.JsonDecodingError
 import civil.models.FollowedUserId
 import zio.http._
 import zio._
@@ -19,12 +18,12 @@ final case class FollowsController(followsService: FollowsService) {
         followedUser <- followsService.insertFollow(jwt, jwtType, followedUserId)
       } yield Response.json(followedUser.toJson)).catchAll(_.toResponse)
 
-    case req @ Method.DELETE -> !! / "api" / "v1" / "follows" / followedUserId =>
+    case req @ Method.DELETE -> !! / "api" / "v1" / "follows"  =>
      ( for {
-        followedUserId <- parseFollowedUserId(followedUserId)
+        followedUserId <- parseQuery(req, "followedUserId")
         authData <- extractJwtData(req)
         (jwt, jwtType) = authData
-        unfollowedUser <- followsService.deleteFollow(jwt, jwtType, followedUserId)
+        unfollowedUser <- followsService.deleteFollow(jwt, jwtType, FollowedUserId(followedUserId.head))
       } yield Response.json(unfollowedUser.toJson)).catchAll(_.toResponse)
 
     case req @ Method.GET -> !! / "api" / "v1" / "follows" / "followers" / userId =>

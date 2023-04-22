@@ -24,13 +24,15 @@ case class CivilServer(
     searchController: SearchController,
     topicsController: TopicsController,
     tribunalCommentsController: TribunalCommentsController,
-    usersController: UsersController
+    usersController: UsersController,
+    tribunalVotesController: TribunalVotesController,
+    topicFollowsController: TopicFollowsController
 ) {
 
   private val allRoutes: Http[Any, Throwable, Request, Response] = {
     topicsController.routes ++ usersController.routes ++ topicLikesController.routes ++ commentCivilityController.routes ++ commentLikesController.routes ++ commentsController.routes ++
       followsController.routes ++ discussionsController.routes ++ enumsController.routes ++ healthCheckController.routes ++ opposingRecommendationsController.routes ++
-      recommendationsController.routes ++ pollVotesController.routes ++ reportsController.routes ++ searchController.routes ++ tribunalCommentsController.routes
+      recommendationsController.routes ++ pollVotesController.routes ++ reportsController.routes ++ searchController.routes ++ tribunalCommentsController.routes ++ tribunalVotesController.routes ++ topicFollowsController.routes
   }
 
 //  private val loggingMiddleware: HttpMiddleware[Any, Nothing] =
@@ -85,6 +87,8 @@ object CivilServer {
       with TopicsController
       with TribunalCommentsController
       with UsersController
+      with TribunalVotesController
+      with TopicFollowsController
       with PollVotesController,
     Nothing,
     CivilServer

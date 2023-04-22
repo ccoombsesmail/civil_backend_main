@@ -25,6 +25,7 @@ object AppError {
 
   implicit class AppErrorOps(val error: AppError) extends AnyVal {
     def toResponse: UIO[Response] = {
+      println(error.userMsg)
       ZIO.succeed(Response(Status.fromInt(error.errorCode).getOrElse(Status.UnprocessableEntity), body = Body.fromString(error.userMsg)))
     }
   }

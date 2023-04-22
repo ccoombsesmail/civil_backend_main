@@ -1,5 +1,6 @@
 package civil.repositories
 
+import civil.models.actions.LikeAction
 import civil.models.enums.{ReportStatus, TopicCategories}
 import io.getquill.PostgresZioJdbcContext
 
@@ -19,6 +20,11 @@ trait QuillCodecs {
   implicit val reportStatusDecoder: Decoder[ReportStatus] =
     decoder(row => index => ReportStatus.withNameInsensitive(row.getObject(index).toString))
   implicit val reportStatusEncoder: Encoder[ReportStatus] =
+    encoder(VARCHAR, (index, value, row) => row.setObject(index, value, OTHER))
+
+  implicit val likeStateDecoder: Decoder[LikeAction] =
+    decoder(row => index => LikeAction.withName(row.getObject(index).toString))
+  implicit val likeStateEncoder: Encoder[LikeAction] =
     encoder(VARCHAR, (index, value, row) => row.setObject(index, value, OTHER))
 
     // implicit val localDateTimeDecoder: Decoder[LocalDateTime] =

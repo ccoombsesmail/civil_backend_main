@@ -13,6 +13,9 @@ case object TribunalCommentType extends Enum[TribunalCommentType] with CirceEnum
   case object Jury  extends TribunalCommentType
   case object General  extends TribunalCommentType
 
+  case object All  extends TribunalCommentType
+
+
   val values: IndexedSeq[TribunalCommentType] = findValues
 
   implicit val codec: JsonCodec[TribunalCommentType] = DeriveJsonCodec.gen[TribunalCommentType]

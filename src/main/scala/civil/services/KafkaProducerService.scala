@@ -28,23 +28,6 @@ class KafkaProducerServiceLive extends KafkaProducerService {
       _ = println(p)
     } yield p).provide(KafkaProducerService.producerLayer)
 
-//    val producerEffect = {
-//      producer.produce(
-//        "notifications",
-//        userId,
-//        message,
-//        Serde.string,
-//        serde
-//      )
-//    }
-//    runtime.unsafe.r
-//    runtime.unsafeRunAsyncWith(for {
-//      record <- producerEffect.use(identity)
-//    } yield record)(k => k.mapError(e => InternalServerError(e.toString)))
-//
-//    runtime.unsafeRunAsyncWith(for {
-//      _ <- producerFlushEffect.use(identity)
-//    } yield ())(k => k.mapError(e => InternalServerError(e.toString)))
   }
 }
 

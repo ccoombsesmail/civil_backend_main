@@ -4,6 +4,7 @@ import civil.errors.AppError
 import civil.errors.AppError.GeneralError
 import civil.models.{CommentLiked, CommentLikes, UpdateCommentLikes}
 import civil.models.NotifcationEvents.{CommentLike, GivingUserNotificationData}
+import civil.models.actions.LikedState
 import civil.repositories.comments.CommentLikesRepository
 import civil.services.{AuthenticationService, AuthenticationServiceLive, KafkaProducerServiceLive}
 import io.scalaland.chimney.dsl.TransformerOps
@@ -52,6 +53,7 @@ object CommentLikesService {
 case class CommentLikesServiceLive(commentLikesRepo: CommentLikesRepository, authenticationService: AuthenticationService)
     extends CommentLikesService {
   override def addRemoveCommentLikeOrDislike(
+
       jwt: String,
       jwtType: String,
       commentLikeDislikeData: UpdateCommentLikes
@@ -65,11 +67,12 @@ case class CommentLikesServiceLive(commentLikesRepo: CommentLikesRepository, aut
           .into[CommentLikes]
           .withFieldConst(_.userId, userData.userId)
           .withFieldConst(_.commentId, commentLikeDislikeData.id)
+          .withFieldConst(_.likeState, commentLikeDislikeData.likeAction)
           .transform,
         commentLikeDislikeData.createdByUserId
       )
       (likeData, comment) = data
-      _ <- ZIO.when(likeData.likeState == 1)(
+      _ <- ZIO.when(likeData.likeState == LikedState)(
             kafka.publish(
               CommentLike(
                 eventType = "CommentLike",
@@ -106,6 +109,7 @@ case class CommentLikesServiceLive(commentLikesRepo: CommentLikesRepository, aut
           .into[CommentLikes]
           .withFieldConst(_.commentId, commentLikeDislikeData.id)
           .withFieldConst(_.userId, userData.userId)
+          .withFieldConst(_.likeState, commentLikeDislikeData.likeAction)
           .transform
       )
     } yield likeData

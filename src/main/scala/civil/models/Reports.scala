@@ -3,7 +3,7 @@ package civil.models
 import zio.json.{DeriveJsonCodec, JsonCodec}
 
 import java.util.UUID
-import java.time.{Instant, LocalDateTime}
+import java.time.{Instant, LocalDateTime, ZonedDateTime}
 
 case class Report(
     contentId: UUID,
@@ -34,7 +34,7 @@ case class ReportInfo(
                        voteAgainst: Option[Boolean],
                        voteFor: Option[Boolean],
                        reportPeriodEnd: Option[Long],
-                       votingEndedAt: Option[LocalDateTime],
+                       votingEndedAt: Option[ZonedDateTime],
                        contentType: String,
                        numVotesAgainst: Option[Int] = None,
                        numVotesFor: Option[Int] = None

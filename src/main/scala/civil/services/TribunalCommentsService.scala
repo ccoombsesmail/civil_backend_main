@@ -8,7 +8,7 @@ import zio._
 import civil.repositories.UsersRepository
 import io.scalaland.chimney.dsl._
 
-import java.time.LocalDateTime
+import java.time.{LocalDateTime, ZoneId, ZonedDateTime}
 import java.util.UUID
 // import civil.directives.SentimentAnalyzer
 
@@ -55,12 +55,13 @@ case class TribunalCommentsServiceLive(
         incomingComment
           .into[TribunalComments]
           .withFieldConst(_.id, UUID.randomUUID())
-          .withFieldConst(_.createdAt, LocalDateTime.now())
+          .withFieldConst(_.createdAt, ZonedDateTime.now(ZoneId.systemDefault()))
           .withFieldConst(_.likes, 0)
           .withFieldConst(_.sentiment, Sentiment.POSITIVE.toString)
           .withFieldConst(_.reportedContentId, incomingComment.contentId)
           .withFieldConst(_.createdByUserId, userData.userId)
-          .transform
+          .transform,
+        userData
       )
     } yield insertedComment
 

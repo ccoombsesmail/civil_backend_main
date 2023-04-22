@@ -109,7 +109,6 @@ case class AuthenticationServiceLive(dataSource: DataSource)
       res <- authenticateCivicTokenHeader(decodedJwt).mapError(e =>
         GeneralError(e.toString)
       )
-      endTime = java.lang.System.nanoTime()
 
       body <- ZIO.fromEither(res.body).mapError(e => GeneralError(e.toString))
       userDataOpt <- UsersRepository

@@ -38,6 +38,11 @@ trait TopicService {
                 jwtType: String,
                 userId: String
               ): ZIO[Any, AppError, List[OutgoingTopic]]
+
+  def getFollowedTopics(
+                     jwt: String,
+                     jwtType: String,
+ ): ZIO[Any, AppError, List[OutgoingTopic]]
 }
 
 object TopicService {
@@ -71,6 +76,12 @@ object TopicService {
                 userId: String
               ): ZIO[TopicService, AppError, List[OutgoingTopic]] =
     ZIO.serviceWithZIO[TopicService](_.getUserTopics(jwt, jwtType, userId))
+
+  def getFollowedTopics(
+                     jwt: String,
+                     jwtType: String,
+                   ): ZIO[TopicService, AppError, List[OutgoingTopic]] =
+    ZIO.serviceWithZIO[TopicService](_.getFollowedTopics(jwt, jwtType))
 }
 
 case class TopicServiceLive(topicRepository: TopicRepository, pollsRepository: PollsRepository, authService: AuthenticationService)
@@ -161,6 +172,15 @@ case class TopicServiceLive(topicRepository: TopicRepository, pollsRepository: P
       topics <- topicRepository.getUserTopics(
         userData.userId,
         userId
+      )
+    } yield topics
+  }
+
+  override def getFollowedTopics(jwt: String, jwtType: String): ZIO[Any, AppError, List[OutgoingTopic]] = {
+    for {
+      userData <- authService.extractUserData(jwt, jwtType)
+      topics <- topicRepository.getFollowedTopics(
+        userData.userId
       )
     } yield topics
   }

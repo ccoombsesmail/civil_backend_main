@@ -67,16 +67,16 @@ case class FollowsServiceLive(followsRepository: FollowsRepository, authenticati
       userData <- authenticationService.extractUserData(jwt, jwtType)
       _ <- ZIO
         .fail(GeneralError("User can't follow self"))
-        .when(userData.userId == followedUserId.value)
+        .when(userData.userId == followedUserId.followedUserId)
       outgoingUser <- followsRepository.insertFollow(
-        Follows(userId = userData.userId, followedUserId = followedUserId.value)
+        Follows(userId = userData.userId, followedUserId = followedUserId.followedUserId)
       )
       _ <- ZIO
         .attempt(
           kafka.publish(
             NewFollower(
               eventType = "NewFollower",
-              followedUserId = followedUserId.value,
+              followedUserId = followedUserId.followedUserId,
               givingUserData = GivingUserNotificationData(
                 givingUserId = userData.userId,
                 givingUserTag = Some(userData.userCivilTag),
@@ -84,7 +84,7 @@ case class FollowsServiceLive(followsRepository: FollowsRepository, authenticati
                 givingUserUsername = userData.username
               )
             ),
-            followedUserId.value,
+            followedUserId.followedUserId,
             NewFollower.newFollowerSerde
           )
         )
@@ -100,9 +100,9 @@ case class FollowsServiceLive(followsRepository: FollowsRepository, authenticati
       userData <- authenticationService.extractUserData(jwt, jwtType)
       _ <- ZIO
         .fail(GeneralError("User can't unfollow self"))
-        .when(userData.userId == followedUserId.value)
+        .when(userData.userId == followedUserId.followedUserId)
       outgoingUser <- followsRepository.deleteFollow(
-        Follows(userId = userData.userId, followedUserId = followedUserId.value)
+        Follows(userId = userData.userId, followedUserId = followedUserId.followedUserId)
       )
     } yield outgoingUser
   }

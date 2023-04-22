@@ -7,7 +7,7 @@
 
     <logger name="com.zaxxer.hikari" level="info" /> <!-- Change the log level for HikariCP here -->
 
-    <root level="debug">
+    <root level="info">
         <appender-ref ref="STDOUT" />
     </root>
 </configuration>

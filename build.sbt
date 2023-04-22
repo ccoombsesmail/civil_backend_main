@@ -10,7 +10,7 @@ val ZIOHttpVersion = "0.0.5"
 
 ThisBuild / scalaVersion     := "2.13.8"
 
-flywayUrl := "jdbc:postgresql://localhost:5433/civil_main"
+flywayUrl := "jdbc:postgresql://localhost:5434/civil_main"
 flywayUser := "postgres"
 flywayPassword := "postgres"
 val enumeratumVersion = "1.7.2"

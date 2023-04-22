@@ -107,7 +107,7 @@ case class CommentCivilityServiceLive(
         .addOrRemoveTribunalCommentCivility(
           givingUserId = userData.userId,
           givingUserUsername = userData.username,
-          civilityData: UpdateCommentCivility
+          civilityData
         )
         .mapError(e => GeneralError(e.toString))
     } yield res

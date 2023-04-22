@@ -1,10 +1,12 @@
 package civil.models
 
+import civil.models.actions.LikeAction
 import civil.models.enums.TribunalCommentType
+import io.circe.Encoder
+import io.circe.generic.semiauto.deriveEncoder
 import io.scalaland.chimney.dsl.TransformerOps
-import zio.json.{DeriveJsonCodec, JsonCodec}
 
-import java.time.LocalDateTime
+import java.time.ZonedDateTime
 import java.util.UUID
 
 case class TribunalCommentNode(
@@ -13,19 +15,20 @@ case class TribunalCommentNode(
 )
 
 object TribunalCommentNode {
-  implicit val codec: JsonCodec[TribunalCommentNode] =
-    DeriveJsonCodec.gen[TribunalCommentNode]
+  implicit val encoder: Encoder[TribunalCommentNode] = deriveEncoder[TribunalCommentNode]
+
 }
 case class TribunalEntryWithDepth(comment: TribunalCommentsReply, depth: Int)
 
 object TribunalComments {
   def withDepthToReplyWithDepth(
       commentWithDepth: TribunalCommentWithDepthAndUser,
-      likeState: Int,
+      likeState: LikeAction,
       civility: Float,
       iconSrc: String,
       userId: String,
-      createdByExperience: Option[String]
+      createdByExperience: Option[String],
+      createdByTag: Option[String]
   ) =
     TribunalEntryWithDepth(
       commentWithDepth
@@ -35,6 +38,7 @@ object TribunalComments {
         .withFieldConst(_.createdByIconSrc, iconSrc)
         .withFieldConst(_.createdByUserId, userId)
         .withFieldConst(_.createdByExperience, createdByExperience)
+        .withFieldConst(_.createdByTag, createdByTag)
         .withFieldConst(_.source, commentWithDepth.source)
         .transform,
       commentWithDepth.depth
@@ -42,11 +46,12 @@ object TribunalComments {
 
   def commentToCommentReply(
       comment: TribunalCommentWithDepthAndUser,
-      likeState: Int,
+      likeState: LikeAction,
       civility: Float,
       iconSrc: String,
       userId: String,
-      createdByExperience: Option[String]
+      createdByExperience: Option[String],
+      createdByTag: Option[String]
   ) =
     comment
       .into[TribunalCommentsReply]
@@ -55,6 +60,7 @@ object TribunalComments {
       .withFieldConst(_.createdByIconSrc, iconSrc)
       .withFieldConst(_.createdByUserId, userId)
       .withFieldConst(_.createdByExperience, createdByExperience)
+      .withFieldConst(_.createdByTag, createdByTag)
       .withFieldConst(_.source, comment.source)
       .transform
 }
@@ -68,7 +74,7 @@ case class TribunalComments(
     sentiment: String,
     reportedContentId: UUID,
     parentId: Option[UUID],
-    createdAt: LocalDateTime,
+    createdAt: ZonedDateTime,
     likes: Int,
     rootId: Option[UUID],
     source: Option[String],
@@ -78,26 +84,26 @@ case class TribunalComments(
 case class TribunalCommentsReply(
     id: UUID,
     editorState: String,
-    editorTextContent: String,
     createdByUserId: String,
     createdByUsername: String,
     sentiment: String,
     reportedContentId: UUID,
     parentId: Option[UUID],
-    createdAt: LocalDateTime,
+    createdAt: ZonedDateTime,
     likes: Int,
     rootId: Option[UUID],
-    likeState: Int,
+    likeState: LikeAction,
     civility: Float,
     source: Option[String],
     createdByIconSrc: String,
     createdByExperience: Option[String],
+    createdByTag: Option[String],
     commentType: TribunalCommentType
 )
 
 object TribunalCommentsReply {
-  implicit val codec: JsonCodec[TribunalCommentsReply] =
-    DeriveJsonCodec.gen[TribunalCommentsReply]
+  implicit val encoder: Encoder[TribunalCommentsReply] = deriveEncoder[TribunalCommentsReply]
+
 }
 
 case class TribunalCommentWithDepth(
@@ -109,7 +115,7 @@ case class TribunalCommentWithDepth(
     sentiment: String,
     reportedContentId: UUID,
     parentId: Option[UUID],
-    createdAt: LocalDateTime,
+    createdAt: ZonedDateTime,
     likes: Int,
     rootId: Option[UUID],
     depth: Int,
@@ -120,13 +126,12 @@ case class TribunalCommentWithDepth(
 case class TribunalCommentWithDepthAndUser(
     id: UUID,
     editorState: String,
-    editorTextContent: String,
     createdByUsername: String,
     createdByUserId: String,
     sentiment: String,
     reportedContentId: UUID,
     parentId: Option[UUID],
-    createdAt: LocalDateTime,
+    createdAt: ZonedDateTime,
     likes: Int,
     rootId: Option[UUID],
     depth: Int,
@@ -134,7 +139,11 @@ case class TribunalCommentWithDepthAndUser(
     commentType: TribunalCommentType,
     userIconSrc: Option[String],
     userExperience: Option[String],
-    userId: String
+    createdByTag: Option[String],
+    userId: String,
+    likeState: Option[LikeAction],
+    civility: Option[Float]
+
 )
 
 case class TribunalCommentsBatchResponse(

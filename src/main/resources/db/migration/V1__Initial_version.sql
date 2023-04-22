@@ -4,6 +4,7 @@ create extension file_fdw;
 
 -- Set the log destination to csvlog
 
+CREATE TYPE like_action AS ENUM ('LikedState', 'DislikedState', 'NeutralState');
 
 CREATE TYPE sentiment AS ENUM ('POSITIVE', 'NEUTRAL', 'NEGATIVE', 'MEME');
 
@@ -31,9 +32,9 @@ CREATE INDEX tag_users_index ON "users" (tag);
 
 CREATE TABLE topics (
     id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
-    title varchar(100) NOT NULL,
+    title varchar(5000) NOT NULL,
     editor_state text NOT NULL,
-    editor_text_content varchar(1820) NOT NULL,
+    editor_text_content varchar(4820) NOT NULL,
     category varchar(50) default 'Technology',
     user_uploaded_image_url text,
     user_uploaded_vod_url text,
@@ -54,6 +55,18 @@ CREATE TABLE topics (
 CREATE INDEX id_topics_index ON topics (id);
 CREATE INDEX user_id_topics_index ON topics (created_by_user_id);
 
+CREATE TABLE topic_metadata (
+    id SERIAL PRIMARY KEY,
+    topic_id uuid UNIQUE NOT NULL,
+    topic_categories text[] DEFAULT '{}'::text[],
+    topic_key_words text[] DEFAULT '{}'::text[],
+    topic_named_entities text[] DEFAULT '{}'::text[],
+    text_content varchar(1820) NOT NULL,
+    CONSTRAINT fk_topic_metadata
+      FOREIGN KEY(topic_id)
+        REFERENCES topics(id)
+
+);
 
 CREATE TABLE external_links (
     id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
@@ -76,7 +89,7 @@ CREATE TABLE topic_vods (
   topic_id uuid NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_topics
-    FOREIGN KEY(topic_id) 
+    FOREIGN KEY(topic_id)
       REFERENCES topics(id)
 );
 
@@ -98,7 +111,7 @@ CREATE TABLE discussions (
     discussion_id uuid DEFAULT NULL,
     UNIQUE(title, topic_id),
     CONSTRAINT fk_topics
-      FOREIGN KEY(topic_id) 
+      FOREIGN KEY(topic_id)
 	      REFERENCES topics(id)
 );
 
@@ -179,7 +192,7 @@ CREATE TABLE comment_likes (
     id SERIAL PRIMARY KEY,
     user_id text NOT NULL,
     comment_id uuid NOT NULL,
-    value int DEFAULT 0,
+    like_state like_action DEFAULT 'NeutralState',
     UNIQUE(comment_id, user_id)
 );
 
@@ -190,13 +203,23 @@ CREATE TABLE topic_likes (
     id SERIAL PRIMARY KEY,
     user_id text NOT NULL,
     topic_id uuid NOT NULL,
-    value int DEFAULT 0,
+    like_state like_action DEFAULT 'NeutralState',
     UNIQUE(topic_id, user_id)
 );
 
 CREATE INDEX user_id_topic_likes_index ON topic_likes (user_id);
 CREATE INDEX topic_id_topic_likes_index ON topic_likes (topic_id);
 
+
+CREATE TABLE topic_follows (
+    id SERIAL PRIMARY KEY,
+    user_id text NOT NULL,
+    followed_topic_id uuid NOT NULL
+);
+
+
+CREATE INDEX user_id_topic_follows_index ON topic_follows (user_id);
+CREATE INDEX topic_id_topic_follows_index ON topic_follows (followed_topic_id);
 
 
 CREATE TABLE comment_civility (
@@ -699,15 +722,15 @@ BEGIN
 END $$;
 
 
-DO $$ 
-DECLARE 
+DO $$
+DECLARE
   topic_row RECORD;
   user_row RECORD;
   name_row RECORD;
   count_result INT;
 
-BEGIN 
-  FOR topic_row IN SELECT * FROM topics LOOP 
+BEGIN
+  FOR topic_row IN SELECT * FROM topics LOOP
     FOR i IN 1..5 LOOP
       SELECT * FROM names ORDER BY random() LIMIT 1 INTO name_row;
       SELECT COUNT(*) FROM discussions WHERE topic_id = topic_row.id AND title = name_row.name INTO count_result;
@@ -746,21 +769,21 @@ BEGIN
       SELECT * FROM random_tweets ORDER BY random() LIMIT 1 INTO tweet;
       -- SELECT format('"{\"root\":{\"children\":[{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"%s",\"type\":\"text\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"paragraph\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"root\",\"version\":1}}"', tweet.text) into formatted;
       INSERT INTO comments (id, created_by_username, created_by_user_id, sentiment, editor_state, editor_text_content, likes, root_id, parent_id, source, report_status, toxicity_status, topic_id, discussion_id)
-      VALUES (uuid_generate_v4(), user_row.username, user_row.user_id, 
-        CASE floor(random() * 3) + 1 
-          WHEN 1 THEN 'POSITIVE' 
-          WHEN 2 THEN 'NEUTRAL' 
-          ELSE 'NEGATIVE' 
-        END, 
+      VALUES (uuid_generate_v4(), user_row.username, user_row.user_id,
+        CASE floor(random() * 3) + 1
+          WHEN 1 THEN 'POSITIVE'
+          WHEN 2 THEN 'NEUTRAL'
+          ELSE 'NEGATIVE'
+        END,
        '{"root":{"children":[{"children":[{"detail":0,"format":0,"mode":"normal","style":"","text":"Dummy Text:","type":"text","version":1}],"direction":"ltr","format":"","indent":0,"type":"paragraph","version":1},{"children":[{"detail":0,"format":0,"mode":"normal","style":"","text":"replaceMe","type":"text","version":1}],"direction":"ltr","format":"","indent":0,"type":"paragraph","version":1}],"direction":"ltr","format":"","indent":0,"type":"root","version":1}}',
-       substring(tweet.conversation from 1 for 400), 
-        0, 
-        null, 
-        null, 
-        null, 
-        'Clean', 
-        'Clean', 
-        discussion_row.topic_id, 
+       substring(tweet.conversation from 1 for 400),
+        0,
+        null,
+        null,
+        null,
+        'Clean',
+        'Clean',
+        discussion_row.topic_id,
         discussion_row.id
       );
     END LOOP;
@@ -808,21 +831,21 @@ END $$;
 
 --     -- Insert a new comment with the parent_id and root_id set to the values from the random comment
 --     INSERT INTO comments (editor_state, editor_text_content, created_by_username, created_by_user_id, discussion_id, topic_id, sentiment, likes, root_id, parent_id, source, report_status, toxicity_status)
---     VALUES (random_comment.editor_state, 
---     random_comment.editor_text_content, 
---     random_comment.created_by_username, 
---     random_comment.created_by_user_id, 
---     random_comment.discussion_id, 
---     random_comment.topic_id, 
---     random_comment.sentiment, 
+--     VALUES (random_comment.editor_state,
+--     random_comment.editor_text_content,
+--     random_comment.created_by_username,
+--     random_comment.created_by_user_id,
+--     random_comment.discussion_id,
+--     random_comment.topic_id,
+--     random_comment.sentiment,
 --     0,
---     CASE 
+--     CASE
 --       WHEN random_comment.root_id IS NULL THEN random_comment.id
 --       ELSE random_comment.root_id
---      END,  
---     random_comment.id, 
---     random_comment.source, 
---     'Clean', 
+--      END,
+--     random_comment.id,
+--     random_comment.source,
+--     'Clean',
 --     'Clean'
 --     );
 --   END LOOP;

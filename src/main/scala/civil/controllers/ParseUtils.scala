@@ -25,12 +25,14 @@ object Skip {
 
 object ParseUtils {
 
-  def parseBody[A: JsonDecoder](request: Request): IO[AppError, A] =
+  def parseBody[A: JsonDecoder](request: Request): IO[AppError, A] = {
+
     for {
       stringBody <- request.body.asString(HTTP_CHARSET).mapError(e => AppError.JsonDecodingError(e.toString))
-      parsed <- ZIO.from(stringBody.fromJson[A]).mapError(e => AppError.JsonDecodingError(e.toString))
+      _ = println(stringBody)
+      parsed <- ZIO.from(stringBody.fromJson[A]).mapError(e => AppError.JsonDecodingError(e))
     } yield parsed
-
+  }
 
   def extractJwtData(request: Request): IO[AppError, (String, String)] =
     for {
@@ -57,7 +59,7 @@ object ParseUtils {
   def parseSkip(value: String): IO[AppError.InvalidIdError, Skip] =
     Skip.fromString(value).orElseFail(AppError.InvalidIdError("Invalid Skip Parameter"))
 
-  def parseFollowedUserId(value: String): IO[AppError.InvalidIdError, FollowedUserId] =
-    FollowedUserId.fromString(value).orElseFail(AppError.InvalidIdError("Invalid Followed User Id Parameter"))
+//  def parseFollowedUserId(value: String): IO[AppError.InvalidIdError, FollowedUserId] =
+//    FollowedUserId.fromString(value).orElseFail(AppError.InvalidIdError("Invalid Followed User Id Parameter"))
 
 }

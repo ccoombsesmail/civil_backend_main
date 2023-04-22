@@ -2,10 +2,22 @@ package civil.repositories.topics
 
 import civil.errors.AppError
 import civil.errors.AppError.InternalServerError
-import civil.models.{Discussions, OutgoingTopic, Recommendations, TopicLikes, TopicVods, Topics, Users, _}
+import civil.models.{
+  Discussions,
+  OutgoingTopic,
+  Recommendations,
+  TopicLikes,
+  TopicVods,
+  Topics,
+  Users,
+  _
+}
 import civil.directives.OutgoingHttp
+import civil.models.NotifcationEvents.TopicMLEvent
+import civil.models.actions.{LikeAction, NeutralState}
 import civil.models.enums.TopicCategories
 import civil.repositories.recommendations.RecommendationsRepository
+import civil.services.{KafkaProducerService, KafkaProducerServiceLive}
 import io.scalaland.chimney.dsl._
 import zio.{ZIO, _}
 import io.getquill._
@@ -14,7 +26,6 @@ import java.util.UUID
 import javax.sql.DataSource
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.{ExecutionContext, Future}
-
 
 case class TopicWithLinkData(
     topic: Topics,
@@ -28,7 +39,15 @@ case class TopicRepoHelpers(
   import civil.repositories.QuillContext._
   implicit val ec: ExecutionContext = ExecutionContext.global
 
-  private def topicsUsersVodsLinksJoin(fromUserId: Option[String]): Quoted[Query[(((Topics, Users), Option[TopicVods]), Option[ExternalLinks])]] = {
+  def topicsUsersVodsLinksJoin(fromUserId: Option[String]): Quoted[Query[
+    (
+        Topics,
+        Users,
+        Option[TopicVods],
+        Option[ExternalLinks],
+        Option[TopicFollows]
+    )
+  ]] = {
     fromUserId match {
       case Some(userId) =>
         quote {
@@ -40,6 +59,9 @@ case class TopicRepoHelpers(
             .on { case ((t, u), v) => t.id == v.topicId }
             .leftJoin(query[ExternalLinks])
             .on { case (((t, u), v), l) => t.id == l.topicId }
+            .leftJoin(query[TopicFollows])
+            .on { case ((((t, u), v), l), tf) => t.id == tf.followedTopicId }
+            .map { case ((((t, u), v), l), tf) => (t, u, v, l, tf) }
         }
       case None =>
         quote {
@@ -50,7 +72,9 @@ case class TopicRepoHelpers(
             .on { case ((t, u), v) => t.id == v.topicId }
             .leftJoin(query[ExternalLinks])
             .on { case (((t, u), v), l) => t.id == l.topicId }
-
+            .leftJoin(query[TopicFollows])
+            .on { case ((((t, u), v), l), tf) => t.id == tf.followedTopicId }
+            .map { case ((((t, u), v), l), tf) => (t, u, v, l, tf) }
         }
     }
 
@@ -71,10 +95,15 @@ case class TopicRepoHelpers(
     userUploadedImageUrl = None
   )
 
-  def runTopicMlPipeline(url: String, insertedTopic: Topics): ZIO[Any, Throwable, Unit] = {
+  def runTopicMlPipeline(
+      url: String,
+      insertedTopic: Topics
+  ): ZIO[Any, Throwable, Unit] = {
 
     for {
-      words <- ZIO.fromFuture { _ => OutgoingHttp.getTopicWordsFromMLService("get-topic-words", url) }
+      words <- ZIO.fromFuture { _ =>
+        OutgoingHttp.getTopicWordsFromMLService("get-topic-words", url)
+      }
       targetTopicKeyWords <- run(
         query[Topics]
           .filter(t => t.id == lift(insertedTopic.id))
@@ -82,7 +111,8 @@ case class TopicRepoHelpers(
             _.topicWords -> lift(words.topicWords)
           )
           .returning(t => (t.id, t.topicWords))
-      ).mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
+      ).mapError(e => InternalServerError(e.toString))
+        .provideEnvironment(ZEnvironment(dataSource))
       recommendedTopics <- getSimilarTopics(targetTopicKeyWords, url)
 
       recommendations = recommendedTopics.recs
@@ -110,12 +140,12 @@ case class TopicRepoHelpers(
     val targetTopicKeyWords = targetTopicData._2.toSet
 
     for {
-      allTopicData  <- run(
-          query[Topics]
+      allTopicData <- run(
+        query[Topics]
           .filter(t => t.id != lift(targetTopicData._1))
           .join(query[ExternalLinks])
           .on(_.id == _.topicId)
-          .map {case (t, el) => (t.id, t.topicWords, el.externalContentUrl)}
+          .map { case (t, el) => (t.id, t.topicWords, el.externalContentUrl) }
       ).provideEnvironment(ZEnvironment(dataSource))
       potentialRecommendationIds = allTopicData
         .filter({ case (id, words, externalContentUrl) =>
@@ -132,7 +162,8 @@ case class TopicRepoHelpers(
           contentUrl,
           targetTopicData._1,
           potentialRecommendationIds
-        )}
+        )
+      }
     } yield recs
 
   }
@@ -144,47 +175,57 @@ case class TopicRepoHelpers(
   ): ZIO[Any, InternalServerError, List[OutgoingTopic]] =
     for {
       likes <- run(query[TopicLikes].filter(_.userId == lift(requestingUserID)))
-        .mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
-      likesMap = likes.foldLeft(Map[UUID, Int]()) { (m, t) =>
-        m + (t.topicId -> t.value)
+        .mapError(e => InternalServerError(e.toString))
+        .provideEnvironment(ZEnvironment(dataSource))
+      likesMap = likes.foldLeft(Map[UUID, LikeAction]()) { (m, t) =>
+        m + (t.topicId -> t.likeState)
       }
-      topicsUsersVodsJoin <- run(topicsUsersVodsLinksJoin(fromUserId).drop(lift(skip)).take(5).sortBy(_._1._1._1.createdAt)(Ord.desc))
+      topicsUsersVodsJoin <- run(
+        topicsUsersVodsLinksJoin(fromUserId)
+          .drop(lift(skip))
+          .take(5)
+          .sortBy(_._1.createdAt)(Ord.desc)
+      )
         .mapError(e => InternalServerError(e.toString))
         .provideEnvironment(ZEnvironment(dataSource))
 
-        tuvj = topicsUsersVodsJoin.map {
-          case (((t, u), v), l) =>
-            (t, u, v, l)
-        }
-      outgoingTopics <- ZIO.foreachPar(tuvj)(row => {
-        val (topic, user, vod, linkData) = row
-
-        ZIO
-          .attempt(
-            topic
-              .into[OutgoingTopic]
-              .withFieldConst(_.createdByIconSrc, user.iconSrc.get)
-              .withFieldConst(_.likeState, likesMap.getOrElse(topic.id, 0))
-              .withFieldConst(_.userUploadedVodUrl, vod.map(v => v.vodUrl))
-              .withFieldConst(_.topicCreatorIsDidUser, user.isDidUser)
-              .withFieldConst(_.createdByTag, user.tag)
-              .withFieldComputed(_.editorState, row => row.editorState)
-              .withFieldComputed(_.category, row => TopicCategories.withName(row.category))
-              .withFieldConst(
-                _.externalContentData,
-                linkData.map(data =>
-                  ExternalContentData(
-                    linkType = data.linkType,
-                    embedId = data.embedId,
-                    externalContentUrl = data.externalContentUrl,
-                    thumbImgUrl = data.thumbImgUrl
+      outgoingTopics <- ZIO
+        .foreachPar(topicsUsersVodsJoin)(row => {
+          val (topic, user, vod, linkData, topicFollow) = row
+          ZIO
+            .attempt(
+              topic
+                .into[OutgoingTopic]
+                .withFieldConst(_.createdByIconSrc, user.iconSrc.get)
+                .withFieldConst(
+                  _.likeState,
+                  likesMap.getOrElse(topic.id, NeutralState)
+                )
+                .withFieldConst(_.userUploadedVodUrl, vod.map(v => v.vodUrl))
+                .withFieldConst(_.topicCreatorIsDidUser, user.isDidUser)
+                .withFieldConst(_.createdByTag, user.tag)
+                .withFieldConst(_.isFollowing, topicFollow.isDefined)
+                .withFieldComputed(_.editorState, row => row.editorState)
+                .withFieldComputed(
+                  _.category,
+                  row => TopicCategories.withName(row.category)
+                )
+                .withFieldConst(
+                  _.externalContentData,
+                  linkData.map(data =>
+                    ExternalContentData(
+                      linkType = data.linkType,
+                      embedId = data.embedId,
+                      externalContentUrl = data.externalContentUrl,
+                      thumbImgUrl = data.thumbImgUrl
+                    )
                   )
                 )
-              )
-              .transform
-          )
-          .mapError(e => InternalServerError(e.getMessage))
-      }).withParallelism(10)
+                .transform
+            )
+            .mapError(e => InternalServerError(e.getMessage))
+        })
+        .withParallelism(10)
     } yield outgoingTopics
 }
 
@@ -209,6 +250,11 @@ trait TopicRepository {
       requestingUserId: String,
       userId: String
   ): ZIO[Any, AppError, List[OutgoingTopic]]
+
+  def getFollowedTopics(
+      requestingUserId: String
+  ): ZIO[Any, AppError, List[OutgoingTopic]]
+
 }
 
 object TopicRepository {
@@ -216,7 +262,9 @@ object TopicRepository {
       topic: Topics,
       externalContentData: Option[ExternalLinks]
   ): ZIO[TopicRepository, AppError, OutgoingTopic] =
-    ZIO.serviceWithZIO[TopicRepository](_.insertTopic(topic, externalContentData))
+    ZIO.serviceWithZIO[TopicRepository](
+      _.insertTopic(topic, externalContentData)
+    )
 
   def getTopics: ZIO[TopicRepository, AppError, List[OutgoingTopic]] =
     ZIO.serviceWithZIO[TopicRepository](_.getTopics)
@@ -240,7 +288,14 @@ object TopicRepository {
       requestingUserId: String,
       userId: String
   ): ZIO[TopicRepository, AppError, List[OutgoingTopic]] =
-    ZIO.serviceWithZIO[TopicRepository](_.getUserTopics(requestingUserId, userId))
+    ZIO.serviceWithZIO[TopicRepository](
+      _.getUserTopics(requestingUserId, userId)
+    )
+
+  def getFollowedTopics(
+      requestingUserId: String
+  ): ZIO[TopicRepository, AppError, List[OutgoingTopic]] =
+    ZIO.serviceWithZIO[TopicRepository](_.getFollowedTopics(requestingUserId))
 }
 
 case class TopicRepositoryLive(
@@ -251,50 +306,52 @@ case class TopicRepositoryLive(
   private val helpers = TopicRepoHelpers(recommendationsRepository, dataSource)
   import helpers._
   import civil.repositories.QuillContext._
+  val kafka = new KafkaProducerServiceLive()
 
   override def insertTopic(
       incomingTopic: Topics,
       externalLinks: Option[ExternalLinks]
   ): ZIO[Any, AppError, OutgoingTopic] = {
-    for {
+    (for {
       userQuery <-
-          run(
-            query[Users].filter(u => u.userId == lift(incomingTopic.createdByUserId))
+        run(
+          query[Users].filter(u =>
+            u.userId == lift(incomingTopic.createdByUserId)
           )
-        .mapError(_ =>
-          InternalServerError("There Was A Problem Identifying The User")
-        ).provideEnvironment(ZEnvironment(dataSource))
-      user <- ZIO.fromOption(userQuery.headOption).mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
+        )
+      user <- ZIO
+        .fromOption(userQuery.headOption)
       _ <- ZIO.when(externalLinks.isEmpty)(transaction {
-              val inserted = run(
-                query[Topics]
-                  .insertValue(lift(incomingTopic))
-                  .returning(inserted => inserted)
-              )
-              inserted.map(t => {
-                run(
-                  query[Discussions].insertValue(lift(getDefaultDiscussion(t)))
-                )
-              })
-            })
-            .mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
+        for {
+          inserted <- run(
+            query[Topics]
+              .insertValue(lift(incomingTopic))
+              .returning(inserted => inserted)
+          )
+          _ <- run(
+            query[Discussions].insertValue(lift(getDefaultDiscussion(inserted)))
+          )
+        } yield ()
+      })
       _ <- ZIO.when(externalLinks.isDefined)(transaction {
-              val inserted = run(
-                query[Topics]
-                  .insertValue(lift(incomingTopic))
-                  .returning(inserted => inserted)
-              )
-              inserted.map(t => {
-                run(
-                  query[Discussions].insertValue(lift(getDefaultDiscussion(t)))
-                )
-                run(
-                  query[ExternalLinks]
-                    .insertValue(lift(externalLinks.get.copy(topicId = t.id)))
-                )
-              })
-            })
-            .mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
+
+        for {
+          inserted <- run(
+            query[Topics]
+              .insertValue(lift(incomingTopic))
+              .returning(inserted => inserted)
+          )
+
+          _ <- run(
+            query[Discussions].insertValue(lift(getDefaultDiscussion(inserted)))
+          )
+          _ <- run(
+            query[ExternalLinks]
+              .insertValue(lift(externalLinks.get.copy(topicId = inserted.id)))
+          )
+
+        } yield ()
+      })
 
       topicWithLinkData = TopicWithLinkData(incomingTopic, externalLinks)
 
@@ -305,33 +362,47 @@ case class TopicRepositoryLive(
           query[TopicVods].insertValue(
             lift(TopicVods(topic.createdByUserId, url, topic.id))
           )
-        ).mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
-      )
-      _ = topicWithLinkData.externalLinks.map(el =>
-        runTopicMlPipeline(el.externalContentUrl, topic).mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
+        ))
+
+      _ <- kafka.publish(
+        TopicMLEvent(
+          eventType = "TopicMLEvent",
+          topicId = topic.id,
+          editorTextContent = s"${topic.title}: ${topic.editorTextContent}",
+          externalUrl = linkData
+        ),
+        topic.id.toString,
+        TopicMLEvent.topicMLEventSerde,
+        "ml-pipeline"
       )
 
       outgoingTopic =
-          topic
-            .into[OutgoingTopic]
-            .withFieldConst(_.createdByIconSrc, user.iconSrc.getOrElse(""))
-            .withFieldConst(_.likeState, 0)
-            .withFieldConst(_.createdByTag, user.tag)
-            .withFieldConst(_.topicCreatorIsDidUser, user.isDidUser)
-            .withFieldComputed(_.category, row => TopicCategories.withName(row.category))
-            .withFieldConst(
-              _.externalContentData,
-              linkData.map(data =>
-                ExternalContentData(
-                  linkType = data.linkType,
-                  embedId = data.embedId,
-                  externalContentUrl = data.externalContentUrl,
-                  thumbImgUrl = data.thumbImgUrl
-                )
+        topic
+          .into[OutgoingTopic]
+          .withFieldConst(_.createdByIconSrc, user.iconSrc.getOrElse(""))
+          .withFieldConst(_.likeState, NeutralState)
+          .withFieldConst(_.createdByTag, user.tag)
+          .withFieldConst(_.topicCreatorIsDidUser, user.isDidUser)
+          .withFieldConst(_.isFollowing, false)
+          .withFieldComputed(
+            _.category,
+            row => TopicCategories.withName(row.category)
+          )
+          .withFieldConst(
+            _.externalContentData,
+            linkData.map(data =>
+              ExternalContentData(
+                linkType = data.linkType,
+                embedId = data.embedId,
+                externalContentUrl = data.externalContentUrl,
+                thumbImgUrl = data.thumbImgUrl
               )
             )
-            .transform
-    } yield outgoingTopic
+          )
+          .transform
+    } yield outgoingTopic)
+      .mapError(e => InternalServerError(e.toString))
+      .provideEnvironment(ZEnvironment(dataSource))
 
   }
 
@@ -349,12 +420,17 @@ case class TopicRepositoryLive(
 
     for {
       likes <- run(query[TopicLikes])
-        .mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
-      likesMap = likes.foldLeft(Map[UUID, Int]()) { (m, t) =>
-        m + (t.topicId -> t.value)
+        .mapError(e => InternalServerError(e.toString))
+        .provideEnvironment(ZEnvironment(dataSource))
+      likesMap = likes.foldLeft(Map[UUID, LikeAction]()) { (m, t) =>
+        m + (t.topicId -> t.likeState)
       }
-      joinedVals <- run(joined).mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
-      topicsUsersVodsLinksJoin = joinedVals.map { case (((t, u), v), l) => (t, u, v, l) }
+      joinedVals <- run(joined)
+        .mapError(e => InternalServerError(e.toString))
+        .provideEnvironment(ZEnvironment(dataSource))
+      topicsUsersVodsLinksJoin = joinedVals.map { case (((t, u), v), l) =>
+        (t, u, v, l)
+      }
 
       outgoingTopics <- ZIO.foreach(topicsUsersVodsLinksJoin)(row => {
         val (topic, user, vod, linkData) = row
@@ -363,11 +439,17 @@ case class TopicRepositoryLive(
             topic
               .into[OutgoingTopic]
               .withFieldConst(_.createdByIconSrc, user.iconSrc.get)
-              .withFieldConst(_.likeState, likesMap.getOrElse(topic.id, 0))
+              .withFieldConst(
+                _.likeState,
+                likesMap.getOrElse(topic.id, NeutralState)
+              )
               .withFieldConst(_.userUploadedVodUrl, vod.map(v => v.vodUrl))
               .withFieldConst(_.topicCreatorIsDidUser, user.isDidUser)
               .withFieldConst(_.createdByTag, user.tag)
-              .withFieldComputed(_.category, row => TopicCategories.withName(row.category))
+              .withFieldComputed(
+                _.category,
+                row => TopicCategories.withName(row.category)
+              )
               .withFieldConst(
                 _.externalContentData,
                 linkData.map(data =>
@@ -379,6 +461,7 @@ case class TopicRepositoryLive(
                   )
                 )
               )
+              .enableDefaultValues
               .transform
           )
           .mapError(e => InternalServerError(e.toString))
@@ -403,38 +486,50 @@ case class TopicRepositoryLive(
         .on { case ((t, u), v) => t.id == v.topicId }
         .leftJoin(query[ExternalLinks])
         .on { case (((t, u), v), l) => t.id == l.topicId }
+        .leftJoin(query[TopicFollows])
+        .on { case ((((t, u), v), l), tf) => t.id == tf.followedTopicId }
+        .map { case ((((t, u), v), l), tf) => (t, u, v, l, tf) }
+
     }
 
     for {
       likes <- run(
-            query[TopicLikes].filter(l =>
-              l.userId == lift(requestingUserID) && l.topicId == lift(id)
-            )
+        query[TopicLikes].filter(l =>
+          l.userId == lift(requestingUserID) && l.topicId == lift(id)
         )
+      )
         .mapError(e => InternalServerError(e.toString))
         .provideEnvironment(ZEnvironment(dataSource))
-      likesMap = likes.foldLeft(Map[UUID, Int]()) { (m, t) =>
-        m + (t.topicId -> t.value)
+      likesMap = likes.foldLeft(Map[UUID, LikeAction]()) { (m, t) =>
+        m + (t.topicId -> t.likeState)
       }
-      joinedVals <- run(joined).mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
-      topicsUsersVodsLinksJoin = joinedVals.map { case (((t, u), v), l) => (t, u, v, l) }
+      joinedVals <- run(joined)
+        .mapError(e => InternalServerError(e.toString))
+        .provideEnvironment(ZEnvironment(dataSource))
       _ <- ZIO
         .fail(
           InternalServerError("Can't find topic details")
         )
-        .unless(topicsUsersVodsLinksJoin.nonEmpty)
-    } yield topicsUsersVodsLinksJoin
+        .unless(joinedVals.nonEmpty)
+    } yield joinedVals
       .map(row => {
-        val (topic, user, vod, linkData) = row
+        val (topic, user, vod, linkData, topicFollow) = row
 
         topic
           .into[OutgoingTopic]
           .withFieldConst(_.createdByIconSrc, user.iconSrc.get)
-          .withFieldConst(_.likeState, likesMap.getOrElse(topic.id, 0))
+          .withFieldConst(
+            _.likeState,
+            likesMap.getOrElse(topic.id, NeutralState)
+          )
           .withFieldConst(_.userUploadedVodUrl, None)
           .withFieldConst(_.topicCreatorIsDidUser, user.isDidUser)
           .withFieldConst(_.createdByTag, user.tag)
-          .withFieldComputed(_.category, row => TopicCategories.withName(row.category))
+          .withFieldConst(_.isFollowing, topicFollow.isDefined)
+          .withFieldComputed(
+            _.category,
+            row => TopicCategories.withName(row.category)
+          )
           .withFieldConst(
             _.externalContentData,
             linkData.map(data =>
@@ -466,6 +561,74 @@ case class TopicRepositoryLive(
       userId: String
   ): ZIO[Any, AppError, List[OutgoingTopic]] = {
     getTopicsWithLikeStatus(requestingUserId, Some(userId), 0)
+
+  }
+
+  override def getFollowedTopics(
+      requestingUserId: String
+  ): ZIO[Any, AppError, List[OutgoingTopic]] = {
+    (for {
+      likes <- run(query[TopicLikes].filter(_.userId == lift(requestingUserId)))
+      likesMap = likes.foldLeft(Map[UUID, LikeAction]()) { (m, t) =>
+        m + (t.topicId -> t.likeState)
+      }
+      topicsUsersVodsJoin <- run(
+        query[Topics]
+          .join(query[Users])
+          .on(_.createdByUserId == _.userId)
+          .leftJoin(query[TopicVods])
+          .on { case ((t, u), v) => t.id == v.topicId }
+          .leftJoin(query[ExternalLinks])
+          .on { case (((t, u), v), l) => t.id == l.topicId }
+          .leftJoin(query[TopicFollows])
+          .on { case ((((t, u), v), l), tf) => t.id == tf.followedTopicId }
+          .filter { case ((((t, u), v), l), tf) =>
+            tf.exists(_.userId == lift(requestingUserId))
+          }
+          .map { case ((((t, u), v), l), tf) => (t, u, v, l, tf) }
+          .sortBy(_._1.createdAt)(Ord.desc)
+      )
+      outgoingTopics <- ZIO
+        .foreachPar(topicsUsersVodsJoin)(row => {
+          val (topic, user, vod, linkData, topicFollow) = row
+          ZIO
+            .attempt(
+              topic
+                .into[OutgoingTopic]
+                .withFieldConst(_.createdByIconSrc, user.iconSrc.get)
+                .withFieldConst(
+                  _.likeState,
+                  likesMap.getOrElse(topic.id, NeutralState)
+                )
+                .withFieldConst(_.userUploadedVodUrl, vod.map(v => v.vodUrl))
+                .withFieldConst(_.topicCreatorIsDidUser, user.isDidUser)
+                .withFieldConst(_.createdByTag, user.tag)
+                .withFieldConst(_.isFollowing, topicFollow.isDefined)
+                .withFieldComputed(_.editorState, row => row.editorState)
+                .withFieldComputed(
+                  _.category,
+                  row => TopicCategories.withName(row.category)
+                )
+                .withFieldConst(
+                  _.externalContentData,
+                  linkData.map(data =>
+                    ExternalContentData(
+                      linkType = data.linkType,
+                      embedId = data.embedId,
+                      externalContentUrl = data.externalContentUrl,
+                      thumbImgUrl = data.thumbImgUrl
+                    )
+                  )
+                )
+                .transform
+            )
+            .mapError(e => InternalServerError(e.getMessage))
+        })
+        .withParallelism(10)
+
+    } yield outgoingTopics)
+      .mapError(e => InternalServerError(e.toString))
+      .provideEnvironment(ZEnvironment(dataSource))
 
   }
 

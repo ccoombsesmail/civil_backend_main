@@ -1,7 +1,6 @@
 package civil.models
 
-import zio.{Random, Task, UIO, ZIO}
-import zio.json.JsonCodec
+import zio.json.{DeriveJsonCodec, JsonCodec}
 
 import java.util.UUID
 
@@ -11,17 +10,11 @@ case class Follows(
 )
 
 case class FollowedUserId(
-    value: String
+    followedUserId: String
 )
 
 
 object FollowedUserId {
+  implicit val codec: JsonCodec[FollowedUserId] = DeriveJsonCodec.gen[FollowedUserId]
 
-  def fromString(id: String): Task[FollowedUserId] =
-    ZIO.attempt {
-      FollowedUserId(id)
-    }
-
-  implicit val codec: JsonCodec[FollowedUserId] =
-    JsonCodec[String].transform(FollowedUserId(_), _.value)
 }

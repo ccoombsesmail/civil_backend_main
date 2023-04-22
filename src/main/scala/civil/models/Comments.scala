@@ -1,5 +1,6 @@
 package civil.models
 
+import civil.models.actions.LikeAction
 import civil.models.enums.ReportStatus.Clean
 import civil.models.enums.TribunalCommentType
 import io.circe.Encoder
@@ -10,7 +11,6 @@ import java.util.UUID
 import io.scalaland.chimney.dsl._
 import zio.{Random, Task, UIO, ZIO}
 import zio.json.{DeriveJsonCodec, JsonCodec}
-
 
 case class CommentId(id: UUID)
 
@@ -37,18 +37,17 @@ object CommentNode {
 
 }
 
-
-
 case class EntryWithDepth(comment: CommentReply, depth: Int)
 
 object Comments {
   def commentToCommentReplyWithDepth(
       commentWithDepth: CommentWithDepth,
-      likeState: Int,
+      likeState: LikeAction,
       civility: Float,
       iconSrc: String,
       userId: String,
-      createdByExperience: Option[String]
+      createdByExperience: Option[String],
+      createdByTag: Option[String]
   ) =
     EntryWithDepth(
       commentWithDepth
@@ -58,6 +57,7 @@ object Comments {
         .withFieldConst(_.createdByIconSrc, iconSrc)
         .withFieldConst(_.createdByUserId, userId)
         .withFieldConst(_.createdByExperience, createdByExperience)
+        .withFieldConst(_.createdByTag, createdByTag)
         .withFieldConst(_.source, commentWithDepth.source)
         .transform,
       commentWithDepth.depth
@@ -65,20 +65,22 @@ object Comments {
 
   def commentToCommentReply(
       comment: CommentWithDepth,
-      likeState: Int,
+      likeState: LikeAction,
       civility: Float,
       iconSrc: String,
       userId: String,
-      createdByExperience: Option[String]
+      createdByExperience: Option[String],
+      createdByTag: Option[String]
   ) =
     comment
       .into[CommentReply]
-      .withFieldConst(_.likeState, 0)
+      .withFieldConst(_.likeState, likeState)
       .withFieldConst(_.civility, civility)
       .withFieldConst(_.createdByIconSrc, iconSrc)
       .withFieldConst(_.createdByUserId, userId)
       .withFieldConst(_.createdByExperience, createdByExperience)
       .withFieldConst(_.source, comment.source)
+      .withFieldConst(_.createdByTag, createdByTag)
       .transform
 }
 
@@ -98,7 +100,10 @@ case class CommentWithDepthAndUser(
     toxicityStatus: Option[String] = None,
     userIconSrc: Option[String],
     userExperience: Option[String],
-    userId: String
+    createdByTag: Option[String],
+    userId: String,
+    likeState: Option[LikeAction],
+    civility: Option[Float]
 )
 
 case class Comments(
@@ -131,27 +136,26 @@ case class IncomingComment(
     toxicityStatus: Option[String] = None,
     topicId: UUID,
     commentType: TribunalCommentType = TribunalCommentType.General
-
-                          )
-
+)
 
 object IncomingComment {
-  implicit val codec: JsonCodec[IncomingComment] = DeriveJsonCodec.gen[IncomingComment]
+  implicit val codec: JsonCodec[IncomingComment] =
+    DeriveJsonCodec.gen[IncomingComment]
 }
-
 
 case class CommentReply(
     id: UUID,
     editorState: String,
     createdByUsername: String,
     createdByUserId: String,
+    createdByTag: Option[String],
     sentiment: String,
     discussionId: UUID,
     parentId: Option[UUID],
     createdAt: ZonedDateTime,
     likes: Int,
     rootId: Option[UUID],
-    likeState: Int,
+    likeState: LikeAction,
     civility: Float,
     source: Option[String],
     createdByIconSrc: String,
@@ -166,7 +170,6 @@ object CommentReply {
   implicit val encoder: Encoder[CommentReply] = deriveEncoder[CommentReply]
 
 }
-
 
 case class CommentWithDepth(
     id: UUID,
@@ -192,7 +195,8 @@ case class CommentWithReplies(
 object CommentWithReplies {
 //  implicit val codec: JsonCodec[CommentWithReplies] =
 //    DeriveJsonCodec.gen[CommentWithReplies]
-  implicit val encoder: Encoder[CommentWithReplies] = deriveEncoder[CommentWithReplies]
+  implicit val encoder: Encoder[CommentWithReplies] =
+    deriveEncoder[CommentWithReplies]
 
 }
 
@@ -204,4 +208,3 @@ case class Liked(
     liked: Boolean,
     rootId: Option[UUID]
 )
-

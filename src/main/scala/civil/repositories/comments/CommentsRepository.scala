@@ -3,6 +3,7 @@ package civil.repositories.comments
 import civil.errors.AppError
 import civil.errors.AppError.{GeneralError, InternalServerError}
 import civil.models._
+import civil.models.actions.{LikeAction, NeutralState}
 import civil.repositories.QuillContextQueries.getCommentsWithReplies
 import civil.utils.CommentsTreeConstructor
 import io.getquill.Ord
@@ -93,11 +94,12 @@ case class CommentsRepositoryLive(dataSource: DataSource)
 
     } yield inserted
       .into[CommentReply]
-      .withFieldConst(_.likeState, 0)
+      .withFieldConst(_.likeState, NeutralState)
       .withFieldConst(_.createdByUserId, requestingUserData.userId)
       .withFieldConst(_.createdByIconSrc, requestingUserData.userIconSrc)
       .withFieldConst(_.civility, 0.0f)
       .withFieldConst(_.createdByExperience, requestingUserData.experience)
+      .withFieldConst(_.createdByTag, Some(requestingUserData.userCivilTag))
       .transform
 
   }
@@ -108,7 +110,7 @@ case class CommentsRepositoryLive(dataSource: DataSource)
       skip: Int
   ): ZIO[Any, AppError, List[CommentNode]] = {
 
-     for {
+     (for {
       joinedDataQuery <- run {
         query[Comments]
           .filter(c =>
@@ -131,22 +133,22 @@ case class CommentsRepositoryLive(dataSource: DataSource)
           println(e)
           InternalServerError(e.toString)
         })
-        .provideEnvironment(ZEnvironment(dataSource))
       commentsWithReplies <- ZIO
         .collectAll(
           joinedDataQuery
-            .map { case (comment, user, likeOpt, civilityOpt) =>
+            .map { case (comment, user, _, _) =>
               for {
-                comments <- run(getCommentsWithReplies(lift(comment.id)))
+                comments <- run(getCommentsWithReplies(lift(comment.id), lift(userId)))
                 repliesWithDepth = comments
                   .map(c =>
                     Comments.commentToCommentReplyWithDepth(
                       c.transformInto[CommentWithDepth],
-                      likeOpt.map(_.value).getOrElse(0),
-                      civilityOpt.map(_.value).getOrElse(0),
+                      c.likeState.getOrElse(NeutralState),
+                      c.civility.getOrElse(0),
                       c.userIconSrc.getOrElse(""),
                       c.userId,
-                      c.userExperience
+                      c.userExperience,
+                      c.createdByTag
                     )
                   )
                   .reverse
@@ -154,11 +156,12 @@ case class CommentsRepositoryLive(dataSource: DataSource)
                   .map(c =>
                     Comments.commentToCommentReply(
                       c.transformInto[CommentWithDepth],
-                      likeOpt.map(_.value).getOrElse(0),
-                      civilityOpt.map(_.value).getOrElse(0),
+                      c.likeState.getOrElse(NeutralState),
+                      c.civility.getOrElse(0),
                       c.userIconSrc.getOrElse(""),
                       c.userId,
-                      c.userExperience
+                      c.userExperience,
+                      c.createdByTag
                     )
                   )
 
@@ -172,8 +175,8 @@ case class CommentsRepositoryLive(dataSource: DataSource)
           println(e.toString)
           InternalServerError(e.toString)
         })
-        .provideEnvironment(ZEnvironment(dataSource))
-    } yield commentsWithReplies
+    } yield commentsWithReplies).provideEnvironment(ZEnvironment(dataSource))
+
 
   }
 
@@ -181,28 +184,24 @@ case class CommentsRepositoryLive(dataSource: DataSource)
       userId: String,
       commentId: UUID
   ): ZIO[Any, AppError, CommentReply] = {
-    for {
-      comment <-
+   (for {
+      commentWithUserData <-
         run(
-          query[Comments].filter(c => c.id == lift(commentId))
+          query[Comments].filter(c => c.id == lift(commentId)).join(query[Users]).on(_.createdByUserId == _.userId)
         ).head
-          .mapError(e => InternalServerError(e.toString))
-          .provideEnvironment(ZEnvironment(dataSource))
-      user <- run(query[Users].filter(u => u.userId == lift(userId)))
-        .mapError(e => InternalServerError(e.toString))
-        .provideEnvironment(ZEnvironment(dataSource))
-      userData <- ZIO
-        .fromOption(user.headOption)
-        .mapError(e => InternalServerError(e.toString))
-        .provideEnvironment(ZEnvironment(dataSource))
+      (comment, user) = commentWithUserData
+//      user <- run(query[Users].filter(u => u.userId == lift(userId)))
+//      userData <- ZIO
+//        .fromOption(user.headOption)
     } yield comment
       .into[CommentReply]
-      .withFieldConst(_.createdByIconSrc, userData.iconSrc.getOrElse(""))
-      .withFieldConst(_.createdByUserId, userData.userId)
-      .withFieldConst(_.createdByExperience, userData.experience)
-      .withFieldConst(_.likeState, 0)
+      .withFieldConst(_.createdByIconSrc, user.iconSrc.getOrElse(""))
+      .withFieldConst(_.createdByUserId, user.userId)
+      .withFieldConst(_.createdByExperience, user.experience)
+      .withFieldConst(_.createdByTag, user.tag)
+      .withFieldConst(_.likeState, NeutralState)
       .withFieldConst(_.civility, 0f)
-      .transform
+      .transform).mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
   }
 
   override def getAllCommentReplies(
@@ -210,7 +209,7 @@ case class CommentsRepositoryLive(dataSource: DataSource)
       commentId: UUID
   ): ZIO[Any, AppError, CommentWithReplies] = {
 
-    for {
+    (for {
       commentUser <-
         run(
           query[Comments]
@@ -227,11 +226,9 @@ case class CommentsRepositoryLive(dataSource: DataSource)
             .on(_._1._1.id == _.commentId)
             .map { case (((a, b), c), d) => (a, b, c, d) }
         ).mapError(e => InternalServerError(e.toString))
-          .provideEnvironment(ZEnvironment(dataSource))
       commentUserData <- ZIO
         .fromOption(commentUser.headOption)
         .mapError(e => InternalServerError(e.toString))
-        .provideEnvironment(ZEnvironment(dataSource))
 
       (comment, user, likeOpt, civilityOpt) = commentUserData
       joinedData <- run {
@@ -249,23 +246,22 @@ case class CommentsRepositoryLive(dataSource: DataSource)
           .sortBy { case (comment, _, _, _) => comment.createdAt }(Ord.desc)
       }
         .mapError(e => InternalServerError(e.getMessage))
-        .provideEnvironment(ZEnvironment(dataSource))
-
       commentsWithReplies <- ZIO
         .collectAll(
           joinedData
             .map { case (comment, user, likeOpt, civilityOpt) =>
               for {
-                comments <- run(getCommentsWithReplies(lift(comment.id)))
+                comments <- run(getCommentsWithReplies(lift(comment.id), lift(userId)))
                 repliesWithDepth = comments
                   .map(c =>
                     Comments.commentToCommentReplyWithDepth(
                       c.transformInto[CommentWithDepth],
-                      likeOpt.map(_.value).getOrElse(0),
+                      c.likeState.getOrElse(NeutralState),
                       civilityOpt.map(_.value).getOrElse(0),
                       c.userIconSrc.getOrElse(""),
                       c.userId,
-                      c.userExperience
+                      c.userExperience,
+                      c.createdByTag
                     )
                   )
                   .reverse
@@ -274,11 +270,12 @@ case class CommentsRepositoryLive(dataSource: DataSource)
                   .map(c =>
                     Comments.commentToCommentReply(
                       c.transformInto[CommentWithDepth],
-                      likeOpt.map(_.value).getOrElse(0),
+                      c.likeState.getOrElse(NeutralState),
                       civilityOpt.map(_.value).getOrElse(0),
                       c.userIconSrc.getOrElse(""),
                       c.userId,
-                      c.userExperience
+                      c.userExperience,
+                      c.createdByTag
                     )
                   )
 
@@ -288,7 +285,6 @@ case class CommentsRepositoryLive(dataSource: DataSource)
             }
         )
         .mapError(e => InternalServerError(e.toString))
-        .provideEnvironment(ZEnvironment(dataSource))
     } yield CommentWithReplies(
       replies = commentsWithReplies,
       comment = comment
@@ -296,10 +292,12 @@ case class CommentsRepositoryLive(dataSource: DataSource)
         .withFieldConst(_.createdByUserId, user.userId)
         .withFieldConst(_.createdByExperience, user.experience)
         .withFieldConst(_.createdByIconSrc, user.iconSrc.get)
-        .withFieldConst(_.likeState, likeOpt.map(_.value).getOrElse(0))
+        .withFieldConst(_.createdByTag, user.tag)
+        .withFieldConst(_.likeState, likeOpt.map(_.likeState).getOrElse(NeutralState))
         .withFieldConst(_.civility, civilityOpt.map(_.value).getOrElse(0f))
         .transform
-    )
+    )).provideEnvironment(ZEnvironment(dataSource))
+
   }
 
   override def getUserComments(
@@ -307,7 +305,7 @@ case class CommentsRepositoryLive(dataSource: DataSource)
       userId: String
   ): ZIO[Any, AppError, List[CommentNode]] = {
 
-    for {
+   ( for {
       commentsUsersJoin <-
         run(
           query[Comments]
@@ -315,46 +313,27 @@ case class CommentsRepositoryLive(dataSource: DataSource)
             .join(query[Users])
             .on(_.createdByUserId == _.userId)
         )
-          .mapError(e => InternalServerError(e.getMessage))
-          .provideEnvironment(ZEnvironment(dataSource))
+
       rootComments = commentsUsersJoin.filter(j => j._1.parentId.isEmpty)
-      commentToUserSrcMap = commentsUsersJoin.foldLeft(Map[UUID, String]()) {
-        (m, t) =>
-          m + (t._1.id -> t._2.iconSrc.getOrElse(""))
-      }
-      likes <- run(query[CommentLikes].filter(l => l.userId == lift(userId)))
-        .mapError(e => InternalServerError(e.getMessage))
-        .provideEnvironment(ZEnvironment(dataSource))
-      likesMap = likes.foldLeft(Map[UUID, Int]()) { (m, t) =>
-        m + (t.commentId -> t.value)
-      }
-      civility <-
-        run(
-          query[CommentCivility].filter(l => l.userId == lift(userId))
-        )
-          .mapError(e => InternalServerError(e.getMessage))
-          .provideEnvironment(ZEnvironment(dataSource))
-      civilityMap = civility.foldLeft(Map[UUID, Float]()) { (m, t) =>
-        m + (t.commentId -> t.value)
-      }
+
       commentsWithReplies <- ZIO
         .collectAll(
           rootComments
             .map(joined => {
               val c = joined._1
-              val u = joined._2
 
               for {
-                comments <- run(getCommentsWithReplies(lift(c.id)))
+                comments <- run(getCommentsWithReplies(lift(c.id), lift(userId)))
                 repliesWithDepth = comments
                   .map(c =>
                     Comments.commentToCommentReplyWithDepth(
                       c.transformInto[CommentWithDepth],
-                      likesMap.getOrElse(c.id, 0),
-                      civilityMap.getOrElse(c.id, 0),
-                      commentToUserSrcMap.getOrElse(c.id, ""),
-                      u.userId,
-                      u.experience
+                      c.likeState.getOrElse(NeutralState),
+                      c.civility.getOrElse(0),
+                      c.userIconSrc.getOrElse(""),
+                      c.userId,
+                      c.userExperience,
+                      c.createdByTag
                     )
                   )
                   .reverse
@@ -362,11 +341,12 @@ case class CommentsRepositoryLive(dataSource: DataSource)
                   .map(c =>
                     Comments.commentToCommentReply(
                       c.transformInto[CommentWithDepth],
-                      likesMap.getOrElse(c.id, 0),
-                      civilityMap.getOrElse(c.id, 0),
-                      commentToUserSrcMap.getOrElse(c.id, ""),
-                      u.userId,
-                      u.experience
+                      c.likeState.getOrElse(NeutralState),
+                      c.civility.getOrElse(0),
+                      c.userIconSrc.getOrElse(""),
+                      c.userId,
+                      c.userExperience,
+                      c.createdByTag
                     )
                   )
 
@@ -375,10 +355,9 @@ case class CommentsRepositoryLive(dataSource: DataSource)
               } yield replyTree
             })
         )
-        .mapError(e => InternalServerError(e.getMessage))
-        .provideEnvironment(ZEnvironment(dataSource))
 
-    } yield commentsWithReplies
+    } yield commentsWithReplies).mapError(e => InternalServerError(e.getMessage))
+     .provideEnvironment(ZEnvironment(dataSource))
 
   }
 }

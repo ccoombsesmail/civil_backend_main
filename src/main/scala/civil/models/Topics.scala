@@ -1,8 +1,14 @@
 package civil.models
 
+import civil.models.actions.LikeAction
 import civil.models.enums.ReportStatus.Clean
 import civil.models.enums.UserVerificationType.NO_VERIFICATION
-import civil.models.enums.{LinkType, ReportStatus, TopicCategories, UserVerificationType}
+import civil.models.enums.{
+  LinkType,
+  ReportStatus,
+  TopicCategories,
+  UserVerificationType
+}
 
 import java.time.{Instant, LocalDateTime, ZonedDateTime}
 import java.util.UUID
@@ -24,7 +30,8 @@ object TopicId {
     }
 
   implicit val codec: JsonCodec[TopicId] =
-    JsonCodec[UUID].transform(TopicId(_), _.id)
+    DeriveJsonCodec.gen[TopicId]
+
 }
 case class IncomingTopic(
     title: String,
@@ -34,13 +41,13 @@ case class IncomingTopic(
     evidenceLinks: Option[List[String]],
     category: String,
     userUploadedImageUrl: Option[String],
-    userUploadedVodUrl: Option[String],
+    userUploadedVodUrl: Option[String]
 )
 
 object IncomingTopic {
-  implicit val codec: JsonCodec[IncomingTopic] = DeriveJsonCodec.gen[IncomingTopic]
+  implicit val codec: JsonCodec[IncomingTopic] =
+    DeriveJsonCodec.gen[IncomingTopic]
 }
-
 
 case class ExternalContentData(
     linkType: LinkType,
@@ -50,7 +57,8 @@ case class ExternalContentData(
 )
 
 object ExternalContentData {
-  implicit val codec: JsonCodec[ExternalContentData] = DeriveJsonCodec.gen[ExternalContentData]
+  implicit val codec: JsonCodec[ExternalContentData] =
+    DeriveJsonCodec.gen[ExternalContentData]
 }
 
 case class Topics(
@@ -71,7 +79,7 @@ case class Topics(
     createdAt: ZonedDateTime,
     updatedAt: ZonedDateTime,
     topicId: Option[UUID] = None,
-    discussionId: Option[UUID] = None
+    discussionId: Option[UUID] = None,
 )
 
 object Topics {
@@ -89,7 +97,7 @@ case class OutgoingTopic(
     evidenceLinks: Option[List[String]],
     createdByIconSrc: String,
     likes: Int,
-    likeState: Int,
+    likeState: LikeAction,
     category: TopicCategories,
     userUploadedImageUrl: Option[String],
     userUploadedVodUrl: Option[String],
@@ -97,11 +105,13 @@ case class OutgoingTopic(
     topicCreatorIsDidUser: Boolean,
     userVerificationType: UserVerificationType = NO_VERIFICATION,
     createdAt: ZonedDateTime,
-    updatedAt: ZonedDateTime
+    updatedAt: ZonedDateTime,
+    isFollowing: Boolean = false
 )
 
 object OutgoingTopic {
-  implicit val codec: JsonCodec[OutgoingTopic] = DeriveJsonCodec.gen[OutgoingTopic]
+  implicit val codec: JsonCodec[OutgoingTopic] =
+    DeriveJsonCodec.gen[OutgoingTopic]
 }
 
 case class OutgoingTopicsPayload(
@@ -110,3 +120,11 @@ case class OutgoingTopicsPayload(
 )
 
 case class Words(topicWords: Seq[String])
+
+
+case class TopicFollows(userId: String, followedTopicId: UUID)
+
+object TopicFollows {
+  implicit val codec: JsonCodec[TopicFollows] =
+    DeriveJsonCodec.gen[TopicFollows]
+}

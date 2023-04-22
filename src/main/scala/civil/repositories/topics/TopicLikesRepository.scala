@@ -2,6 +2,8 @@ package civil.repositories.topics
 
 import civil.errors.AppError.InternalServerError
 import civil.errors.AppError
+import civil.models.actions.{DislikedState, LikeAction, LikedState, NeutralState}
+import civil.models.enums.Sentiment.NEUTRAL
 import civil.models.{TopicLiked, TopicLikes, Topics, UpdateTopicLikes}
 import zio.{URLayer, ZEnvironment, ZIO, ZLayer}
 
@@ -32,38 +34,42 @@ case class TopicLikesRepositoryLive(dataSource: DataSource) extends TopicLikesRe
       topicLikeDislikeData: UpdateTopicLikes,
       userId: String
   ): ZIO[Any, AppError, (TopicLiked, Topics)] = {
-    for {
+   (for {
       previousLikeState <- run(
         query[TopicLikes].filter(tl => tl.topicId == lift(topicLikeDislikeData.id) && tl.userId == lift(userId))
-      ).mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
-      newLikeState = topicLikeDislikeData.value
-      prevLikeState = previousLikeState.headOption.getOrElse(TopicLikes(topicLikeDislikeData.id, userId, 0)).value
-      stateCombo = s"$prevLikeState$newLikeState"
-      likeValueToAdd = stateCombo match {
-        case "10" => -1
-        case "01" => 1
-        case "-10" => 1
-        case "0-1" =>  -1
-        case "1-1" => -2
-        case "-11" => 2
-        case _ => 0
+      ).mapError(e => InternalServerError(e.toString))
+      newLikeState = topicLikeDislikeData.likeAction
+      prevLikeState = previousLikeState.headOption.getOrElse(TopicLikes(topicLikeDislikeData.id, userId, NeutralState)).likeState
+      _ = println((prevLikeState, newLikeState) + Console.RED_B)
+      _ = println(Console.RESET)
+      likeValueToAdd = (prevLikeState, newLikeState) match {
+        case (LikedState, NeutralState) => -1
+        case (NeutralState, LikedState) => 1
+        case (DislikedState, NeutralState) => 1
+        case (NeutralState, DislikedState) => -1
+        case (LikedState, DislikedState) => -2
+        case (DislikedState, LikedState) => 2
+        case (NeutralState, NeutralState) => 0
+        case _ => -100
       }
-      _ <- ZIO.when(likeValueToAdd == 0)(ZIO.fail(InternalServerError("Invalid like value")))
-        .mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
+      _ <- ZIO.when(likeValueToAdd == -100)(ZIO.fail(InternalServerError("Invalid like value")))
+        .mapError(e => InternalServerError(e.toString))
         topic <- transaction {
-          run(
-            query[TopicLikes]
-              .insertValue(lift(TopicLikes(topicLikeDislikeData.id, userId, topicLikeDislikeData.value)))
-              .onConflictUpdate(_.topicId, _.userId)((t, e) => t.value -> e.value)
-              .returning(r => r)
-          )
-          run(query[Topics]
-            .filter(t => t.id == lift(topicLikeDislikeData.id))
-            .update(topic => topic.likes -> (topic.likes + lift(likeValueToAdd)))
-            .returning(t => t)
-          )
-        }.mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
-    } yield (TopicLiked(topic.id, topic.likes, topicLikeDislikeData.value), topic)
+          for {
+            _ <- run(
+              query[TopicLikes]
+                .insertValue(lift(TopicLikes(topicLikeDislikeData.id, userId, topicLikeDislikeData.likeAction)))
+                .onConflictUpdate(_.topicId, _.userId)((t, e) => t.likeState -> e.likeState)
+                .returning(r => r)
+            )
+            updatedTopic <- run(query[Topics]
+              .filter(t => t.id == lift(topicLikeDislikeData.id))
+              .update(topic => topic.likes -> (topic.likes + lift(likeValueToAdd)))
+              .returning(t => t)
+            )
+          } yield updatedTopic
+        }.mapError(e => InternalServerError(e.toString))
+    } yield (TopicLiked(topic.id, topic.likes, topicLikeDislikeData.likeAction), topic)).provideEnvironment(ZEnvironment(dataSource))
   }
 
 }

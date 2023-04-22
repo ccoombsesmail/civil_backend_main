@@ -1,7 +1,7 @@
 package civil.models.enums
 
 import enumeratum._
-import zio.json.{DeriveJsonCodec, JsonCodec}
+import zio.json.{DeriveJsonCodec, JsonCodec, JsonDecoder, JsonEncoder}
 
 
 sealed trait TopicCategories extends EnumEntry
@@ -18,7 +18,14 @@ case object TopicCategories extends Enum[TopicCategories] with CirceEnum[TopicCa
 
   val list: List[String] = List(Technology.entryName, Medicine.entryName, Politics.entryName, General.entryName)
 
-  implicit val codec: JsonCodec[TopicCategories] = DeriveJsonCodec.gen[TopicCategories]
+  implicit val linkTypeEncoder: JsonEncoder[TopicCategories] = JsonEncoder[String].contramap(_.entryName)
+  implicit val linkTypeDecoder: JsonDecoder[TopicCategories] = JsonDecoder[String].map {
+    case "Technology" => Technology
+    case "Medicine" => Medicine
+    case "Politics" => Politics
+    case "General" => General
+
+  }
 
 
 }

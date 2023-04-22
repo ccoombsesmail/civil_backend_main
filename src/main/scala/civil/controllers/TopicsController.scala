@@ -46,6 +46,15 @@ final case class TopicsController(topicService: TopicService) {
         topicId <- parseTopicId(topicId)
         res <- topicService.getTopic(jwt, jwtType, topicId.id)
       } yield Response.json(res.toJson)).catchAll(_.toResponse)
+
+    case req@Method.GET -> !! / "api" / "v1" / "topics-followed" =>
+      (for {
+        authData <- extractJwtData(req)
+        (jwt, jwtType) = authData
+        topics <- topicService.getFollowedTopics(
+          jwt, jwtType,
+        )
+      } yield Response.json(topics.toJson)).catchAll(_.toResponse)
   }
 }
 

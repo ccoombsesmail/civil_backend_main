@@ -71,8 +71,11 @@ case class CommentCivilityRepositoryLive(dataSource: DataSource)
       givingUserId: String,
       givingUserUsername: String,
       civilityData: UpdateCommentCivility
-  ) =
-    for {
+  ) = {
+    println(rootId)
+    println(givingUserId)
+    println(civilityData)
+    (for {
       preUpdateCommentCivility <-
         run(
           query[CommentCivility].filter(cv =>
@@ -80,54 +83,57 @@ case class CommentCivilityRepositoryLive(dataSource: DataSource)
               civilityData.commentId
             )
           )
-        ).mapError(e => InternalServerError(e.toString))
-          .provideEnvironment(ZEnvironment(dataSource))
+        )
       preUpdateCommentCivilityData = preUpdateCommentCivility.headOption
-      user <- transaction {
-        run(
-          query[CommentCivility]
-            .insertValue(
-              lift(
-                CommentCivility(
-                  givingUserId,
-                  civilityData.commentId,
-                  civilityData.value
+      civilityGivenRes <- (transaction {
+        (for {
+          civilityGivenRes <- run(
+            query[CommentCivility]
+              .insertValue(
+                lift(
+                  CommentCivility(
+                    givingUserId,
+                    civilityData.commentId,
+                    civilityData.value
+                  )
                 )
               )
-            )
-            .onConflictUpdate(_.commentId, _.userId)((t, e) =>
-              t.value -> e.value
-            )
-            .returning(c =>
-              CivilityGivenResponse(
-                c.value,
-                lift(civilityData.commentId),
-                lift(rootId)
+              .onConflictUpdate(_.commentId, _.userId)((t, e) =>
+                t.value -> e.value
               )
-            )
-        )
-        run(
-          updateUserCivilityQuery(
-            civilityData.receivingUserId,
-            civilityData.value - preUpdateCommentCivilityData
-              .getOrElse(
-                CommentCivility(
-                  userId = givingUserId,
-                  commentId = civilityData.commentId,
-                  value = 0f
+              .returning(c =>
+                CivilityGivenResponse(
+                  c.value,
+                  lift(civilityData.commentId),
+                  lift(rootId)
                 )
               )
-              .value
           )
-        )
-      }
-        .mapError(e => InternalServerError(e.toString))
-        .provideEnvironment(ZEnvironment(dataSource))
-    } yield CivilityGivenResponse(
-      civility = civilityData.value,
-      commentId = civilityData.commentId,
-      rootId = rootId
-    )
+          _ <- run(
+            updateUserCivilityQuery(
+              civilityData.receivingUserId,
+              civilityData.value - preUpdateCommentCivilityData
+                .getOrElse(
+                  CommentCivility(
+                    userId = givingUserId,
+                    commentId = civilityData.commentId,
+                    value = 0f
+                  )
+                )
+                .value
+            )
+          )
+        } yield civilityGivenRes).mapError (e => {
+          println(e.toString)
+          e
+        })
+      }).mapError(e =>{
+        println(e.toString)
+        e
+      })
+    } yield civilityGivenRes).mapError(e => InternalServerError(e.toString))
+      .provideEnvironment(ZEnvironment(dataSource))
+  }
 
   override def addOrRemoveCommentCivility(
       givingUserId: String,
@@ -135,27 +141,26 @@ case class CommentCivilityRepositoryLive(dataSource: DataSource)
       civilityData: UpdateCommentCivility
   ): ZIO[Any, AppError, (CivilityGivenResponse, Comments)] = {
 
-    for {
+    (for {
       comment <- run(
         query[Comments].filter(c => c.id == lift(civilityData.commentId))
-      ).mapError(e => InternalServerError(e.toString))
-        .provideEnvironment(ZEnvironment(dataSource))
+      )
       commentData <- ZIO
         .fromOption(comment.headOption)
-        .mapError(e => InternalServerError(e.toString))
-        .provideEnvironment(ZEnvironment(dataSource))
+
       civilityGiven <- addCivility(
         commentData.rootId,
         givingUserId,
         givingUserUsername,
         civilityData
-      ).mapError(e => InternalServerError(e.toString))
-        .provideEnvironment(ZEnvironment(dataSource))
-    } yield (civilityGiven, commentData)
+      )
+    } yield (civilityGiven, commentData))
+      .mapError(e => InternalServerError(e.toString))
+      .provideEnvironment(ZEnvironment(dataSource))
 
   }
 
-  def updateUserCivilityQuery(receivingUserId: String, civility: Float) =
+  private def updateUserCivilityQuery(receivingUserId: String, civility: Float) =
     quote {
       query[Users]
         .filter(u => u.userId == lift(receivingUserId))
@@ -168,25 +173,23 @@ case class CommentCivilityRepositoryLive(dataSource: DataSource)
       givingUserUsername: String,
       civilityData: UpdateCommentCivility
   ): ZIO[Any, AppError, CivilityGivenResponse] = {
-    for {
+    (for {
       comment <- run(
         query[TribunalComments].filter(c =>
           c.id == lift(civilityData.commentId)
         )
-      ).mapError(e => InternalServerError(e.toString))
-        .provideEnvironment(ZEnvironment(dataSource))
+      )
       commentData <- ZIO
         .fromOption(comment.headOption)
-        .mapError(e => InternalServerError(e.toString))
-        .provideEnvironment(ZEnvironment(dataSource))
+
       civilityGiven <- addCivility(
         commentData.rootId,
         givingUserId,
         givingUserUsername,
         civilityData
-      ).mapError(e => InternalServerError(e.toString))
-
-    } yield civilityGiven
+      )
+    } yield civilityGiven).mapError(e => InternalServerError(e.toString))
+      .provideEnvironment(ZEnvironment(dataSource))
   }
 
 }

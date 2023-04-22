@@ -10,7 +10,7 @@ import zio.json.EncoderOps
 
 final case class TribunalVotesController(tribunalVotesService: TribunalVotesService) {
   val routes: Http[Any, Throwable, Request, Response] = Http.collectZIO[Request] {
-    case req @ Method.POST -> !! / "api" / "v1" / "comments" / "civility"  =>
+    case req @ Method.POST -> !! / "api" / "v1" / "tribunal-votes"  =>
       (for {
         vote <- parseBody[TribunalVote](req)
         authData <- extractJwtData(req)
