@@ -25,7 +25,6 @@ final case class TopicsController(topicService: TopicService) {
       (for {
         authData <- extractJwtData(req)
         (jwt, jwtType) = authData
-        _ = println(req.url.queryParams("skip").head.toInt)
         topics <- topicService.getTopicsAuthenticated(
           jwt, jwtType,
           req.url.queryParams("skip").head.toInt

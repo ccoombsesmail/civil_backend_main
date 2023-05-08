@@ -2,7 +2,7 @@ package civil.services.topics
 
 import civil.errors.AppError.InternalServerError
 import civil.errors.AppError
-import civil.models.{TopicFollows, TopicId, TopicLiked, UpdateTopicLikes}
+import civil.models.{TopicFollows, TopicId, TopicLiked, UpdateTopicFollows, UpdateTopicLikes}
 import civil.models.NotifcationEvents.{GivingUserNotificationData, TopicLike}
 import civil.models.actions.LikedState
 import civil.repositories.topics.{TopicFollowsRepository, TopicLikesRepository}
@@ -15,7 +15,7 @@ trait TopicFollowsService {
   def insertTopicFollow(
       jwt: String,
       jwtType: String,
-      topicId: TopicId
+      updateTopicFollows: UpdateTopicFollows
   ): ZIO[Any, AppError, Unit]
 
   def deleteTopicFollow(
@@ -30,10 +30,10 @@ object TopicFollowsService {
   def insertTopicFollow(
       jwt: String,
       jwtType: String,
-      topicId: TopicId
+      updateTopicFollows: UpdateTopicFollows
   ): ZIO[TopicFollowsService, AppError, Unit] =
     ZIO.serviceWithZIO[TopicFollowsService](
-      _.insertTopicFollow(jwt, jwtType, topicId)
+      _.insertTopicFollow(jwt, jwtType, updateTopicFollows)
     )
 
   def deleteTopicFollow(
@@ -55,11 +55,11 @@ case class TopicFollowsServiceLive(
   override def insertTopicFollow(
       jwt: String,
       jwtType: String,
-      topicId: TopicId
+      updateTopicFollows: UpdateTopicFollows
   ): ZIO[Any, AppError, Unit] = for {
     userData <- authenticationService.extractUserData(jwt, jwtType)
     _ <- topicFollowsRep.insertTopicFollow(
-      TopicFollows(userId = userData.userId, followedTopicId = topicId.id)
+      TopicFollows(userId = updateTopicFollows.createdByUserId.getOrElse(userData.userId), followedTopicId = updateTopicFollows.id)
     )
   } yield ()
 

@@ -106,8 +106,8 @@ case class TopicServiceLive(topicRepository: TopicRepository, pollsRepository: P
           .withFieldConst(_.createdAt, ZonedDateTime.now(ZoneId.systemDefault()))
           .withFieldConst(_.updatedAt, ZonedDateTime.now(ZoneId.systemDefault()))
           .withFieldConst(_.id, UUID.randomUUID())
-          .withFieldConst(_.createdByUserId, userData.userId)
-          .withFieldConst(_.createdByUsername, userData.username)
+          .withFieldConst(_.createdByUserId, incomingTopic.createdByUserId.getOrElse(userData.userId))
+          .withFieldConst(_.createdByUsername, incomingTopic.createdByUsername.getOrElse(userData.username))
           .withFieldConst(
             _.userVerificationType,
             userData.permissions match {

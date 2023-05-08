@@ -3,18 +3,15 @@ package civil.models
 import civil.models.actions.LikeAction
 import civil.models.enums.ReportStatus.Clean
 import civil.models.enums.UserVerificationType.NO_VERIFICATION
-import civil.models.enums.{
-  LinkType,
-  ReportStatus,
-  TopicCategories,
-  UserVerificationType
-}
+import civil.models.enums.{LinkType, ReportStatus, TopicCategories, UserVerificationType}
+import civil.repositories.QuillContext._
 
-import java.time.{Instant, LocalDateTime, ZonedDateTime}
+import java.time.ZonedDateTime
 import java.util.UUID
-import io.getquill.Embedded
 import zio.json.{DeriveJsonCodec, JsonCodec}
 import zio.{Random, Task, UIO, ZIO}
+
+import scala.collection.mutable.ArrayBuffer
 
 case class TopicId(
     id: UUID
@@ -41,7 +38,9 @@ case class IncomingTopic(
     evidenceLinks: Option[List[String]],
     category: String,
     userUploadedImageUrl: Option[String],
-    userUploadedVodUrl: Option[String]
+    userUploadedVodUrl: Option[String],
+    createdByUserId: Option[String] = None,
+    createdByUsername: Option[String] = None
 )
 
 object IncomingTopic {
@@ -127,4 +126,29 @@ case class TopicFollows(userId: String, followedTopicId: UUID)
 object TopicFollows {
   implicit val codec: JsonCodec[TopicFollows] =
     DeriveJsonCodec.gen[TopicFollows]
+}
+
+
+
+case class ForYouTopics(id: Int, userId: String, topicIds: Seq[String])
+
+object ForYouTopics {
+//  implicit def arrayUUIDEncoder[Col <: Seq[UUID]]: Encoder[Col] = arrayRawEncoder[UUID, Col]("uuid")
+//
+//  implicit def arrayUUIDDecoder[Col <: Seq[UUID]](implicit bf: CBF[UUID, Col]): Decoder[Col] =
+//    arrayRawDecoder[UUID, Col]
+//
+//
+//
+//  implicit val uuidListEncoder: Encoder[Seq[UUID]] = arrayUUIDEncoder[Seq[UUID]]
+//
+//  implicit val uuidListDecoder: Decoder[Seq[UUID]] = arrayUUIDDecoder[Seq[UUID]]
+//
+//  implicit val uuidListEncoder: Encoder[Seq[UUID]] =
+//    encoder[Seq[UUID], ArrayBuffer[UUID]](_.to[ArrayBuffer], _.toSeq)
+//
+//  implicit val uuidListDecoder: Decoder[Seq[UUID]] =
+//    decoder[Seq[UUID], List[UUID]](_.toList, _.toSeq)
+
+
 }

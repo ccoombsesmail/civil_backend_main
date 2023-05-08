@@ -40,7 +40,7 @@ object TopicLikes {
 }
 
 
-case class UpdateTopicLikes(id: UUID, likeAction: LikeAction)
+case class UpdateTopicLikes(id: UUID, likeAction: LikeAction, createdByUserId: Option[String] = None)
 
 object UpdateTopicLikes {
   implicit val codec: JsonCodec[UpdateTopicLikes] = DeriveJsonCodec.gen[UpdateTopicLikes]
@@ -50,4 +50,11 @@ case class TopicLiked(id: UUID, likes: Int, likeState: LikeAction)
 
 object TopicLiked {
   implicit val codec: JsonCodec[TopicLiked] = DeriveJsonCodec.gen[TopicLiked]
+}
+
+
+case class UpdateTopicFollows(id: UUID, createdByUserId: Option[String] = None)
+
+object UpdateTopicFollows {
+  implicit val codec: JsonCodec[UpdateTopicFollows] = DeriveJsonCodec.gen[UpdateTopicFollows]
 }

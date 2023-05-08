@@ -1,5 +1,6 @@
 package civil.repositories.topics
 
+import java.util.UUID.fromString
 import civil.errors.AppError
 import civil.errors.AppError.InternalServerError
 import civil.models.{
@@ -60,12 +61,13 @@ case class TopicRepoHelpers(
             .leftJoin(query[ExternalLinks])
             .on { case (((t, u), v), l) => t.id == l.topicId }
             .leftJoin(query[TopicFollows])
-            .on { case ((((t, u), v), l), tf) => t.id == tf.followedTopicId }
+            .on { case ((((t, u), v), l), tf) => t.id == tf.followedTopicId && u.userId == tf.userId }
             .map { case ((((t, u), v), l), tf) => (t, u, v, l, tf) }
         }
       case None =>
         quote {
           query[Topics]
+//            .filter(t => liftQuery(topicIds).contains(t.id))
             .join(query[Users])
             .on(_.createdByUserId == _.userId)
             .leftJoin(query[TopicVods])
@@ -73,8 +75,9 @@ case class TopicRepoHelpers(
             .leftJoin(query[ExternalLinks])
             .on { case (((t, u), v), l) => t.id == l.topicId }
             .leftJoin(query[TopicFollows])
-            .on { case ((((t, u), v), l), tf) => t.id == tf.followedTopicId }
+            .on { case ((((t, u), v), l), tf) => t.id == tf.followedTopicId && u.userId == tf.userId }
             .map { case ((((t, u), v), l), tf) => (t, u, v, l, tf) }
+
         }
     }
 
@@ -173,22 +176,27 @@ case class TopicRepoHelpers(
       fromUserId: Option[String] = None,
       skip: Int = 0
   ): ZIO[Any, InternalServerError, List[OutgoingTopic]] =
-    for {
+    (for {
       likes <- run(query[TopicLikes].filter(_.userId == lift(requestingUserID)))
-        .mapError(e => InternalServerError(e.toString))
-        .provideEnvironment(ZEnvironment(dataSource))
       likesMap = likes.foldLeft(Map[UUID, LikeAction]()) { (m, t) =>
         m + (t.topicId -> t.likeState)
       }
+
+//      topicIds <- run(
+//        query[ForYouTopics].filter(_.userId == lift(requestingUserID)).map(_.topicIds)
+//      )
+//      topicIdsReal <- ZIO.fromOption(topicIds.headOption)
+
       topicsUsersVodsJoin <- run(
         topicsUsersVodsLinksJoin(fromUserId)
           .drop(lift(skip))
           .take(5)
           .sortBy(_._1.createdAt)(Ord.desc)
-      )
-        .mapError(e => InternalServerError(e.toString))
-        .provideEnvironment(ZEnvironment(dataSource))
-
+      ).mapError(e => {
+        println(e)
+        e
+      })
+      _ = print(topicsUsersVodsJoin.size)
       outgoingTopics <- ZIO
         .foreachPar(topicsUsersVodsJoin)(row => {
           val (topic, user, vod, linkData, topicFollow) = row
@@ -226,7 +234,9 @@ case class TopicRepoHelpers(
             .mapError(e => InternalServerError(e.getMessage))
         })
         .withParallelism(10)
-    } yield outgoingTopics
+    } yield outgoingTopics).mapError(e => InternalServerError(e.toString))
+      .provideEnvironment(ZEnvironment(dataSource))
+
 }
 
 trait TopicRepository {
@@ -552,7 +562,9 @@ case class TopicRepositoryLive(
       userData: JwtUserClaimsData,
       skip: Int
   ): ZIO[Any, AppError, List[OutgoingTopic]] = {
-
+//    val topicIds = run(
+//      query[ForYouTopics].filter(_.userId == requestingUserID)
+//    ).head
     getTopicsWithLikeStatus(requestingUserID, None, skip)
   }
 

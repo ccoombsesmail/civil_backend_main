@@ -2,7 +2,7 @@ package civil.controllers
 
 import civil.controllers.ParseUtils._
 import civil.errors.AppError.JsonDecodingError
-import civil.models.TopicId
+import civil.models.{TopicId, UpdateTopicFollows}
 import civil.services.topics.TopicFollowsService
 import zio._
 import zio.http._
@@ -12,8 +12,8 @@ final case class TopicFollowsController(topicFollowsService: TopicFollowsService
     case req@Method.POST -> !! / "api" / "v1" / "topic-follows" => (for {
       authData <- extractJwtData(req)
       (jwt, jwtType) = authData
-      topicId <- parseBody[TopicId](req)
-        _ <- topicFollowsService.insertTopicFollow(jwt, jwtType, topicId)
+      topicFollowUpdate <- parseBody[UpdateTopicFollows](req)
+        _ <- topicFollowsService.insertTopicFollow(jwt, jwtType, topicFollowUpdate)
       } yield Response.ok).catchAll(_.toResponse)
 
     case req@Method.DELETE -> !! / "api" / "v1" / "topic-follows" => (for {

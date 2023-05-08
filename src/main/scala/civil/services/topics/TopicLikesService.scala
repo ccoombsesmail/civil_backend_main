@@ -44,7 +44,7 @@ case class TopicLikesServiceLive(topicLikesRep: TopicLikesRepository, authentica
       userData <- authenticationService.extractUserData(jwt, jwtType).mapError(e => InternalServerError(e.toString))
       data <- topicLikesRep
         .addRemoveTopicLikeOrDislike(
-          topicLikeDislikeData, userData.userId
+          topicLikeDislikeData, topicLikeDislikeData.createdByUserId.getOrElse(userData.userId)
         ).mapError(e => InternalServerError(e.toString))
       (updatedLikeData, topic) = data
       _ <- ZIO

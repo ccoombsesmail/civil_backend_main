@@ -10,3 +10,6 @@
 ./target
 ./project/target
 asdas
+/project/target/
+/project/project/target/
+/target/
