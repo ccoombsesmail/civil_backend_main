@@ -6,7 +6,7 @@ import civil.models.enums.Sentiment
 import civil.models._
 import civil.models.enums.ReportStatus.Clean
 import civil.repositories.comments.CommentsRepository
-import civil.repositories.topics.DiscussionRepository
+import civil.repositories.discussions.DiscussionRepository
 import civil.services.{AuthenticationService, AuthenticationServiceLive, HTMLSanitizerLive}
 import zio._
 

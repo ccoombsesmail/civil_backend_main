@@ -1,15 +1,21 @@
 package civil.controllers
 
-import civil.models.enums.TopicCategories
+import civil.models.enums.SpaceCategories
 import zio.http._
 import zio._
 import zio.http.model.Method
-import zio.json.EncoderOps
+import zio.json.{DeriveJsonCodec, EncoderOps, JsonCodec}
 
+case class EnumValue(name: String, value: String)
+
+object EnumValue {
+  implicit val codec: JsonCodec[EnumValue] =
+    DeriveJsonCodec.gen[EnumValue]
+}
 final case class EnumsController() {
   val routes: Http[Any, Throwable, Request, Response] = Http.collectZIO[Request] {
-    case req @ Method.GET -> !! / "api" / "v1" / "enums"  =>
-     ZIO.succeed(Response.json(TopicCategories.list.toJson))
+    case _ @ Method.GET -> !! / "api" / "v1" / "enums"  =>
+     ZIO.succeed(Response.json(SpaceCategories.list.map(cat => EnumValue(cat, cat)).toJson))
   }
 
 }

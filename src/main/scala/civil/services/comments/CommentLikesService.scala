@@ -84,8 +84,8 @@ case class CommentLikesServiceLive(commentLikesRepo: CommentLikesRepository, aut
                   givingUserTag = Some(userData.userCivilTag),
                   givingUserIconSrc = Some(userData.userIconSrc)
                 ),
-                topicId = comment.topicId,
-                subtopicId = comment.discussionId
+                spaceId = comment.spaceId,
+                subspaceId = comment.discussionId
               ),
               commentLikeDislikeData.createdByUserId,
               CommentLike.commentLikeSerde

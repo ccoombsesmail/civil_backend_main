@@ -21,7 +21,7 @@ case class OutGoingOpposingRecommendations(
     recommendedContentId: Option[UUID],
     externalRecommendedContent: Option[String],
     discussion: Option[Discussions],
-    topic: Option[Topics],
+    topic: Option[Spaces],
     similarityScore: Float
 )
 

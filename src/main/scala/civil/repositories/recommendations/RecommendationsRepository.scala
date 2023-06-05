@@ -1,6 +1,6 @@
 package civil.repositories.recommendations
 
-import civil.models.{Discussions, OutgoingRecommendations, Recommendations, Topics}
+import civil.models.{Discussions, OutgoingRecommendations, Recommendations, Spaces}
 import civil.errors.AppError
 import civil.errors.AppError.InternalServerError
 import io.getquill.Ord
@@ -48,7 +48,7 @@ case class RecommendationsRepositoryLive(dataSource: DataSource) extends Recomme
     val q = quote {
       for {
         rec <- query[Recommendations].filter(rec => rec.targetContentId == lift(targetContentId)).sortBy(r => r.similarityScore)(Ord.descNullsLast)
-        t <- query[Topics].leftJoin(t => t.id === rec.recommendedContentId)
+        t <- query[Spaces].leftJoin(t => t.id === rec.recommendedContentId)
         st <- query[Discussions].leftJoin(st => st.id === rec.recommendedContentId)
       } yield (rec, t, st)
     }

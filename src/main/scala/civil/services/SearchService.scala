@@ -3,9 +3,10 @@ package civil.services
 import cats.implicits.catsSyntaxOptionId
 import civil.errors.AppError
 import civil.errors.AppError.GeneralError
-import civil.models.{Comment, Comments, Discussion, Discussions, SearchResult, Topic, Topics, User, Users}
+import civil.models._
 import civil.repositories.comments.CommentsRepository
-import civil.repositories.topics.{DiscussionRepository, TopicRepository}
+import civil.repositories.discussions.DiscussionRepository
+import civil.repositories.spaces.SpacesRepository
 import io.scalaland.chimney.dsl.TransformerOps
 import zio.{URLayer, ZEnvironment, ZIO, ZLayer}
 
@@ -34,7 +35,7 @@ object SearchService {
 }
 
 case class SearchServiceLive(
-    topicRepository: TopicRepository,
+    spaceRepository: SpacesRepository,
     discussionRepository: DiscussionRepository,
     commentsRepository: CommentsRepository,
     dataSource: DataSource
@@ -49,13 +50,13 @@ case class SearchServiceLive(
     val filter: String = s"%$filterText%"
 
     val q = quote {
-      query[Topics]
+      query[Spaces]
         .map(t =>
           (
             t.id,
             t.editorTextContent,
             t.createdByUserId,
-            t.topicId,
+            t.spaceId,
             t.discussionId
           )
         )
@@ -70,7 +71,7 @@ case class SearchServiceLive(
               d.id,
               d.editorTextContent,
               d.createdByUserId,
-              Some(d.topicId),
+              Some(d.spaceId),
               d.discussionId
             )
           )
@@ -84,7 +85,7 @@ case class SearchServiceLive(
               c.id,
               c.editorTextContent,
               c.createdByUserId,
-              Some(c.topicId),
+              Some(c.spaceId),
               Some(c.discussionId)
             )
           )
@@ -96,11 +97,11 @@ case class SearchServiceLive(
     for {
       res <- run(q).mapError(e => GeneralError(e.getMessage)).provideEnvironment(ZEnvironment(dataSource))
     } yield res.map {
-      case ((id, textContent, createdByUserId, topicId, discussionId), u) =>
-        (topicId, discussionId) match {
+      case ((id, textContent, createdByUserId, spaceId, discussionId), u) =>
+        (spaceId, discussionId) match {
           case (None, None) =>
             SearchResult(
-              topic = Topic(id, textContent).some,
+              space = Space(id, textContent).some,
               user = u.transformInto[User]
             )
           case (Some(tId), None) =>
@@ -144,7 +145,7 @@ case class SearchServiceLive(
 
 object SearchServiceLive {
   val layer: URLayer[
-    TopicRepository with DiscussionRepository with CommentsRepository with DataSource,
+    SpacesRepository with DiscussionRepository with CommentsRepository with DataSource,
     SearchService
   ] = ZLayer.fromFunction(SearchServiceLive.apply _)
 }

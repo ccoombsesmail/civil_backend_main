@@ -83,7 +83,7 @@ case class TribunalCommentsRepositoryLive(dataSource: DataSource)
 
       userContentJoin <- run(
         query[Users]
-          .leftJoin(query[Topics]).on((u, t) => u.userId == t.createdByUserId)
+          .leftJoin(query[Spaces]).on((u, t) => u.userId == t.createdByUserId)
           .leftJoin(query[Comments]).on((ut, c) => ut._1.userId == c.createdByUserId)
           .filter {
             case ((u, tOpt), cOpt) =>

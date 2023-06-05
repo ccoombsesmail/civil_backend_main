@@ -192,7 +192,7 @@ case class UsersRepositoryLive(dataSource: DataSource) extends UsersRepository {
         .mapError(e => InternalServerError(e.toString))
         .provideEnvironment(ZEnvironment(dataSource))
       numPosts <- run(
-            query[Topics].filter(t =>
+            query[Spaces].filter(t =>
               t.createdByUserId == lift(requesterId)
             ).map(_.createdByUserId) ++ query[Discussions].filter(st =>
               st.createdByUserId == lift(requesterId) && st.title != "General"

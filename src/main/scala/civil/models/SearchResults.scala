@@ -4,10 +4,10 @@ import zio.json.{DeriveJsonCodec, JsonCodec}
 
 import java.util.UUID
 
-case class Topic(id: UUID, editorTextContent: String)
+case class Space(id: UUID, editorTextContent: String)
 
-object Topic {
-  implicit val codec: JsonCodec[Topic] = DeriveJsonCodec.gen[Topic]
+object Space {
+  implicit val codec: JsonCodec[Space] = DeriveJsonCodec.gen[Space]
 }
 case class Discussion(id: UUID, editorTextContent: String, topicId: UUID)
 
@@ -26,7 +26,7 @@ object User {
 }
 
 case class SearchResult(
-    topic: Option[Topic] = None,
+    space: Option[Space] = None,
     discussion: Option[Discussion] = None,
     comment: Option[Comment] = None,
     user: User,

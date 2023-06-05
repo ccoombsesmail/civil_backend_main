@@ -48,7 +48,7 @@ object Comments {
       userId: String,
       createdByExperience: Option[String],
       createdByTag: Option[String]
-  ) =
+  ): EntryWithDepth =
     EntryWithDepth(
       commentWithDepth
         .into[CommentReply]
@@ -71,7 +71,7 @@ object Comments {
       userId: String,
       createdByExperience: Option[String],
       createdByTag: Option[String]
-  ) =
+  ): CommentReply =
     comment
       .into[CommentReply]
       .withFieldConst(_.likeState, likeState)
@@ -114,7 +114,7 @@ case class Comments(
     createdByUsername: String,
     sentiment: String,
     discussionId: UUID,
-    topicId: UUID,
+    spaceId: UUID,
     parentId: Option[UUID],
     createdAt: ZonedDateTime,
     likes: Int,
@@ -134,7 +134,7 @@ case class IncomingComment(
     rootId: Option[UUID],
     source: Option[String],
     toxicityStatus: Option[String] = None,
-    topicId: UUID,
+    spaceId: UUID,
     commentType: TribunalCommentType = TribunalCommentType.General
 )
 

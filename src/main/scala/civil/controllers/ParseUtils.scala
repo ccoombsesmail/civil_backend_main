@@ -3,7 +3,7 @@ package civil.controllers
 
 import civil.errors.AppError
 import civil.errors.AppError.JsonDecodingError
-import civil.models.{CommentId, DiscussionId, FollowedUserId, TopicId}
+import civil.models.{CommentId, DiscussionId, SpaceId}
 import zio.http._
 import zio.http.model.HTTP_CHARSET
 import zio.{IO, Task, ZIO}
@@ -49,8 +49,14 @@ object ParseUtils {
     }
   }
 
-  def parseTopicId(id: String): IO[AppError.InvalidIdError, TopicId] =
-    TopicId.fromString(id).orElseFail(AppError.InvalidIdError("Invalid topic id"))
+  def parseQueryFirst(req: Request, key: String): IO[AppError, String] =
+    parseQuery(req, key).flatMap {
+      case head :: _ => ZIO.succeed(head)
+      case Nil => ZIO.fail(JsonDecodingError(s"Missing parameter: $key"))
+    }
+
+  def parseSpaceId(id: String): IO[AppError.InvalidIdError, SpaceId] =
+    SpaceId.fromString(id).orElseFail(AppError.InvalidIdError("Invalid space id"))
   def parseDiscussionId(id: String): IO[AppError.InvalidIdError, DiscussionId] =
     DiscussionId.fromString(id).orElseFail(AppError.InvalidIdError("Invalid discussion id"))
 

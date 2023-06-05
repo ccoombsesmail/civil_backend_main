@@ -1,7 +1,6 @@
 package civil.http
 
 import civil.controllers._
-import civil.errors.AppError
 import zio.http.{HttpAppMiddleware, _}
 import zio.http.Server._
 import zio._
@@ -9,7 +8,7 @@ import zio.http.middleware.Cors.CorsConfig
 import zio.http.model.Method.{DELETE, GET, OPTIONS, PATCH, POST, PUT}
 
 case class CivilServer(
-    topicLikesController: TopicLikesController,
+    topicLikesController: SpaceLikesController,
     commentCivilityController: CommentCivilityController,
     commentLikesController: CommentLikesController,
     commentsController: CommentsController,
@@ -22,17 +21,18 @@ case class CivilServer(
     pollVotesController: PollVotesController,
     reportsController: ReportsController,
     searchController: SearchController,
-    topicsController: TopicsController,
+    topicsController: SpacesController,
     tribunalCommentsController: TribunalCommentsController,
     usersController: UsersController,
     tribunalVotesController: TribunalVotesController,
-    topicFollowsController: TopicFollowsController
+    topicFollowsController: SpaceFollowsController,
+    discussionLikesController: DiscussionLikesController
 ) {
 
   private val allRoutes: Http[Any, Throwable, Request, Response] = {
     topicsController.routes ++ usersController.routes ++ topicLikesController.routes ++ commentCivilityController.routes ++ commentLikesController.routes ++ commentsController.routes ++
       followsController.routes ++ discussionsController.routes ++ enumsController.routes ++ healthCheckController.routes ++ opposingRecommendationsController.routes ++
-      recommendationsController.routes ++ pollVotesController.routes ++ reportsController.routes ++ searchController.routes ++ tribunalCommentsController.routes ++ tribunalVotesController.routes ++ topicFollowsController.routes
+      recommendationsController.routes ++ pollVotesController.routes ++ reportsController.routes ++ searchController.routes ++ tribunalCommentsController.routes ++ tribunalVotesController.routes ++ topicFollowsController.routes ++ discussionLikesController.routes
   }
 
 //  private val loggingMiddleware: HttpMiddleware[Any, Nothing] =
@@ -72,7 +72,7 @@ case class CivilServer(
 object CivilServer {
 
   val layer: ZLayer[
-    TopicLikesController
+    SpaceLikesController
       with OpposingRecommendationsController
       with RecommendationsController
       with HealthCheckController
@@ -84,12 +84,13 @@ object CivilServer {
       with FollowsController
       with ReportsController
       with SearchController
-      with TopicsController
+      with SpacesController
       with TribunalCommentsController
       with UsersController
       with TribunalVotesController
-      with TopicFollowsController
-      with PollVotesController,
+      with SpaceFollowsController
+      with PollVotesController
+      with DiscussionLikesController,
     Nothing,
     CivilServer
   ] =

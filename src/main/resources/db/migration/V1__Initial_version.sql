@@ -31,67 +31,65 @@ CREATE INDEX tag_users_index ON "users" (tag);
 
 
 
-CREATE TABLE topics (
+CREATE TABLE spaces (
     id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
     title varchar(5000) NOT NULL,
     editor_state text NOT NULL,
     editor_text_content varchar(4820) NOT NULL,
     category varchar(50) default 'Technology',
-    user_uploaded_image_url text,
-    user_uploaded_vod_url text,
-    evidence_links text[] DEFAULT '{}'::text[],
+    reference_links text[] DEFAULT '{}'::text[],
     likes integer DEFAULT 0,
     created_by_username text NOT NULL,
     created_by_user_id text NOT NULL,
     report_status text DEFAULT 'Clean',
     user_verification_type varchar(50) default 'NO_VERIFICATION',
-    topic_words text[] DEFAULT '{}'::text[],
-    topic_id uuid DEFAULT NULL,
+    space_id uuid DEFAULT NULL,
     discussion_id uuid DEFAULT NULL,
+    content_height decimal,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(title)
 );
 
-CREATE INDEX id_topics_index ON topics (id);
-CREATE INDEX user_id_topics_index ON topics (created_by_user_id);
+CREATE INDEX id_spaces_index ON spaces (id);
+CREATE INDEX user_id_spaces_index ON spaces (created_by_user_id);
 
-CREATE TABLE topic_metadata (
+CREATE TABLE space_metadata (
     id SERIAL PRIMARY KEY,
-    topic_id uuid UNIQUE NOT NULL,
-    topic_categories text[] DEFAULT '{}'::text[],
-    topic_key_words text[] DEFAULT '{}'::text[],
-    topic_named_entities text[] DEFAULT '{}'::text[],
+    space_id uuid UNIQUE NOT NULL,
+    space_categories text[] DEFAULT '{}'::text[],
+    space_key_words text[] DEFAULT '{}'::text[],
+    space_named_entities text[] DEFAULT '{}'::text[],
     text_content varchar(4820) NOT NULL,
-    CONSTRAINT fk_topic_metadata
-      FOREIGN KEY(topic_id)
-        REFERENCES topics(id)
+    CONSTRAINT fk_space_metadata
+      FOREIGN KEY(space_id)
+        REFERENCES spaces(id)
 
 );
 
 CREATE TABLE external_links (
     id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
-    topic_id uuid,
+    space_id uuid,
     link_type varchar(50) NOT NULL,
     external_content_url text NOT NULL,
     embed_id varchar(50),
     thumb_img_url varchar(2048),
-    UNIQUE(topic_id)
+    UNIQUE(space_id)
 );
 
-CREATE INDEX external_links_topic_id_index ON external_links (topic_id);
+CREATE INDEX external_links_space_id_index ON external_links (space_id);
 
 
 
-CREATE TABLE topic_vods (
+CREATE TABLE space_vods (
   id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
   user_id text NOT NULL,
   vod_url text NOT NULL,
-  topic_id uuid NOT NULL,
+  space_id uuid NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT fk_topics
-    FOREIGN KEY(topic_id)
-      REFERENCES topics(id)
+  CONSTRAINT fk_spaces
+    FOREIGN KEY( space_id)
+      REFERENCES spaces(id)
 );
 
 
@@ -108,12 +106,13 @@ CREATE TABLE discussions (
     user_uploaded_image_url text,
     user_uploaded_vod_url text,
     discussion_key_words text[] DEFAULT '{}'::text[],
-    topic_id uuid NOT NULL,
+    space_id uuid NOT NULL,
     discussion_id uuid DEFAULT NULL,
-    UNIQUE(title, topic_id),
-    CONSTRAINT fk_topics
-      FOREIGN KEY(topic_id)
-	      REFERENCES topics(id)
+    content_height decimal,
+    UNIQUE(title, space_id),
+    CONSTRAINT fk_spaces
+      FOREIGN KEY(space_id)
+	      REFERENCES spaces(id)
 );
 
 
@@ -131,7 +130,7 @@ CREATE TABLE external_links_discussions (
     embed_id varchar(50),
     thumb_img_url varchar(2048),
     UNIQUE(discussion_id),
-     CONSTRAINT discussions_topics
+     CONSTRAINT discussions_spaces
         FOREIGN KEY(discussion_id)
           REFERENCES discussions(id)
 );
@@ -147,7 +146,7 @@ CREATE TABLE comments (
     created_by_username varchar(100) NOT NULL,
     created_by_user_id varchar(100) NOT NULL,
     discussion_id uuid,
-    topic_id uuid,
+    space_id uuid,
     sentiment text NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     likes  integer DEFAULT 0,
@@ -200,27 +199,38 @@ CREATE TABLE comment_likes (
 CREATE INDEX user_id_comment_likes_index ON comment_likes (user_id);
 CREATE INDEX comment_id_comment_likes_index ON comment_likes (comment_id);
 
-CREATE TABLE topic_likes (
+CREATE TABLE space_likes (
     id SERIAL PRIMARY KEY,
     user_id text NOT NULL,
-    topic_id uuid NOT NULL,
+    space_id uuid NOT NULL,
     like_state like_action DEFAULT 'NeutralState',
-    UNIQUE(topic_id, user_id)
+    UNIQUE(space_id, user_id)
 );
 
-CREATE INDEX user_id_topic_likes_index ON topic_likes (user_id);
-CREATE INDEX topic_id_topic_likes_index ON topic_likes (topic_id);
+CREATE INDEX user_id_space_likes_index ON space_likes (user_id);
+CREATE INDEX space_id_space_likes_index ON space_likes (space_id);
 
 
-CREATE TABLE topic_follows (
+CREATE TABLE space_follows (
     id SERIAL PRIMARY KEY,
     user_id text NOT NULL,
-    followed_topic_id uuid NOT NULL
+    followed_space_id uuid NOT NULL
 );
 
 
-CREATE INDEX user_id_topic_follows_index ON topic_follows (user_id);
-CREATE INDEX topic_id_topic_follows_index ON topic_follows (followed_topic_id);
+CREATE INDEX user_id_space_follows_index ON space_follows (user_id);
+CREATE INDEX space_id_space_follows_index ON space_follows (followed_space_id);
+
+CREATE TABLE discussion_likes (
+    id SERIAL PRIMARY KEY,
+    user_id text NOT NULL,
+    discussion_id uuid NOT NULL,
+    like_state like_action DEFAULT 'NeutralState',
+    UNIQUE(discussion_id, user_id)
+);
+
+CREATE INDEX user_id_discussion_likes_index ON discussion_likes (user_id);
+CREATE INDEX discussion_id_discussion_likes_index ON discussion_likes (discussion_id);
 
 
 CREATE TABLE comment_civility (
@@ -363,10 +373,10 @@ CREATE TABLE poll_votes(
 CREATE INDEX poll_options_id_poll_votes_index ON poll_votes (poll_option_id);
 
 
-CREATE TABLE for_you_topics(
+CREATE TABLE for_you_spaces(
   id SERIAL PRIMARY KEY,
   user_id text NOT NULL,
-  topic_ids text[] DEFAULT '{}'::text[],
+  space_ids text[] DEFAULT '{}'::text[],
   UNIQUE(user_id)
 );
 
@@ -864,7 +874,7 @@ insert into users (id, user_id, username, tag, civility, experience, bio, icon_s
 
 
 ALTER TABLE external_links
-ADD CONSTRAINT fk_topics
-  FOREIGN KEY(topic_id)
-  REFERENCES topics(id);
+ADD CONSTRAINT fk_spaces
+  FOREIGN KEY(space_id)
+  REFERENCES spaces(id);
 

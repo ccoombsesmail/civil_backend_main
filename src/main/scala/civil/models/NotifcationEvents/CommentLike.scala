@@ -11,8 +11,8 @@ case class CommentLike(
     commentId: UUID,
     receivingUserId: String,
     givingUserData: GivingUserNotificationData,
-    topicId: UUID,
-    subtopicId: UUID
+    spaceId: UUID,
+    subspaceId: UUID
 )
 
 object CommentLike {

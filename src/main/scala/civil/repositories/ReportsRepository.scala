@@ -2,7 +2,7 @@ package civil.repositories
 
 import civil.errors.AppError
 import civil.errors.AppError.InternalServerError
-import civil.models.{ReportInfo, ReportTimings, Reports, Topics}
+import civil.models.{ReportInfo, ReportTimings, Reports}
 import civil.models._
 import civil.models.NotifcationEvents._
 import zio._
@@ -49,12 +49,12 @@ case class ReportsRepositoryLive(dataSource: DataSource)
       report: Reports
   ): ZIO[Any, AppError, Unit] = {
     for {
-      topics <- run(
-        query[Topics].filter(t => t.id == lift(report.contentId))
+      space <- run(
+        query[Spaces].filter(t => t.id == lift(report.contentId))
       ).mapError(e => InternalServerError(e.toString))
         .provideEnvironment(ZEnvironment(dataSource))
-      topicOpt = topics.headOption
-      contentType = if (topicOpt.isDefined) "TOPIC" else "COMMENT"
+      topicOpt = space.headOption
+      contentType = if (topicOpt.isDefined) "SPACE" else "COMMENT"
       reportWithContentType = report.copy(contentType = contentType)
       _ <- run(
         query[Reports].insertValue(lift(reportWithContentType))
@@ -153,7 +153,7 @@ case class ReportsRepositoryLive(dataSource: DataSource)
       vote.voteFor,
       timingOpt.map(_.reportPeriodEnd),
       timingOpt.flatMap(_.deletedAt),
-      contentType = "TOPIC"
+      contentType = "SPACE"
     ).attachVotingResults(
       timingOpt.map(_.reportPeriodEnd),
       numVotesAgainst,

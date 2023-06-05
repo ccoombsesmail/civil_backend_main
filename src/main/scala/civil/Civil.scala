@@ -5,10 +5,12 @@ import civil.http.CivilServer
 import civil.services._
 import civil.repositories._
 import civil.repositories.comments.{CommentCivilityRepositoryLive, CommentLikesRepositoryLive, CommentsRepositoryLive}
+import civil.repositories.discussions.{DiscussionLikesRepositoryLive, DiscussionRepositoryLive}
 import civil.repositories.recommendations.{OpposingRecommendationsRepositoryLive, RecommendationsRepositoryLive}
-import civil.repositories.topics._
+import civil.repositories.spaces._
 import civil.services.comments._
-import civil.services.topics._
+import civil.services.discussions.{DiscussionLikesServiceLive, DiscussionServiceLive}
+import civil.services.spaces._
 import zio._
 import zio.http.ServerConfig
 
@@ -24,9 +26,9 @@ object Civil extends zio.ZIOAppDefault {
         CivilServer.layer,
         zio.http.Server.live,
         zio.http.ServerConfig.live(ServerConfig.default.port(8090)),
-        TopicLikesServiceLive.layer,
-        TopicLikesController.layer,
-        TopicLikesRepositoryLive.layer,
+        SpaceLikesServiceLive.layer,
+        SpaceLikesController.layer,
+        SpaceLikesRepositoryLive.layer,
         CommentCivilityController.layer,
         CommentCivilityServiceLive.layer,
         CommentCivilityRepositoryLive.layer,
@@ -42,6 +44,9 @@ object Civil extends zio.ZIOAppDefault {
         DiscussionsController.layer,
         DiscussionServiceLive.layer,
         DiscussionRepositoryLive.layer,
+        DiscussionLikesController.layer,
+        DiscussionLikesServiceLive.layer,
+        DiscussionLikesRepositoryLive.layer,
         EnumsController.layer,
         HealthCheckController.layer,
         OpposingRecommendationsController.layer,
@@ -58,9 +63,9 @@ object Civil extends zio.ZIOAppDefault {
         ReportsRepositoryLive.layer,
         SearchController.layer,
         SearchServiceLive.layer,
-        TopicsController.layer,
-        TopicServiceLive.layer,
-        TopicRepositoryLive.layer,
+        SpacesController.layer,
+        SpacesServiceLive.layer,
+        SpaceRepositoryLive.layer,
         TribunalCommentsController.layer,
         TribunalCommentsServiceLive.layer,
         TribunalCommentsRepositoryLive.layer,
@@ -73,9 +78,9 @@ object Civil extends zio.ZIOAppDefault {
         TribunalVotesController.layer,
         TribunalVotesRepositoryLive.layer,
         TribunalVotesServiceLive.layer,
-        TopicFollowsController.layer,
-        TopicFollowsServiceLive.layer,
-        TopicFollowsRepositoryLive.layer
+        SpaceFollowsController.layer,
+        SpaceFollowsServiceLive.layer,
+        SpaceFollowsRepositoryLive.layer
       )
 
   }

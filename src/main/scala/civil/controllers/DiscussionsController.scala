@@ -1,12 +1,12 @@
 package civil.controllers
 
-import civil.services.DiscussionService
 import civil.errors.AppError.JsonDecodingError
 import civil.models.IncomingDiscussion
 import zio.http._
 import zio._
 import zio.json.EncoderOps
 import civil.controllers.ParseUtils._
+import civil.services.discussions.DiscussionService
 import zio.http.model.Method
 
 import java.util.UUID
@@ -17,6 +17,7 @@ final case class DiscussionsController(discussionsService: DiscussionService) {
     case req @ Method.POST -> !!  / "api" / "v1"/ "discussions"  =>
       (for {
         incomingDiscussion <- parseBody[IncomingDiscussion](req)
+        _ = println(incomingDiscussion)
         authData <- extractJwtData(req)
         (jwt, jwtType) = authData
         insertedDiscussion <- discussionsService.insertDiscussion(jwt, jwtType, incomingDiscussion)
@@ -26,25 +27,22 @@ final case class DiscussionsController(discussionsService: DiscussionService) {
       (for {
         authData <- extractJwtData(req)
         (jwt, jwtType) = authData
-        topicIdParams <- parseQuery(req, "topicId")
-        topicId <- ZIO.fromOption(topicIdParams.headOption).mapError(e => JsonDecodingError(e.toString))
-        skipParams <- parseQuery(req, "skip")
-        skip <- ZIO.fromOption(skipParams.headOption).mapError(e => JsonDecodingError(e.toString))
-        discussions <- discussionsService.getDiscussions(jwt, jwtType, UUID.fromString(topicId), skip.toInt)
+        spaceId <- parseQueryFirst(req, "spaceId")
+        skip <- parseQueryFirst(req, "skip")
+        discussions <- discussionsService.getDiscussions(jwt, jwtType, UUID.fromString(spaceId), skip.toInt)
       } yield Response.json(discussions.toJson)).catchAll(_.toResponse)
 
     case req @ Method.GET -> !! / "api" / "v1" / "discussions" / discussionId =>
       (for {
-        id <- parseDiscussionId(discussionId)
         authData <- extractJwtData(req)
         (jwt, jwtType) = authData
+        id <- parseDiscussionId(discussionId)
         discussion <- discussionsService.getDiscussion(jwt, jwtType, id.id)
       } yield Response.json(discussion.toJson)).catchAll(_.toResponse)
 
-    case req @ Method.GET -> !! / "api" / "v1" / "discussions" / "general" / topicId =>
+    case _ @ Method.GET -> !! / "api" / "v1" / "discussions" / "general" / spaceId =>
       (for {
-        id <- parseTopicId(topicId)
-        _ = println(id)
+        id <- parseSpaceId(spaceId)
         genDiscussionId <- discussionsService.getGeneralDiscussionId(id.id)
       } yield Response.json(genDiscussionId.toJson)).catchAll(_.toResponse)
 

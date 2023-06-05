@@ -1,7 +1,7 @@
 package civil.repositories
 
 import civil.models.actions.LikeAction
-import civil.models.enums.{ReportStatus, TopicCategories}
+import civil.models.enums.{ReportStatus, SpaceCategories}
 import io.getquill.PostgresZioJdbcContext
 
 import java.sql.Types.{OTHER, VARCHAR}
@@ -12,9 +12,9 @@ trait QuillCodecs {
   this: PostgresZioJdbcContext[_] =>
 
 
-  implicit val topicCategoriesDecoder: Decoder[TopicCategories] =
-    decoder(row => index => TopicCategories.withNameInsensitive(row.getObject(index).toString))
-  implicit val topicCategoriesEncoder: Encoder[TopicCategories] =
+  implicit val topicCategoriesDecoder: Decoder[SpaceCategories] =
+    decoder(row => index => SpaceCategories.withNameInsensitive(row.getObject(index).toString))
+  implicit val topicCategoriesEncoder: Encoder[SpaceCategories] =
     encoder(VARCHAR, (index, value, row) => row.setObject(index, value, OTHER))
 
   implicit val reportStatusDecoder: Decoder[ReportStatus] =

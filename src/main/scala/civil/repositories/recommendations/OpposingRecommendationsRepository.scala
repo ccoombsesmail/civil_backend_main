@@ -1,6 +1,6 @@
 package civil.repositories.recommendations
 
-import civil.models.{Discussions, OpposingRecommendations, OutGoingOpposingRecommendations, Topics, UrlsForTFIDFConversion}
+import civil.models.{Discussions, OpposingRecommendations, OutGoingOpposingRecommendations, Spaces, UrlsForTFIDFConversion}
 import civil.errors.AppError
 import civil.errors.AppError.InternalServerError
 import io.getquill.Ord
@@ -34,12 +34,12 @@ case class OpposingRecommendationsRepositoryLive(dataSource: DataSource) extends
 //      isDiscussion
 //    })
 //    opposingRec.recommendedContentId.foreach(recId => {
-//        val (topic, topicLink) = run(query[Topics].filter(t => t.id == lift(opposingRec.targetContentId)).leftJoin(query[ExternalLinks]).on(_.id == _.topicId)).head
-//        val (recTopic, recTopicLink) = run(
-//          query[Topics].filter(t => t.id == lift(recId)).leftJoin(query[ExternalLinks]).on(_.id == _.topicId)
+//        val (topic, topicLink) = run(query[Spaces].filter(t => t.id == lift(opposingRec.targetContentId)).leftJoin(query[ExternalLinks]).on(_.id == _.topicId)).head
+//        val (recSpace, recSpaceLink) = run(
+//          query[Spaces].filter(t => t.id == lift(recId)).leftJoin(query[ExternalLinks]).on(_.id == _.topicId)
 //      ).head
 //        val fut = for {
-//          recContentUrl <- recTopicLink.map(data => data.externalContentUrl)
+//          recContentUrl <- recSpaceLink.map(data => data.externalContentUrl)
 //          contentUrl <-  topicLink.map(data => data.externalContentUrl)
 //          f = OutgoingHttp.sendHTTPToMLService("tfidf", UrlsForTFIDFConversion(contentUrl, recContentUrl))
 //        } yield f
@@ -62,7 +62,7 @@ case class OpposingRecommendationsRepositoryLive(dataSource: DataSource) extends
     val q = quote {
       for {
         rec <- query[OpposingRecommendations].filter(rec => rec.targetContentId == lift(targetContentId)).sortBy(r => r.similarityScore)(Ord.descNullsLast)
-        t <- query[Topics].leftJoin(t => t.id === rec.recommendedContentId)
+        t <- query[Spaces].leftJoin(t => t.id === rec.recommendedContentId)
         st <- query[Discussions].leftJoin(st => st.id === rec.recommendedContentId)
       } yield (rec, t, st)
     }

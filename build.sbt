@@ -1,4 +1,3 @@
-val tapirVersion = "1.2.10"
 val sttpVersion = "3.3.13"
 val circeVersion = "0.14.5"
 val akkaVersion = "2.8.0"
@@ -50,7 +49,7 @@ inThisBuild(
 //      "dev.zio" %% "zio-config-magnolia" % zioConfigVersion,
 //      "dev.zio" %% "zio-config-typesafe" % zioConfigVersion,
 //      "dev.zio" %% "zio-streams" % zioVersion,
-      "dev.zio" %% "zio-kafka" % "2.1.1",
+      "dev.zio" %% "zio-kafka" % "2.1.3",
       "dev.zio" %% "zio-json" % "0.4.2",
       "dev.zio" %% "zio-http" % ZIOHttpVersion,
       "org.postgresql" % "postgresql" % "42.5.4"
@@ -71,12 +70,7 @@ lazy val root = project
     assembly / mainClass := Some("civil.Civil"),
     libraryDependencies ++= Seq(
       "ch.megard" %% "akka-http-cors" % "1.2.0",
-      "com.softwaremill.sttp.tapir" %% "tapir-core" % "1.2.10",
-      "com.softwaremill.sttp.tapir" %% "tapir-akka-http-server" % tapirVersion,
-      "com.softwaremill.sttp.tapir" %% "tapir-zio" % tapirVersion,
-      "com.softwaremill.sttp.tapir" %% "tapir-zio-http-server" % tapirVersion,
       "com.typesafe.akka" %% "akka-actor-typed" % "2.8.0",
-      "com.softwaremill.sttp.tapir" %% "tapir-json-circe" % "1.2.10",
       "com.typesafe" % "config" % "1.4.2",
       "com.typesafe.akka" %% "akka-stream" % akkaVersion,
       "com.lightbend.akka" %% "akka-stream-alpakka-s3" % "5.0.0",

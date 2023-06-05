@@ -8,11 +8,11 @@ import java.sql.Types
 object EnumEncoders {
 
 
-  implicit val topicCategoriesEncoder: Encoder[TopicCategories] = encoder[TopicCategories](
+  implicit val spaceCategoriesEncoder: Encoder[SpaceCategories] = encoder[SpaceCategories](
     Types.OTHER,
-    (index: Index, value: TopicCategories, row: PrepareRow) => {
+    (index: Index, value: SpaceCategories, row: PrepareRow) => {
       val pgObj = new PGobject()
-      pgObj.setType("topic_categories")
+      pgObj.setType("space_categories")
       pgObj.setValue(value.entryName)
       row.setObject(index, pgObj, Types.OTHER)
     }

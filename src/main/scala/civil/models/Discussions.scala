@@ -1,5 +1,6 @@
 package civil.models
 
+import civil.models.actions.LikeAction
 import zio.{Random, Task, UIO, ZIO}
 import zio.json.{DeriveJsonCodec, JsonCodec}
 
@@ -34,7 +35,7 @@ object DiscussionId {
 
 case class Discussions(
     id: UUID,
-    topicId: UUID,
+    spaceId: UUID,
     createdAt: ZonedDateTime,
     createdByUsername: String,
     createdByUserId: String,
@@ -46,14 +47,15 @@ case class Discussions(
     userUploadedImageUrl: Option[String],
     userUploadedVodUrl: Option[String],
     discussionKeyWords: Seq[String] = Seq(),
-    discussionId: Option[UUID] = None
-   )
+    discussionId: Option[UUID] = None,
+    contentHeight: Option[Float]
+)
 
 object Discussions {
   implicit val codec: JsonCodec[Discussions] = DeriveJsonCodec.gen[Discussions]
 }
 case class IncomingDiscussion(
-    topicId: String,
+    spaceId: String,
     title: String,
     editorState: String,
     editorTextContent: String,
@@ -62,8 +64,9 @@ case class IncomingDiscussion(
     userUploadedImageUrl: Option[String],
     userUploadedVodUrl: Option[String],
     discussionKeyWords: Seq[String] = Seq(),
-    discussionId: Option[UUID] = None
-)
+    discussionId: Option[UUID] = None,
+    contentHeight: Option[Float]
+ )
 
 object IncomingDiscussion {
   implicit val codec: JsonCodec[IncomingDiscussion] = DeriveJsonCodec.gen[IncomingDiscussion]
@@ -71,7 +74,7 @@ object IncomingDiscussion {
 
 case class OutgoingDiscussion(
     id: UUID,
-    topicId: UUID,
+    spaceId: UUID,
     createdAt: ZonedDateTime,
     createdByUsername: String,
     createdByUserId: String,
@@ -83,12 +86,13 @@ case class OutgoingDiscussion(
     userUploadedVodUrl: Option[String],
     externalContentData: Option[ExternalContentData],
     likes: Int,
-    liked: Boolean,
+    likeState: LikeAction,
     allComments: Long,
     positiveComments: Long,
     neutralComments: Long,
     negativeComments: Long,
-    totalCommentsAndReplies: Long
+    totalCommentsAndReplies: Long,
+    contentHeight: Option[Float]
 )
 
 

@@ -6,7 +6,7 @@ import zio.json.{DeriveJsonCodec, JsonCodec}
 import java.util.UUID
 
 case class ExternalLinks(
-    topicId: UUID,
+    spaceId: UUID,
     embedId: Option[String],
     externalContentUrl: String,
     thumbImgUrl: Option[String],

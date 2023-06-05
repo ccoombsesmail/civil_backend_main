@@ -84,7 +84,7 @@ case class CommentCivilityServiceLive(
                 givingUserTag = Some(userData.userCivilTag),
                 givingUserIconSrc = Some(userData.userIconSrc)
               ),
-              topicId = comment.topicId,
+              spaceId = comment.spaceId,
               subtopicId = comment.discussionId
             ),
             civilityData.receivingUserId,
