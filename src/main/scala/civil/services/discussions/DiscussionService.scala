@@ -38,6 +38,17 @@ trait DiscussionService {
       userId: String
   ): ZIO[Any, AppError, List[OutgoingDiscussion]]
 
+  def getSimilarDiscussions(
+      jwt: String,
+      jwtType: String,
+      discussionId: UUID
+  ): ZIO[Any, AppError, List[OutgoingDiscussion]]
+
+  def getPopularDiscussions(
+     jwt: String,
+     jwtType: String,
+     skip: Int
+   ): ZIO[Any, AppError, List[OutgoingDiscussion]]
 }
 
 object DiscussionService {
@@ -80,6 +91,24 @@ object DiscussionService {
     ZIO.serviceWithZIO[DiscussionService](
       _.getUserDiscussions(jwt, jwtType, userId)
     )
+
+  def getSimilarDiscussions(
+      jwt: String,
+      jwtType: String,
+      discussionId: UUID
+  ): ZIO[DiscussionService, AppError, List[OutgoingDiscussion]] =
+    ZIO.serviceWithZIO[DiscussionService](
+      _.getSimilarDiscussions(jwt, jwtType, discussionId)
+    )
+
+  def getPopularDiscussions(
+                             jwt: String,
+                             jwtType: String,
+                             skip: Int
+                           ): ZIO[DiscussionService, AppError, List[OutgoingDiscussion]] =
+    ZIO.serviceWithZIO[DiscussionService](
+      _.getPopularDiscussions(jwt, jwtType, skip)
+    )
 }
 
 case class DiscussionServiceLive(
@@ -99,6 +128,7 @@ case class DiscussionServiceLive(
         incomingDiscussion
           .into[Discussions]
           .withFieldConst(_.likes, 0)
+          .withFieldConst(_.popularityScore, 0.0)
           .withFieldConst(
             _.createdAt,
             ZonedDateTime.now(ZoneId.systemDefault())
@@ -134,7 +164,11 @@ case class DiscussionServiceLive(
   ): ZIO[Any, AppError, List[OutgoingDiscussion]] = {
     for {
       userData <- authService.extractUserData(jwt, jwtType)
-      discussions <- discussionRepository.getDiscussions(spaceId, skip, userData.userId)
+      discussions <- discussionRepository.getDiscussions(
+        spaceId,
+        skip,
+        userData.userId
+      )
     } yield discussions
   }
 
@@ -169,6 +203,27 @@ case class DiscussionServiceLive(
       )
     } yield userDiscussions
   }
+
+  override def getSimilarDiscussions(
+      jwt: String,
+      jwtType: String,
+      discussionId: UUID
+  ): ZIO[Any, AppError, List[OutgoingDiscussion]] = {
+    for {
+      userData <- authService.extractUserData(jwt, jwtType)
+      discussions <- discussionRepository.getSimilarDiscussions(
+        discussionId
+      )
+    } yield discussions
+  }
+
+  override def getPopularDiscussions(jwt: String, jwtType: String, skip: Int): ZIO[Any, AppError, List[OutgoingDiscussion]] = for {
+    userData <- authService.extractUserData(jwt, jwtType)
+    discussions <- discussionRepository.getPopularDiscussions(
+      userData.userId,
+      skip
+    )
+  } yield discussions
 }
 
 object DiscussionServiceLive {

@@ -257,7 +257,7 @@ case class CommentsRepositoryLive(dataSource: DataSource)
                     Comments.commentToCommentReplyWithDepth(
                       c.transformInto[CommentWithDepth],
                       c.likeState.getOrElse(NeutralState),
-                      civilityOpt.map(_.value).getOrElse(0),
+                      c.civility.getOrElse(0),
                       c.userIconSrc.getOrElse(""),
                       c.userId,
                       c.userExperience,
@@ -271,7 +271,7 @@ case class CommentsRepositoryLive(dataSource: DataSource)
                     Comments.commentToCommentReply(
                       c.transformInto[CommentWithDepth],
                       c.likeState.getOrElse(NeutralState),
-                      civilityOpt.map(_.value).getOrElse(0),
+                      c.civility.getOrElse(0),
                       c.userIconSrc.getOrElse(""),
                       c.userId,
                       c.userExperience,

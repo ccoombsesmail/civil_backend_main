@@ -15,12 +15,12 @@ trait KafkaProducerService {
 
 class KafkaProducerServiceLive extends KafkaProducerService {
 
-  override def publish[A](message: A, userId: String, serde: Serde[Any, A], topic: String = "notifications"): ZIO[Any, Throwable, RecordMetadata] = {
+  override def publish[A](message: A, key: String, serde: Serde[Any, A], topic: String = "notifications"): ZIO[Any, Throwable, RecordMetadata] = {
     println(s"Publishing to $topic ")
     (for {
       p <- Producer.produce(
         topic,
-        userId,
+        key,
         message,
         Serde.string,
         serde

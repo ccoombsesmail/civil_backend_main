@@ -1,6 +1,5 @@
 package civil.models.NotifcationEvents
 
-import civil.models.ExternalLinks
 import zio.ZIO
 import zio.json.{DecoderOps, DeriveJsonDecoder, DeriveJsonEncoder, EncoderOps, JsonDecoder, JsonEncoder}
 import zio.kafka.serde.Serde
@@ -11,8 +10,7 @@ case class SpaceMLEvent (
     eventType: String,
     spaceId: UUID,
     editorTextContent: String,
-//    externalUrl: Option[ExternalLinks]
-                        )
+ )
 
 
 object SpaceMLEvent {

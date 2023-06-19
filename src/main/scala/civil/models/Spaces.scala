@@ -98,7 +98,8 @@ case class OutgoingSpace(
     updatedAt: ZonedDateTime,
     isFollowing: Boolean = false,
     referenceLinks: Option[List[String]] = None,
-    contentHeight: Option[Float]
+    contentHeight: Option[Float],
+    editorTextContent: String
 )
 
 object OutgoingSpace {
@@ -122,6 +123,7 @@ object SpaceFollows {
 }
 
 
+case class SpaceSimilarityScores(spaceId1: UUID, spaceId2: UUID, similarityScore: Float)
 
 case class ForYouSpaces(id: Int, userId: String, spaceIds: Seq[String])
 

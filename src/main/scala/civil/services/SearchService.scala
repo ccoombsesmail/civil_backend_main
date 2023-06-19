@@ -114,6 +114,10 @@ case class SearchServiceLive(
               comment = Comment(id, textContent, tId, dId).some,
               user = u.transformInto[User]
             )
+          case (None, Some(_)) =>
+            SearchResult(
+              user = u.transformInto[User]
+            )
         }
     }
 

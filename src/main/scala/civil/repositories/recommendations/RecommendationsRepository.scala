@@ -58,7 +58,7 @@ case class RecommendationsRepositoryLive(dataSource: DataSource) extends Recomme
         .provideEnvironment(ZEnvironment(dataSource))
       out = outgoingRecs.map { case (rec, topic, subtopic) =>
         rec.into[OutgoingRecommendations]
-        .withFieldConst (_.topic, topic)
+        .withFieldConst (_.space, topic)
         .withFieldConst (_.discussion, subtopic)
         .transform
       }

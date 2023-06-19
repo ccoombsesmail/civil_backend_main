@@ -3,7 +3,12 @@ package civil.services.spaces
 import civil.errors.AppError
 import civil.models._
 import civil.directives.OutgoingHttp._
-import civil.models.enums.UserVerificationType.{CAPTCHA_VERIFIED, FACE_ID_AND_CAPTCHA_VERIFIED, FACE_ID_VERIFIED, NO_VERIFICATION}
+import civil.models.enums.UserVerificationType.{
+  CAPTCHA_VERIFIED,
+  FACE_ID_AND_CAPTCHA_VERIFIED,
+  FACE_ID_VERIFIED,
+  NO_VERIFICATION
+}
 import civil.repositories.PollsRepository
 import civil.repositories.spaces.SpacesRepository
 import civil.services.AuthenticationService
@@ -34,15 +39,21 @@ trait SpacesService {
   ): ZIO[Any, AppError, OutgoingSpace]
 
   def getUserSpaces(
-                jwt: String,
-                jwtType: String,
-                userId: String
-              ): ZIO[Any, AppError, List[OutgoingSpace]]
+      jwt: String,
+      jwtType: String,
+      userId: String
+  ): ZIO[Any, AppError, List[OutgoingSpace]]
 
   def getFollowedSpaces(
-                     jwt: String,
-                     jwtType: String,
- ): ZIO[Any, AppError, List[OutgoingSpace]]
+      jwt: String,
+      jwtType: String
+  ): ZIO[Any, AppError, List[OutgoingSpace]]
+
+  def getSimilarSpaces(
+      jwt: String,
+      jwtType: String,
+      spaceId: UUID
+  ): ZIO[Any, AppError, List[OutgoingSpace]]
 }
 
 object SpacesService {
@@ -51,7 +62,9 @@ object SpacesService {
       jwtType: String,
       incomingSpace: IncomingSpace
   ): ZIO[SpacesService, AppError, OutgoingSpace] =
-    ZIO.serviceWithZIO[SpacesService](_.insertSpace(jwt, jwtType, incomingSpace))
+    ZIO.serviceWithZIO[SpacesService](
+      _.insertSpace(jwt, jwtType, incomingSpace)
+    )
 
   def getSpaces(): ZIO[SpacesService, AppError, List[OutgoingSpace]] =
     ZIO.serviceWithZIO[SpacesService](_.getSpaces)
@@ -61,7 +74,9 @@ object SpacesService {
       jwtType: String,
       offset: Int
   ): ZIO[SpacesService, AppError, List[OutgoingSpace]] =
-    ZIO.serviceWithZIO[SpacesService](_.getSpacesAuthenticated(jwt, jwtType, offset))
+    ZIO.serviceWithZIO[SpacesService](
+      _.getSpacesAuthenticated(jwt, jwtType, offset)
+    )
 
   def getSpace(
       jwt: String,
@@ -71,21 +86,31 @@ object SpacesService {
     ZIO.serviceWithZIO[SpacesService](_.getSpace(jwt, jwtType, id))
 
   def getUserSpaces(
-                jwt: String,
-                jwtType: String,
-                userId: String
-              ): ZIO[SpacesService, AppError, List[OutgoingSpace]] =
+      jwt: String,
+      jwtType: String,
+      userId: String
+  ): ZIO[SpacesService, AppError, List[OutgoingSpace]] =
     ZIO.serviceWithZIO[SpacesService](_.getUserSpaces(jwt, jwtType, userId))
 
   def getFollowedSpaces(
+      jwt: String,
+      jwtType: String
+  ): ZIO[SpacesService, AppError, List[OutgoingSpace]] =
+    ZIO.serviceWithZIO[SpacesService](_.getFollowedSpaces(jwt, jwtType))
+
+  def getSimilarSpaces(
                      jwt: String,
                      jwtType: String,
+                     spaceId: UUID
                    ): ZIO[SpacesService, AppError, List[OutgoingSpace]] =
-    ZIO.serviceWithZIO[SpacesService](_.getFollowedSpaces(jwt, jwtType))
+    ZIO.serviceWithZIO[SpacesService](_.getSimilarSpaces(jwt, jwtType, spaceId))
 }
 
-case class SpacesServiceLive(spacesRepository: SpacesRepository, pollsRepository: PollsRepository, authService: AuthenticationService)
-    extends SpacesService {
+case class SpacesServiceLive(
+    spacesRepository: SpacesRepository,
+    pollsRepository: PollsRepository,
+    authService: AuthenticationService
+) extends SpacesService {
   implicit val ec: scala.concurrent.ExecutionContext =
     scala.concurrent.ExecutionContext.global
 
@@ -103,11 +128,23 @@ case class SpacesServiceLive(spacesRepository: SpacesRepository, pollsRepository
           .into[Spaces]
           .withFieldConst(_.id, spaceId)
           .withFieldConst(_.likes, 0)
-          .withFieldConst(_.createdAt, ZonedDateTime.now(ZoneId.systemDefault()))
-          .withFieldConst(_.updatedAt, ZonedDateTime.now(ZoneId.systemDefault()))
+          .withFieldConst(
+            _.createdAt,
+            ZonedDateTime.now(ZoneId.systemDefault())
+          )
+          .withFieldConst(
+            _.updatedAt,
+            ZonedDateTime.now(ZoneId.systemDefault())
+          )
           .withFieldConst(_.id, UUID.randomUUID())
-          .withFieldConst(_.createdByUserId, incomingSpace.createdByUserId.getOrElse(userData.userId))
-          .withFieldConst(_.createdByUsername, incomingSpace.createdByUsername.getOrElse(userData.username))
+          .withFieldConst(
+            _.createdByUserId,
+            incomingSpace.createdByUserId.getOrElse(userData.userId)
+          )
+          .withFieldConst(
+            _.createdByUsername,
+            incomingSpace.createdByUsername.getOrElse(userData.username)
+          )
           .withFieldConst(
             _.userVerificationType,
             userData.permissions match {
@@ -159,7 +196,11 @@ case class SpacesServiceLive(spacesRepository: SpacesRepository, pollsRepository
     } yield space
   }
 
-  override def getUserSpaces(jwt: String, jwtType: String, userId: String): ZIO[Any, AppError, List[OutgoingSpace]] = {
+  override def getUserSpaces(
+      jwt: String,
+      jwtType: String,
+      userId: String
+  ): ZIO[Any, AppError, List[OutgoingSpace]] = {
     for {
       userData <- authService.extractUserData(jwt, jwtType)
       spaces <- spacesRepository.getUserSpaces(
@@ -169,7 +210,10 @@ case class SpacesServiceLive(spacesRepository: SpacesRepository, pollsRepository
     } yield spaces
   }
 
-  override def getFollowedSpaces(jwt: String, jwtType: String): ZIO[Any, AppError, List[OutgoingSpace]] = {
+  override def getFollowedSpaces(
+      jwt: String,
+      jwtType: String
+  ): ZIO[Any, AppError, List[OutgoingSpace]] = {
     for {
       userData <- authService.extractUserData(jwt, jwtType)
       spaces <- spacesRepository.getFollowedSpaces(
@@ -178,6 +222,13 @@ case class SpacesServiceLive(spacesRepository: SpacesRepository, pollsRepository
     } yield spaces
   }
 
+  override def getSimilarSpaces(jwt: String, jwtType: String, spaceId: UUID): ZIO[Any, AppError, List[OutgoingSpace]] =
+    for {
+      userData <- authService.extractUserData(jwt, jwtType)
+      spaces <- spacesRepository.getSimilarSpaces(
+        spaceId
+      )
+    } yield spaces
 }
 
 object SpacesServiceLive {

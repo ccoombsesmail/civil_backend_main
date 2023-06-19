@@ -1,6 +1,7 @@
 package civil.models
 
 import civil.models.actions.LikeAction
+import civil.models.enums.SpaceCategories
 import zio.{Random, Task, UIO, ZIO}
 import zio.json.{DeriveJsonCodec, JsonCodec}
 
@@ -48,7 +49,8 @@ case class Discussions(
     userUploadedVodUrl: Option[String],
     discussionKeyWords: Seq[String] = Seq(),
     discussionId: Option[UUID] = None,
-    contentHeight: Option[Float]
+    contentHeight: Option[Float],
+    popularityScore: Double
 )
 
 object Discussions {
@@ -79,6 +81,7 @@ case class OutgoingDiscussion(
     createdByUsername: String,
     createdByUserId: String,
     createdByIconSrc: String,
+    createdByTag: Option[String],
     title: String,
     editorState: String,
     evidenceLinks: Option[List[String]],
@@ -92,11 +95,17 @@ case class OutgoingDiscussion(
     neutralComments: Long,
     negativeComments: Long,
     totalCommentsAndReplies: Long,
-    contentHeight: Option[Float]
+    contentHeight: Option[Float] = None,
+    spaceTitle: Option[String] = None,
+    spaceCategory: Option[SpaceCategories] = Some(SpaceCategories.General)
+
 )
 
 
 object OutgoingDiscussion {
   implicit val codec: JsonCodec[OutgoingDiscussion] = DeriveJsonCodec.gen[OutgoingDiscussion]
 }
+
+
+case class DiscussionSimilarityScores(discussionId1: UUID, discussionId2: UUID, similarityScore: Float)
 

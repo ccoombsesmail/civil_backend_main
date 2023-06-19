@@ -29,7 +29,7 @@ case class SpaceRepoHelpers(
   import civil.repositories.QuillContext._
   implicit val ec: ExecutionContext = ExecutionContext.global
 
-  def spacesUsersVodsLinksJoin(fromUserId: Option[String]): Quoted[Query[
+  private def spacesUsersVodsLinksJoin(fromUserId: Option[String]): Quoted[Query[
     (
         Spaces,
         Users,
@@ -74,7 +74,8 @@ case class SpaceRepoHelpers(
     editorTextContent = "General, Discussion",
     userUploadedVodUrl = None,
     userUploadedImageUrl = None,
-    contentHeight = None
+    contentHeight = None,
+    popularityScore = 0.0
   )
 
   def getSpacesWithLikeStatus(
@@ -152,6 +153,11 @@ trait SpacesRepository {
       requestingUserId: String
   ): ZIO[Any, AppError, List[OutgoingSpace]]
 
+
+  def getSimilarSpaces(
+      spaceId: UUID
+                      ) : ZIO[Any, AppError, List[OutgoingSpace]]
+
 }
 
 object SpacesRepository {
@@ -192,6 +198,13 @@ object SpacesRepository {
       requestingUserId: String
   ): ZIO[SpacesRepository, AppError, List[OutgoingSpace]] =
     ZIO.serviceWithZIO[SpacesRepository](_.getFollowedSpaces(requestingUserId))
+
+  def getSimilarSpaces(
+                    spaceId: UUID
+                   ): ZIO[SpacesRepository, AppError, List[OutgoingSpace]] =
+    ZIO.serviceWithZIO[SpacesRepository](
+      _.getSimilarSpaces(spaceId)
+    )
 }
 
 case class SpaceRepositoryLive(
@@ -431,6 +444,41 @@ case class SpaceRepositoryLive(
     } yield outgoingSpaces)
       .mapError(e => InternalServerError(e.toString))
       .provideEnvironment(ZEnvironment(dataSource))
+
+  }
+
+  override def getSimilarSpaces(spaceId: UUID): ZIO[Any, AppError, List[OutgoingSpace]] = {
+
+   for {
+      spacesWithUser <- run(query[Spaces]
+        .join(query[Users])
+        .on(_.createdByUserId == _.userId)
+        .join(query[SpaceSimilarityScores])
+        .on { case ((s, u), sss) => (sss.spaceId1 == lift(spaceId) && s.id == sss.spaceId2) || (sss.spaceId2 == lift(spaceId) && s.id == sss.spaceId1) }
+        .filter { case ((s, u), sss) => s.id != lift(spaceId) }
+        .sortBy(_._2.similarityScore)(Ord.desc)
+        .take(30)
+        .map(_._1)).mapError(e => InternalServerError(e.toString))
+        .provideEnvironment(ZEnvironment(dataSource))
+     outgoingSpaces <- ZIO.foreachPar(spacesWithUser)(row => {
+       val (space, user) = row
+       ZIO
+         .attempt(space.into[OutgoingSpace]
+           .withFieldConst(_.createdByIconSrc, user.iconSrc.get)
+           .withFieldConst(
+             _.likeState,
+             NeutralState
+           )
+           .withFieldConst(_.createdByTag, user.tag)
+           .withFieldConst(_.isFollowing, false)
+           .withFieldComputed(
+             _.category,
+             row => SpaceCategories.withName(row.category)
+           )
+           .transform).mapError(e => InternalServerError(e.toString))
+         .provideEnvironment(ZEnvironment(dataSource))
+     })
+    } yield outgoingSpaces
 
   }
 

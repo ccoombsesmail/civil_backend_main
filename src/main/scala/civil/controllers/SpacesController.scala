@@ -53,6 +53,16 @@ final case class SpacesController(spacesService: SpacesService) {
           jwt, jwtType,
         )
       } yield Response.json(spaces.toJson)).catchAll(_.toResponse)
+
+    case req@Method.GET -> !! / "api" / "v1" / "spaces" / "similar-spaces" / spaceId =>
+      (for {
+        authData <- extractJwtData(req)
+        (jwt, jwtType) = authData
+        spaceId <- parseSpaceId(spaceId)
+        spaces <- spacesService.getSimilarSpaces(
+          jwt, jwtType, spaceId.id
+        )
+      } yield Response.json(spaces.toJson)).catchAll(_.toResponse)
   }
 }
 

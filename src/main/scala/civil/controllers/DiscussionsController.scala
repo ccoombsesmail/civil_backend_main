@@ -23,7 +23,7 @@ final case class DiscussionsController(discussionsService: DiscussionService) {
         insertedDiscussion <- discussionsService.insertDiscussion(jwt, jwtType, incomingDiscussion)
       } yield Response.json(insertedDiscussion.toJson)).catchAll(_.toResponse)
 
-    case req @ Method.GET -> !!  / "api" / "v1" / "discussions" =>
+    case req @ Method.GET -> !!  / "api" / "v1" / "discussions" / "space-discussions" =>
       (for {
         authData <- extractJwtData(req)
         (jwt, jwtType) = authData
@@ -32,7 +32,7 @@ final case class DiscussionsController(discussionsService: DiscussionService) {
         discussions <- discussionsService.getDiscussions(jwt, jwtType, UUID.fromString(spaceId), skip.toInt)
       } yield Response.json(discussions.toJson)).catchAll(_.toResponse)
 
-    case req @ Method.GET -> !! / "api" / "v1" / "discussions" / discussionId =>
+    case req @ Method.GET -> !! / "api" / "v1" / "discussions" / "get-one" / discussionId =>
       (for {
         authData <- extractJwtData(req)
         (jwt, jwtType) = authData
@@ -51,6 +51,32 @@ final case class DiscussionsController(discussionsService: DiscussionService) {
         authData <- extractJwtData(req)
         (jwt, jwtType) = authData
         discussions <- discussionsService.getUserDiscussions(jwt, jwtType, userId)
+      } yield Response.json(discussions.toJson)).catchAll(_.toResponse)
+
+
+    case req@Method.GET -> !! / "api" / "v1" / "discussions" / "similar-discussions" / discussionId =>
+      (for {
+        authData <- extractJwtData(req)
+        (jwt, jwtType) = authData
+        _ = println("sadfasdfa")
+        id <- parseDiscussionId(discussionId)
+        discussions <- discussionsService.getSimilarDiscussions(
+          jwt, jwtType, id.id
+        )
+      } yield Response.json(discussions.toJson)).catchAll(_.toResponse)
+
+
+    case req@Method.GET -> !! / "api" / "v1" / "discussions" / "popular-discussions" =>
+      (for {
+        authData <- extractJwtData(req)
+        (jwt, jwtType) = authData
+        _ = println("HEHERERE")
+        skip <- parseQueryFirst(req, "skip")
+        _ = println("HEHERERE 2")
+
+        discussions <- discussionsService.getPopularDiscussions(
+          jwt, jwtType, skip.toInt
+        )
       } yield Response.json(discussions.toJson)).catchAll(_.toResponse)
   }
 

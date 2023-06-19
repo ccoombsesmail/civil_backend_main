@@ -12,7 +12,7 @@ case class Recommendations(
 
 case class OutgoingRecommendations(
     discussion: Option[Discussions],
-    topic: Option[Spaces],
+    space: Option[Spaces],
     similarityScore: Double
 )
 

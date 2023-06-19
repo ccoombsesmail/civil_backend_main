@@ -36,7 +36,9 @@ final case class UsersController(usersService: UsersService) {
       (for {
         authData <- extractJwtData(req)
         (jwt, jwtType) = authData
+        _ = println(jwt)
         userIconInfo <- parseBody[UpdateUserIcon](req)
+        _ = println(userIconInfo)
         res <- usersService.updateUserIcon(userIconInfo.username, userIconInfo.iconSrc)
       } yield Response.json(res.toJson)).catchAll(_.toResponse)
 

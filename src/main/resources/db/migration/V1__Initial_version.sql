@@ -67,6 +67,15 @@ CREATE TABLE space_metadata (
 
 );
 
+CREATE TABLE space_similarity_scores (
+    space_id1 uuid NOT NULL,
+    space_id2 uuid NOT NULL,
+    similarity_score float NOT NULL,
+    PRIMARY KEY(space_id1, space_id2),
+    FOREIGN KEY(space_id1) REFERENCES spaces(id),
+    FOREIGN KEY(space_id2) REFERENCES spaces(id)
+);
+
 CREATE TABLE external_links (
     id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
     space_id uuid,
@@ -118,6 +127,28 @@ CREATE TABLE discussions (
 
 CREATE INDEX id_discussions_index ON discussions (id);
 CREATE INDEX user_id_discussions_index ON discussions (created_by_user_id);
+
+
+CREATE TABLE discussion_metadata (
+    id SERIAL PRIMARY KEY,
+    discussion_id uuid UNIQUE NOT NULL,
+    discussion_categories text[] DEFAULT '{}'::text[],
+    discussion_key_words text[] DEFAULT '{}'::text[],
+    discussion_named_entities text[] DEFAULT '{}'::text[],
+    text_content text NOT NULL,
+    CONSTRAINT fk_discussion_metadata
+      FOREIGN KEY(discussion_id)
+        REFERENCES discussions(id)
+);
+
+CREATE TABLE discussion_similarity_scores (
+    discussion_id1 uuid NOT NULL,
+    discussion_id2 uuid NOT NULL,
+    similarity_score float NOT NULL,
+    PRIMARY KEY(discussion_id1, discussion_id2),
+    FOREIGN KEY(discussion_id1) REFERENCES discussions(id),
+    FOREIGN KEY(discussion_id2) REFERENCES discussions(id)
+);
 
 
 
