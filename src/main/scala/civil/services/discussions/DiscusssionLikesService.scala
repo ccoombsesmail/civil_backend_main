@@ -3,10 +3,10 @@ package civil.services.discussions
 import civil.errors.AppError.InternalServerError
 import civil.errors.AppError
 import civil.models._
-import civil.models.NotifcationEvents.{GivingUserNotificationData, DiscussionLike}
+import civil.models.NotifcationEvents.{DiscussionLike, GivingUserNotificationData}
 import civil.models.actions.LikedState
 import civil.repositories.discussions.DiscussionLikesRepository
-import civil.services.{AuthenticationService, AuthenticationServiceLive, KafkaProducerServiceLive}
+import civil.services.{AlgorithmScoresCalculationService, AuthenticationService, KafkaProducerServiceLive}
 import zio.{URLayer, ZIO, ZLayer}
 
 import javax.sql.DataSource
@@ -31,14 +31,18 @@ object DiscussionLikesService {
 
 }
 
-case class DiscussionLikesServiceLive(discussionLikesRep: DiscussionLikesRepository, authenticationService: AuthenticationService)
+case class DiscussionLikesServiceLive(
+                                       discussionLikesRep: DiscussionLikesRepository,
+                                       authenticationService: AuthenticationService,
+                                       algorithmScoresCalculationService: AlgorithmScoresCalculationService
+                                     )
     extends DiscussionLikesService {
   val kafka = new KafkaProducerServiceLive()
 
   override def addRemoveDiscussionLikeOrDislike(
       jwt: String,
       jwtType: String,
-      discussionLikeDislikeData: UpdateDiscussionLikes
+      discussionLikeDislikeData: UpdateDiscussionLikes,
   ): ZIO[Any, AppError, DiscussionLiked] = {
     for {
       userData <- authenticationService.extractUserData(jwt, jwtType).mapError(e => InternalServerError(e.toString))
@@ -67,9 +71,9 @@ case class DiscussionLikesServiceLive(discussionLikesRep: DiscussionLikesReposit
 
         )
         .mapError(e => {
-          println(e)
           InternalServerError(e.toString)
         }).forkDaemon
+      _ <- algorithmScoresCalculationService.calculatePopularityScore(discussionLikeDislikeData.id)
     } yield updatedLikeData
   }
 
@@ -77,6 +81,6 @@ case class DiscussionLikesServiceLive(discussionLikesRep: DiscussionLikesReposit
 
 object DiscussionLikesServiceLive {
 
-  val layer: URLayer[DiscussionLikesRepository with AuthenticationService, DiscussionLikesService] = ZLayer.fromFunction(DiscussionLikesServiceLive.apply _)
+  val layer: URLayer[DiscussionLikesRepository with AuthenticationService with AlgorithmScoresCalculationService, DiscussionLikesService] = ZLayer.fromFunction(DiscussionLikesServiceLive.apply _)
 
 }

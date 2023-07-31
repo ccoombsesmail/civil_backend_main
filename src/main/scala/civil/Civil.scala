@@ -4,22 +4,27 @@ import civil.controllers._
 import civil.http.CivilServer
 import civil.services._
 import civil.repositories._
-import civil.repositories.comments.{CommentCivilityRepositoryLive, CommentLikesRepositoryLive, CommentsRepositoryLive}
-import civil.repositories.discussions.{DiscussionLikesRepositoryLive, DiscussionRepositoryLive}
-import civil.repositories.recommendations.{OpposingRecommendationsRepositoryLive, RecommendationsRepositoryLive}
+import civil.repositories.comments._
+import civil.repositories.discussions._
+import civil.repositories.recommendations._
 import civil.repositories.spaces._
 import civil.services.comments._
-import civil.services.discussions.{DiscussionLikesServiceLive, DiscussionServiceLive}
+import civil.services.discussions._
 import civil.services.spaces._
 import zio._
 import zio.http.ServerConfig
+import zio.logging.console
 
 object Civil extends zio.ZIOAppDefault {
+  override val bootstrap: ZLayer[ZIOAppArgs, Any, Any] =
+    Runtime.removeDefaultLoggers >>> console()
+
   implicit val ec: scala.concurrent.ExecutionContext =
     scala.concurrent.ExecutionContext.global
 
   override val run: Task[Unit] = {
     val ONE_MB = 1000000
+
     ZIO
       .serviceWithZIO[CivilServer](_.start)
       .provide(
@@ -80,7 +85,11 @@ object Civil extends zio.ZIOAppDefault {
         TribunalVotesServiceLive.layer,
         SpaceFollowsController.layer,
         SpaceFollowsServiceLive.layer,
-        SpaceFollowsRepositoryLive.layer
+        SpaceFollowsRepositoryLive.layer,
+        DiscussionFollowsController.layer,
+        DiscussionFollowsServiceLive.layer,
+        DiscussionFollowsRepositoryLive.layer,
+        AlgorithmScoresCalculationServiceLive.layer
       )
 
   }

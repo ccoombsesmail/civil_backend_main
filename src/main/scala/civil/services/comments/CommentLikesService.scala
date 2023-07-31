@@ -6,7 +6,11 @@ import civil.models.{CommentLiked, CommentLikes, UpdateCommentLikes}
 import civil.models.NotifcationEvents.{CommentLike, GivingUserNotificationData}
 import civil.models.actions.LikedState
 import civil.repositories.comments.CommentLikesRepository
-import civil.services.{AuthenticationService, AuthenticationServiceLive, KafkaProducerServiceLive}
+import civil.services.{
+  AuthenticationService,
+  AuthenticationServiceLive,
+  KafkaProducerServiceLive
+}
 import io.scalaland.chimney.dsl.TransformerOps
 import zio.{URLayer, ZIO, ZLayer}
 
@@ -50,10 +54,11 @@ object CommentLikesService {
     )
 }
 
-case class CommentLikesServiceLive(commentLikesRepo: CommentLikesRepository, authenticationService: AuthenticationService)
-    extends CommentLikesService {
+case class CommentLikesServiceLive(
+    commentLikesRepo: CommentLikesRepository,
+    authenticationService: AuthenticationService
+) extends CommentLikesService {
   override def addRemoveCommentLikeOrDislike(
-
       jwt: String,
       jwtType: String,
       commentLikeDislikeData: UpdateCommentLikes
@@ -62,6 +67,7 @@ case class CommentLikesServiceLive(commentLikesRepo: CommentLikesRepository, aut
 
     for {
       userData <- authenticationService.extractUserData(jwt, jwtType)
+      _ <- ZIO.logInfo("Updating Tribunal Comment Like")
       data <- commentLikesRepo.addRemoveCommentLikeOrDislike(
         commentLikeDislikeData
           .into[CommentLikes]
@@ -72,28 +78,30 @@ case class CommentLikesServiceLive(commentLikesRepo: CommentLikesRepository, aut
         commentLikeDislikeData.createdByUserId
       )
       (likeData, comment) = data
-      _ <- ZIO.when(likeData.likeState == LikedState)(
-            kafka.publish(
-              CommentLike(
-                eventType = "CommentLike",
-                commentId = likeData.commentId,
-                receivingUserId = commentLikeDislikeData.createdByUserId,
-                givingUserData = GivingUserNotificationData(
-                  givingUserId = userData.userId,
-                  givingUserUsername = userData.username,
-                  givingUserTag = Some(userData.userCivilTag),
-                  givingUserIconSrc = Some(userData.userIconSrc)
-                ),
-                spaceId = comment.spaceId,
-                subspaceId = comment.discussionId
+      _ <- ZIO
+        .when(likeData.likeState == LikedState)(
+          kafka.publish(
+            CommentLike(
+              eventType = "CommentLike",
+              commentId = likeData.commentId,
+              receivingUserId = commentLikeDislikeData.createdByUserId,
+              givingUserData = GivingUserNotificationData(
+                givingUserId = userData.userId,
+                givingUserUsername = userData.username,
+                givingUserTag = Some(userData.userCivilTag),
+                givingUserIconSrc = Some(userData.userIconSrc)
               ),
-              commentLikeDislikeData.createdByUserId,
-              CommentLike.commentLikeSerde
-            )
+              spaceId = comment.spaceId,
+              discussionId = comment.discussionId
+            ),
+            commentLikeDislikeData.createdByUserId,
+            CommentLike.commentLikeSerde
           )
-          .mapError(e => {
-            GeneralError(e.toString)
-          }).forkDaemon
+        )
+        .mapError(e => {
+          GeneralError(e.toString)
+        })
+        .forkDaemon
     } yield likeData
   }
 
@@ -104,6 +112,7 @@ case class CommentLikesServiceLive(commentLikesRepo: CommentLikesRepository, aut
   ): ZIO[Any, AppError, CommentLiked] = {
     for {
       userData <- authenticationService.extractUserData(jwt, jwtType)
+      _ <- ZIO.logInfo("Updating Tribunal Comment Like")
       likeData <- commentLikesRepo.addRemoveTribunalCommentLikeOrDislike(
         commentLikeDislikeData
           .into[CommentLikes]
@@ -120,6 +129,9 @@ case class CommentLikesServiceLive(commentLikesRepo: CommentLikesRepository, aut
 
 object CommentLikesServiceLive {
 
-  val layer: URLayer[CommentLikesRepository with AuthenticationService, CommentLikesService] = ZLayer.fromFunction(CommentLikesServiceLive.apply _)
+  val layer: URLayer[
+    CommentLikesRepository with AuthenticationService,
+    CommentLikesService
+  ] = ZLayer.fromFunction(CommentLikesServiceLive.apply _)
 
 }

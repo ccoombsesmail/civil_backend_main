@@ -7,16 +7,17 @@ import java.util.UUID
 case class TribunalVotes(
     userId: String,
     contentId: UUID,
-    voteAgainst: Option[Boolean],
-    voteFor: Option[Boolean]
+    voteToAcquit: Option[Boolean],
+    voteToStrike: Option[Boolean]
 )
 
 case class TribunalVote(
     contentId: UUID,
-    voteAgainst: Option[Boolean],
-    voteFor: Option[Boolean]
+    voteToAcquit: Option[Boolean],
+    voteToStrike: Option[Boolean]
 )
 
 object TribunalVote {
-  implicit val codec: JsonCodec[TribunalVote] = DeriveJsonCodec.gen[TribunalVote]
+  implicit val codec: JsonCodec[TribunalVote] =
+    DeriveJsonCodec.gen[TribunalVote]
 }

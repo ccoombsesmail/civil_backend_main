@@ -37,9 +37,10 @@ object TribunalCommentsRepository {
   def insertComment(
       comment: TribunalComments,
       commentCreatorData: JwtUserClaimsData
-
-                   ): ZIO[TribunalCommentsRepository, AppError, TribunalCommentsReply] =
-    ZIO.serviceWithZIO[TribunalCommentsRepository](_.insertComment(comment, commentCreatorData))
+  ): ZIO[TribunalCommentsRepository, AppError, TribunalCommentsReply] =
+    ZIO.serviceWithZIO[TribunalCommentsRepository](
+      _.insertComment(comment, commentCreatorData)
+    )
 
   def getComments(
       userId: String,
@@ -70,47 +71,95 @@ case class TribunalCommentsRepositoryLive(dataSource: DataSource)
   override def insertComment(
       comment: TribunalComments,
       commentCreatorData: JwtUserClaimsData
-
   ): ZIO[Any, AppError, TribunalCommentsReply] = {
     (for {
       userReport <- run(
         query[Reports]
-          .filter(r => r.userId == lift(comment.createdByUserId) && r.contentId == lift(comment.reportedContentId))
+          .filter(r =>
+            r.userId == lift(comment.createdByUserId) && r.contentId == lift(
+              comment.reportedContentId
+            )
+          )
       )
-      _ = println(userReport)
       isReporter = userReport.nonEmpty
-      _ = println(isReporter)
+      _ <- ZIO.logInfo(s"isReporter: $isReporter")
+      jury <- run(
+        query[TribunalJuryMembers]
+          .filter(jm =>
+            jm.userId == lift(comment.createdByUserId) && jm.contentId == lift(
+              comment.reportedContentId
+            )
+          )
+      )
+      j = jury.headOption
+      _ <- ZIO.logInfo(s"Is Jury Member: ${j.isDefined}")
+      discussion <- run(
+        query[Discussions].filter(d =>
+          d.id == lift(comment.reportedContentId) && d.createdByUserId == lift(
+            comment.createdByUserId
+          )
+        )
+      )
+      d = discussion.headOption
+      _ <- ZIO.logInfo(s"Discussion exists: ${d.isDefined}")
 
-      userContentJoin <- run(
-        query[Users]
-          .leftJoin(query[Spaces]).on((u, t) => u.userId == t.createdByUserId)
-          .leftJoin(query[Comments]).on((ut, c) => ut._1.userId == c.createdByUserId)
-          .filter {
-            case ((u, tOpt), cOpt) =>
-              u.userId == lift(comment.createdByUserId) &&
-                (
-                  tOpt.exists(_.id == lift(comment.reportedContentId)) ||
-                    cOpt.exists(_.id == lift(comment.reportedContentId))
-                  )
-          }
-          .map { case ((u, tOpt), cOpt) => (u, tOpt, cOpt) } // Select only required fields if needed
-      ).mapError(e => {
-        println(e)
-        e
-      })
+      commentQuery <- run(
+        query[Comments].filter(d =>
+          d.id == lift(comment.reportedContentId) && d.createdByUserId == lift(
+            comment.createdByUserId
+          )
+        )
+      )
+      c = commentQuery.headOption
+      _ <- ZIO.logInfo(s"Comment exists: ${c.isDefined}")
 
-      (user, topicOpt, commentOpt) = userContentJoin.headOption.getOrElse(User(
-        commentCreatorData.userId,
-        Some(commentCreatorData.userIconSrc),
-        Some(commentCreatorData.userCivilTag),
-        commentCreatorData.username,
-        commentCreatorData.experience
-      ), None, None)
-      _ = println("commentOpt", commentOpt)
+      space <- run(
+        query[Spaces].filter(d =>
+          d.id == lift(comment.reportedContentId) && d.createdByUserId == lift(
+            comment.createdByUserId
+          )
+        )
+      )
+      s = space.headOption
+      _ <- ZIO.logInfo(s"Space exists: ${s.isDefined}")
 
+//      userContentJoin <- run(
+//        query[Users]
+//          .leftJoin(query[Spaces])
+//          .on((u, t) => u.userId == t.createdByUserId)
+//          .leftJoin(query[Comments])
+//          .on((ut, c) => ut._1.userId == c.createdByUserId)
+//          .filter { case ((u, tOpt), cOpt) =>
+//            u.userId == lift(comment.createdByUserId) &&
+//            (
+//              tOpt.exists(_.id == lift(comment.reportedContentId)) ||
+//                cOpt.exists(_.id == lift(comment.reportedContentId))
+//            )
+//          }
+//          .map { case ((u, tOpt), cOpt) =>
+//            (u, tOpt, cOpt)
+//          } // Select only required fields if needed
+//      ).mapError(e => {
+//        println(e)
+//        e
+//      })
+//
+//      (user, topicOpt, commentOpt) = userContentJoin.headOption.getOrElse(
+//        User(
+//          commentCreatorData.userId,
+//          Some(commentCreatorData.userIconSrc),
+//          Some(commentCreatorData.userCivilTag),
+//          commentCreatorData.username,
+//          commentCreatorData.experience
+//        ),
+//        None,
+//        None
+//      )
       commentType =
-        if (commentOpt.isDefined || topicOpt.isDefined)
+        if (c.isDefined || s.isDefined || d.isDefined)
           TribunalCommentType.Defendant
+        else if (j.isDefined)
+          TribunalCommentType.Jury
         else if (isReporter)
           TribunalCommentType.Reporter
         else TribunalCommentType.General
@@ -133,7 +182,9 @@ case class TribunalCommentsRepositoryLive(dataSource: DataSource)
       .withFieldConst(_.createdByTag, Some(commentCreatorData.userCivilTag))
       .withFieldConst(_.likeState, NeutralState)
       .withFieldConst(_.civility, 0f)
-      .transform).mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
+      .transform)
+      .mapError(e => InternalServerError(e.toString))
+      .provideEnvironment(ZEnvironment(dataSource))
 
   }
 
@@ -195,7 +246,6 @@ case class TribunalCommentsRepositoryLive(dataSource: DataSource)
         .map { case (((a, b), c), d) => (a, b, c, d) }
         .sortBy { case (comment, _, _, _) => comment.createdAt }(Ord.desc)
     ).mapError(e => {
-      println(e)
       InternalServerError(e.toString)
     })
     commentsNodes <- ZIO
@@ -205,7 +255,6 @@ case class TribunalCommentsRepositoryLive(dataSource: DataSource)
             commentsWithDepth <- run(
               getTribunalCommentsWithReplies(lift(comment.id), lift(userId))
             ).mapError(e => {
-              println(e)
               e
             })
             repliesWithDepth = commentsWithDepth.map { c =>
@@ -232,10 +281,13 @@ case class TribunalCommentsRepositoryLive(dataSource: DataSource)
               )
             }
             tc = CommentsTreeConstructor
-            replyTree <- ZIO.fromOption(tc
-              .constructTribunal(repliesWithDepth, replies)
-              .headOption).mapError(e => {
-                println(e.toString)
+            replyTree <- ZIO
+              .fromOption(
+                tc
+                  .constructTribunal(repliesWithDepth, replies)
+                  .headOption
+              )
+              .mapError(e => {
                 e
               })
           } yield replyTree
@@ -243,7 +295,6 @@ case class TribunalCommentsRepositoryLive(dataSource: DataSource)
   } yield commentsNodes)
     .provideEnvironment(ZEnvironment(dataSource))
     .mapError(e => {
-      println(e.toString)
       InternalServerError(e.toString)
     })
   private def getCommentsByCommentType(
@@ -267,7 +318,6 @@ case class TribunalCommentsRepositoryLive(dataSource: DataSource)
     commentsNodes <- ZIO
       .collectAll(commentsWithUserLikesCivility.map {
         case (((comment, user), _), _) =>
-
           for {
             commentsWithDepth <- run(
               getTribunalCommentsWithReplies(lift(comment.id), lift(userId))

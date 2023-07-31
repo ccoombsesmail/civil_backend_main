@@ -26,12 +26,13 @@ case class CivilServer(
     usersController: UsersController,
     tribunalVotesController: TribunalVotesController,
     topicFollowsController: SpaceFollowsController,
-    discussionLikesController: DiscussionLikesController
+    discussionLikesController: DiscussionLikesController,
+    discussionFollowsController: DiscussionFollowsController
 ) {
 
   private val allRoutes: Http[Any, Throwable, Request, Response] = {
     topicsController.routes ++ usersController.routes ++ topicLikesController.routes ++ commentCivilityController.routes ++ commentLikesController.routes ++ commentsController.routes ++
-      followsController.routes ++ discussionsController.routes ++ enumsController.routes ++ healthCheckController.routes ++ opposingRecommendationsController.routes ++
+      followsController.routes ++ discussionsController.routes ++ enumsController.routes ++ healthCheckController.routes ++ opposingRecommendationsController.routes ++ discussionFollowsController.routes ++
       recommendationsController.routes ++ pollVotesController.routes ++ reportsController.routes ++ searchController.routes ++ tribunalCommentsController.routes ++ tribunalVotesController.routes ++ topicFollowsController.routes ++ discussionLikesController.routes
   }
 
@@ -52,7 +53,7 @@ case class CivilServer(
 //        }
 //    }
 
-  def start =  {
+  def start = {
     val corsMiddleware = HttpAppMiddleware.cors(
       CorsConfig(
         anyOrigin = true,
@@ -63,7 +64,9 @@ case class CivilServer(
     HttpAppMiddleware.beautifyErrors
 
     for {
-      _ <- serve { (allRoutes @@ corsMiddleware @@ HttpAppMiddleware.debug @@ HttpAppMiddleware.beautifyErrors).withDefaultErrorResponse }
+      _ <- serve {
+        (allRoutes @@ corsMiddleware @@ HttpAppMiddleware.debug @@ HttpAppMiddleware.beautifyErrors).withDefaultErrorResponse
+      }
     } yield ()
 
   }
@@ -90,7 +93,8 @@ object CivilServer {
       with TribunalVotesController
       with SpaceFollowsController
       with PollVotesController
-      with DiscussionLikesController,
+      with DiscussionLikesController
+      with DiscussionFollowsController,
     Nothing,
     CivilServer
   ] =

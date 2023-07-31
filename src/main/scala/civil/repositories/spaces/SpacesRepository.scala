@@ -29,7 +29,9 @@ case class SpaceRepoHelpers(
   import civil.repositories.QuillContext._
   implicit val ec: ExecutionContext = ExecutionContext.global
 
-  private def spacesUsersVodsLinksJoin(fromUserId: Option[String]): Quoted[Query[
+  private def spacesUsersVodsLinksJoin(
+      fromUserId: Option[String]
+  ): Quoted[Query[
     (
         Spaces,
         Users,
@@ -44,7 +46,9 @@ case class SpaceRepoHelpers(
             .join(query[Users])
             .on(_.createdByUserId == _.userId)
             .leftJoin(query[SpaceFollows])
-            .on { case ((t, u), tf) => t.id == tf.followedSpaceId && u.userId == tf.userId }
+            .on { case ((t, u), tf) =>
+              t.id == tf.followedSpaceId && u.userId == tf.userId
+            }
             .map { case ((t, u), tf) => (t, u, tf) }
         }
       case None =>
@@ -54,7 +58,9 @@ case class SpaceRepoHelpers(
             .join(query[Users])
             .on(_.createdByUserId == _.userId)
             .leftJoin(query[SpaceFollows])
-            .on { case ((t, u), tf) => t.id == tf.followedSpaceId && u.userId == tf.userId }
+            .on { case ((t, u), tf) =>
+              t.id == tf.followedSpaceId && u.userId == tf.userId
+            }
             .map { case ((t, u), tf) => (t, u, tf) }
         }
     }
@@ -95,7 +101,6 @@ case class SpaceRepoHelpers(
           .take(5)
           .sortBy(_._1.createdAt)(Ord.desc)
       ).mapError(e => {
-        println(e)
         e
       })
       _ = print(spacesUsersVodsJoin.size)
@@ -123,14 +128,15 @@ case class SpaceRepoHelpers(
             .mapError(e => InternalServerError(e.getMessage))
         })
         .withParallelism(10)
-    } yield outgoingSpaces).mapError(e => InternalServerError(e.toString))
+    } yield outgoingSpaces)
+      .mapError(e => InternalServerError(e.toString))
       .provideEnvironment(ZEnvironment(dataSource))
 
 }
 
 trait SpacesRepository {
   def insertSpace(
-      space: Spaces,
+      space: Spaces
   ): ZIO[Any, AppError, OutgoingSpace]
   def getSpaces: ZIO[Any, AppError, List[OutgoingSpace]]
   def getSpacesAuthenticated(
@@ -153,16 +159,15 @@ trait SpacesRepository {
       requestingUserId: String
   ): ZIO[Any, AppError, List[OutgoingSpace]]
 
-
   def getSimilarSpaces(
       spaceId: UUID
-                      ) : ZIO[Any, AppError, List[OutgoingSpace]]
+  ): ZIO[Any, AppError, List[OutgoingSpace]]
 
 }
 
 object SpacesRepository {
   def insertSpace(
-      space: Spaces,
+      space: Spaces
   ): ZIO[SpacesRepository, AppError, OutgoingSpace] =
     ZIO.serviceWithZIO[SpacesRepository](
       _.insertSpace(space)
@@ -200,8 +205,8 @@ object SpacesRepository {
     ZIO.serviceWithZIO[SpacesRepository](_.getFollowedSpaces(requestingUserId))
 
   def getSimilarSpaces(
-                    spaceId: UUID
-                   ): ZIO[SpacesRepository, AppError, List[OutgoingSpace]] =
+      spaceId: UUID
+  ): ZIO[SpacesRepository, AppError, List[OutgoingSpace]] =
     ZIO.serviceWithZIO[SpacesRepository](
       _.getSimilarSpaces(spaceId)
     )
@@ -218,7 +223,7 @@ case class SpaceRepositoryLive(
   val kafka = new KafkaProducerServiceLive()
 
   override def insertSpace(
-      incomingSpace: Spaces,
+      incomingSpace: Spaces
   ): ZIO[Any, AppError, OutgoingSpace] = {
     (for {
       userQuery <-
@@ -245,7 +250,8 @@ case class SpaceRepositoryLive(
         SpaceMLEvent(
           eventType = "SpaceMLEvent",
           spaceId = incomingSpace.id,
-          editorTextContent = s"${incomingSpace.title}: ${incomingSpace.editorTextContent}",
+          editorTextContent =
+            s"${incomingSpace.title}: ${incomingSpace.editorTextContent}"
         ),
         incomingSpace.id.toString,
         SpaceMLEvent.spaceMLEventSerde,
@@ -331,7 +337,7 @@ case class SpaceRepositoryLive(
         .on(_.createdByUserId == _.userId)
         .leftJoin(query[SpaceFollows])
         .on { case ((t, u), tf) => t.id == tf.followedSpaceId }
-        .map { case ((t, u), tf)  => (t, u, tf) }
+        .map { case ((t, u), tf) => (t, u, tf) }
 
     }
 
@@ -409,11 +415,11 @@ case class SpaceRepositoryLive(
           .join(query[Users])
           .on(_.createdByUserId == _.userId)
           .leftJoin(query[SpaceFollows])
-          .on { case ((t, u), tf) => t.id == tf.followedSpaceId }
-          .filter { case ((t, u), tf)  =>
-            tf.exists(_.userId == lift(requestingUserId))
+          .on { case ((t, u), sf) => t.id == sf.followedSpaceId }
+          .filter { case ((t, u), sf) =>
+            sf.exists(_.userId == lift(requestingUserId))
           }
-          .map { case ((t, u), tf)  => (t, u, tf) }
+          .map { case ((t, u), tf) => (t, u, tf) }
           .sortBy(_._1.createdAt)(Ord.desc)
       )
       outgoingSpaces <- ZIO
@@ -447,37 +453,51 @@ case class SpaceRepositoryLive(
 
   }
 
-  override def getSimilarSpaces(spaceId: UUID): ZIO[Any, AppError, List[OutgoingSpace]] = {
+  override def getSimilarSpaces(
+      spaceId: UUID
+  ): ZIO[Any, AppError, List[OutgoingSpace]] = {
 
-   for {
-      spacesWithUser <- run(query[Spaces]
-        .join(query[Users])
-        .on(_.createdByUserId == _.userId)
-        .join(query[SpaceSimilarityScores])
-        .on { case ((s, u), sss) => (sss.spaceId1 == lift(spaceId) && s.id == sss.spaceId2) || (sss.spaceId2 == lift(spaceId) && s.id == sss.spaceId1) }
-        .filter { case ((s, u), sss) => s.id != lift(spaceId) }
-        .sortBy(_._2.similarityScore)(Ord.desc)
-        .take(30)
-        .map(_._1)).mapError(e => InternalServerError(e.toString))
+    for {
+      spacesWithUser <- run(
+        query[Spaces]
+          .join(query[Users])
+          .on(_.createdByUserId == _.userId)
+          .join(query[SpaceSimilarityScores])
+          .on { case ((s, u), sss) =>
+            (sss.spaceId1 == lift(
+              spaceId
+            ) && s.id == sss.spaceId2) || (sss.spaceId2 == lift(
+              spaceId
+            ) && s.id == sss.spaceId1)
+          }
+          .filter { case ((s, u), sss) => s.id != lift(spaceId) }
+          .sortBy(_._2.similarityScore)(Ord.desc)
+          .take(30)
+          .map(_._1)
+      ).mapError(e => InternalServerError(e.toString))
         .provideEnvironment(ZEnvironment(dataSource))
-     outgoingSpaces <- ZIO.foreachPar(spacesWithUser)(row => {
-       val (space, user) = row
-       ZIO
-         .attempt(space.into[OutgoingSpace]
-           .withFieldConst(_.createdByIconSrc, user.iconSrc.get)
-           .withFieldConst(
-             _.likeState,
-             NeutralState
-           )
-           .withFieldConst(_.createdByTag, user.tag)
-           .withFieldConst(_.isFollowing, false)
-           .withFieldComputed(
-             _.category,
-             row => SpaceCategories.withName(row.category)
-           )
-           .transform).mapError(e => InternalServerError(e.toString))
-         .provideEnvironment(ZEnvironment(dataSource))
-     })
+      outgoingSpaces <- ZIO.foreachPar(spacesWithUser)(row => {
+        val (space, user) = row
+        ZIO
+          .attempt(
+            space
+              .into[OutgoingSpace]
+              .withFieldConst(_.createdByIconSrc, user.iconSrc.get)
+              .withFieldConst(
+                _.likeState,
+                NeutralState
+              )
+              .withFieldConst(_.createdByTag, user.tag)
+              .withFieldConst(_.isFollowing, false)
+              .withFieldComputed(
+                _.category,
+                row => SpaceCategories.withName(row.category)
+              )
+              .transform
+          )
+          .mapError(e => InternalServerError(e.toString))
+          .provideEnvironment(ZEnvironment(dataSource))
+      })
     } yield outgoingSpaces
 
   }

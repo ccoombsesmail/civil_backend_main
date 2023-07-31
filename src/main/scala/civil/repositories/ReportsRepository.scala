@@ -5,6 +5,7 @@ import civil.errors.AppError.InternalServerError
 import civil.models.{ReportInfo, ReportTimings, Reports}
 import civil.models._
 import civil.models.NotifcationEvents._
+import civil.models.enums.TribunalCommentType._
 import zio._
 
 import java.util.UUID
@@ -44,36 +45,52 @@ case class ReportsRepositoryLive(dataSource: DataSource)
   import civil.repositories.QuillContext._
   val kafka = new KafkaProducerServiceLive()
 
-  val REPORT_THRESHOLD = 1
+  private val REPORT_THRESHOLD = 2
   override def addReport(
       report: Reports
   ): ZIO[Any, AppError, Unit] = {
-    for {
+    (for {
       space <- run(
         query[Spaces].filter(t => t.id == lift(report.contentId))
-      ).mapError(e => InternalServerError(e.toString))
-        .provideEnvironment(ZEnvironment(dataSource))
-      topicOpt = space.headOption
-      contentType = if (topicOpt.isDefined) "SPACE" else "COMMENT"
+      )
+      discussion <- run(
+        query[Discussions].filter(d => d.id == lift(report.contentId))
+      )
+      spaceOpt = space.headOption
+      discussionOpt = discussion.headOption
+
+      allReportsBefore <- run(
+        query[Reports].filter(r => r.contentId == lift(report.contentId))
+      )
+        .mapError(e => {
+          InternalServerError(e.getMessage)
+        })
+      contentType =
+        if (spaceOpt.isDefined) "SPACE"
+        else if (discussionOpt.isDefined) "DISCUSSION"
+        else "COMMENT"
       reportWithContentType = report.copy(contentType = contentType)
       _ <- run(
         query[Reports].insertValue(lift(reportWithContentType))
       )
         .mapError(e => {
           InternalServerError(
-            s"Sorry! There was an issue saving the Report \n ${e.getMessage}"
+            s"Sorry! There was an issue submitting the Report \n ${e.getMessage}"
           )
         })
-        .provideEnvironment(ZEnvironment(dataSource))
       allReports <- run(
         query[Reports].filter(r => r.contentId == lift(report.contentId))
       )
         .mapError(e => {
           InternalServerError(e.getMessage)
         })
-        .provideEnvironment(ZEnvironment(dataSource))
+      _ <- ZIO.logInfo(
+        s"All Report Before: ${allReportsBefore.length}. \n All Reports After: ${allReports.length}"
+      )
       _ <- ZIO
-        .when(allReports.length >= REPORT_THRESHOLD) {
+        .when(
+          allReports.length >= REPORT_THRESHOLD && allReportsBefore.length < REPORT_THRESHOLD
+        ) {
           kafka.publish(
             ContentReported(
               eventType = "ContentReported",
@@ -86,7 +103,9 @@ case class ReportsRepositoryLive(dataSource: DataSource)
           )
         }
         .mapError(e => InternalServerError(e.toString))
-    } yield ()
+    } yield ())
+      .mapError(e => InternalServerError(e.toString))
+      .provideEnvironment(ZEnvironment(dataSource))
 
   }
 
@@ -94,23 +113,23 @@ case class ReportsRepositoryLive(dataSource: DataSource)
       contentId: UUID,
       userId: String
   ): ZIO[Any, AppError, ReportInfo] = {
-    for {
+    (for {
       votes <- run(
         query[TribunalVotes].filter(tv => tv.contentId == lift(contentId))
       )
         .mapError(e => InternalServerError(e.toString))
         .provideEnvironment(ZEnvironment(dataSource))
 
-      numVotesFor = votes.count(tv => tv.voteFor.contains(true))
-      numVotesAgainst = votes.count(tv => tv.voteAgainst.contains(true))
+      numVotesToStrike = votes.count(tv => tv.voteToStrike.contains(true))
+      numVotesToAcquit = votes.count(tv => tv.voteToAcquit.contains(true))
 
       voteOpt = votes.find(v => v.userId == userId)
       vote = voteOpt.getOrElse(
         TribunalVotes(
           userId = userId,
           contentId = contentId,
-          voteAgainst = None,
-          voteFor = None
+          voteToStrike = None,
+          voteToAcquit = None
         )
       )
       timings <- run(
@@ -118,7 +137,9 @@ case class ReportsRepositoryLive(dataSource: DataSource)
       )
         .mapError(e => InternalServerError(e.toString))
         .provideEnvironment(ZEnvironment(dataSource))
-      timingOpt = timings.headOption
+      timing <- ZIO
+        .fromOption(timings.headOption)
+        .mapError(e => InternalServerError(e.toString))
       reports <- run(
         query[Reports].filter(tr => tr.contentId == lift(contentId))
       )
@@ -144,21 +165,43 @@ case class ReportsRepositoryLive(dataSource: DataSource)
         } else m2
         m3
       }
+
+      groupedTComments <- run(
+        query[TribunalComments]
+          .filter(tc => tc.reportedContentId == lift(contentId))
+          .groupBy(_.commentType)
+          .map { case (commentType, comments) =>
+            (commentType, comments.size)
+          }
+      ).mapError(e => InternalServerError(e.toString))
+      commentTypeMap = groupedTComments.toMap
+      numDefendantComments = commentTypeMap.getOrElse(Defendant, 0L)
+      numJuryComments = commentTypeMap.getOrElse(Jury, 0L)
+      numGeneralComments = commentTypeMap.getOrElse(General, 0L)
+      numReporterComments = commentTypeMap.getOrElse(Reporter, 0L)
+      numAllComments =
+        numGeneralComments + numReporterComments + numJuryComments + numDefendantComments
     } yield ReportInfo(
       contentId,
       reportsMap.getOrElse("toxic", 0),
       reportsMap.getOrElse("personalAttack", 0),
       reportsMap.getOrElse("spam", 0),
-      vote.voteAgainst,
-      vote.voteFor,
-      timingOpt.map(_.reportPeriodEnd),
-      timingOpt.flatMap(_.deletedAt),
-      contentType = "SPACE"
+      votedToAcquit = vote.voteToAcquit,
+      votedToStrike = vote.voteToStrike,
+      Some(timing.reportPeriodEnd),
+      timing.reviewEndingTimes,
+      contentType = timing.contentType,
+      ongoing = timing.ongoing,
+      numDefendantComments = numDefendantComments,
+      numJuryComments = numJuryComments,
+      numGeneralComments = numGeneralComments,
+      numReporterComments = numReporterComments,
+      numAllComments = numAllComments
     ).attachVotingResults(
-      timingOpt.map(_.reportPeriodEnd),
-      numVotesAgainst,
-      numVotesFor
-    )
+      Some(timing.reportPeriodEnd),
+      numVotesToStrike = numVotesToStrike,
+      numVotesToAcquit = numVotesToAcquit
+    )).provideEnvironment(ZEnvironment(dataSource))
   }
 }
 

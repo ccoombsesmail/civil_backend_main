@@ -1,13 +1,12 @@
 package civil.services.comments
 
 import civil.errors.AppError
-import civil.errors.AppError.{GeneralError, InternalServerError}
 import civil.models.enums.Sentiment
 import civil.models._
-import civil.models.enums.ReportStatus.Clean
+import civil.models.enums.ReportStatus.CLEAN
 import civil.repositories.comments.CommentsRepository
 import civil.repositories.discussions.DiscussionRepository
-import civil.services.{AuthenticationService, AuthenticationServiceLive, HTMLSanitizerLive}
+import civil.services.AuthenticationService
 import zio._
 
 import java.time.{ZoneId, ZonedDateTime}
@@ -30,7 +29,7 @@ trait CommentsService {
       jwtType: String,
       discussionId: UUID,
       skip: Int
-     ): ZIO[Any, AppError, List[CommentNode]]
+  ): ZIO[Any, AppError, List[CommentNode]]
   def getComment(
       jwt: String,
       jwtType: String,
@@ -64,7 +63,9 @@ object CommentsService {
       discussionId: UUID,
       skip: Int
   ): ZIO[CommentsService, AppError, List[CommentNode]] =
-    ZIO.serviceWithZIO[CommentsService](_.getComments(jwt, jwtType, discussionId, skip))
+    ZIO.serviceWithZIO[CommentsService](
+      _.getComments(jwt, jwtType, discussionId, skip)
+    )
   def getComment(
       jwt: String,
       jwtType: String,
@@ -109,12 +110,15 @@ case class CommentsServiceLive(
         incomingComment
           .into[Comments]
           .withFieldConst(_.id, UUID.randomUUID())
-          .withFieldConst(_.createdAt, ZonedDateTime.now(ZoneId.systemDefault()))
+          .withFieldConst(
+            _.createdAt,
+            ZonedDateTime.now(ZoneId.systemDefault())
+          )
           .withFieldConst(_.likes, 0)
           .withFieldConst(_.sentiment, Sentiment.POSITIVE.toString)
           .withFieldConst(_.discussionId, incomingComment.contentId)
           .withFieldConst(_.createdByUserId, userData.userId)
-          .withFieldConst(_.reportStatus, Clean.toString)
+          .withFieldConst(_.reportStatus, CLEAN.toString)
           .transform,
         userData
       )
@@ -179,6 +183,12 @@ case class CommentsServiceLive(
 
 object CommentsServiceLive {
 
-  val layer: URLayer[CommentsRepository with UsersRepository with DiscussionRepository with AuthenticationService, CommentsService] = ZLayer.fromFunction(CommentsServiceLive.apply _)
+  val layer: URLayer[
+    CommentsRepository
+      with UsersRepository
+      with DiscussionRepository
+      with AuthenticationService,
+    CommentsService
+  ] = ZLayer.fromFunction(CommentsServiceLive.apply _)
 
 }

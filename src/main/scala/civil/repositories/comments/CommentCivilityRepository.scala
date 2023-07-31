@@ -2,12 +2,7 @@ package civil.repositories.comments
 
 import civil.errors.AppError
 import civil.errors.AppError.InternalServerError
-import civil.models.{
-  CommentCivility,
-  Comments,
-  TribunalComments,
-  Users
-}
+import civil.models.{CommentCivility, Comments, TribunalComments, Users}
 import civil.models._
 import civil.services.KafkaProducerServiceLive
 import zio._
@@ -72,9 +67,6 @@ case class CommentCivilityRepositoryLive(dataSource: DataSource)
       givingUserUsername: String,
       civilityData: UpdateCommentCivility
   ) = {
-    println(rootId)
-    println(givingUserId)
-    println(civilityData)
     (for {
       preUpdateCommentCivility <-
         run(
@@ -123,15 +115,14 @@ case class CommentCivilityRepositoryLive(dataSource: DataSource)
                 .value
             )
           )
-        } yield civilityGivenRes).mapError (e => {
-          println(e.toString)
+        } yield civilityGivenRes).mapError(e => {
           e
         })
-      }).mapError(e =>{
-        println(e.toString)
+      }).mapError(e => {
         e
       })
-    } yield civilityGivenRes).mapError(e => InternalServerError(e.toString))
+    } yield civilityGivenRes)
+      .mapError(e => InternalServerError(e.toString))
       .provideEnvironment(ZEnvironment(dataSource))
   }
 
@@ -160,7 +151,10 @@ case class CommentCivilityRepositoryLive(dataSource: DataSource)
 
   }
 
-  private def updateUserCivilityQuery(receivingUserId: String, civility: Float) =
+  private def updateUserCivilityQuery(
+      receivingUserId: String,
+      civility: Float
+  ) =
     quote {
       query[Users]
         .filter(u => u.userId == lift(receivingUserId))
@@ -188,7 +182,8 @@ case class CommentCivilityRepositoryLive(dataSource: DataSource)
         givingUserUsername,
         civilityData
       )
-    } yield civilityGiven).mapError(e => InternalServerError(e.toString))
+    } yield civilityGiven)
+      .mapError(e => InternalServerError(e.toString))
       .provideEnvironment(ZEnvironment(dataSource))
   }
 

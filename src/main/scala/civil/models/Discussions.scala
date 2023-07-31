@@ -1,20 +1,20 @@
 package civil.models
 
 import civil.models.actions.LikeAction
-import civil.models.enums.SpaceCategories
+import civil.models.enums.{ReportStatus, SpaceCategories}
 import zio.{Random, Task, UIO, ZIO}
 import zio.json.{DeriveJsonCodec, JsonCodec}
 
 import java.time.{Instant, LocalDateTime, ZonedDateTime}
 import java.util.UUID
 
-
 case class GeneralDiscussionId(
     id: UUID
- )
+)
 
 object GeneralDiscussionId {
-  implicit val codec: JsonCodec[GeneralDiscussionId] = DeriveJsonCodec.gen[GeneralDiscussionId]
+  implicit val codec: JsonCodec[GeneralDiscussionId] =
+    DeriveJsonCodec.gen[GeneralDiscussionId]
 }
 
 case class DiscussionId(
@@ -50,7 +50,8 @@ case class Discussions(
     discussionKeyWords: Seq[String] = Seq(),
     discussionId: Option[UUID] = None,
     contentHeight: Option[Float],
-    popularityScore: Double
+    popularityScore: Double,
+    reportStatus: String = ReportStatus.CLEAN.entryName
 )
 
 object Discussions {
@@ -68,10 +69,11 @@ case class IncomingDiscussion(
     discussionKeyWords: Seq[String] = Seq(),
     discussionId: Option[UUID] = None,
     contentHeight: Option[Float]
- )
+)
 
 object IncomingDiscussion {
-  implicit val codec: JsonCodec[IncomingDiscussion] = DeriveJsonCodec.gen[IncomingDiscussion]
+  implicit val codec: JsonCodec[IncomingDiscussion] =
+    DeriveJsonCodec.gen[IncomingDiscussion]
 }
 
 case class OutgoingDiscussion(
@@ -83,7 +85,7 @@ case class OutgoingDiscussion(
     createdByIconSrc: String,
     createdByTag: Option[String],
     title: String,
-    editorState: String,
+    editorState: Option[String],
     evidenceLinks: Option[List[String]],
     userUploadedImageUrl: Option[String],
     userUploadedVodUrl: Option[String],
@@ -97,15 +99,18 @@ case class OutgoingDiscussion(
     totalCommentsAndReplies: Long,
     contentHeight: Option[Float] = None,
     spaceTitle: Option[String] = None,
-    spaceCategory: Option[SpaceCategories] = Some(SpaceCategories.General)
-
+    spaceCategory: Option[SpaceCategories] = Some(SpaceCategories.General),
+    reportStatus: String = ReportStatus.CLEAN.entryName,
+    isFollowing: Boolean = false
 )
 
-
 object OutgoingDiscussion {
-  implicit val codec: JsonCodec[OutgoingDiscussion] = DeriveJsonCodec.gen[OutgoingDiscussion]
+  implicit val codec: JsonCodec[OutgoingDiscussion] =
+    DeriveJsonCodec.gen[OutgoingDiscussion]
 }
 
-
-case class DiscussionSimilarityScores(discussionId1: UUID, discussionId2: UUID, similarityScore: Float)
-
+case class DiscussionSimilarityScores(
+    discussionId1: UUID,
+    discussionId2: UUID,
+    similarityScore: Float
+)

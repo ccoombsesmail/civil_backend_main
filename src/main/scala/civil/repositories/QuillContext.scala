@@ -1,52 +1,93 @@
 package civil.repositories
+
+import civil.errors.AppError
+import civil.errors.AppError.InternalServerError
 import civil.models.actions._
-import civil.models.{CommentWithDepthAndUser, TribunalCommentWithDepth, TribunalCommentWithDepthAndUser}
+import civil.models.{
+  CommentWithDepthAndUser,
+  TribunalCommentWithDepth,
+  TribunalCommentWithDepthAndUser
+}
 import com.typesafe.config.ConfigFactory
 import io.getquill.context.ZioJdbc.DataSourceLayer
-import io.getquill.{PostgresZioJdbcContext, Query, SnakeCase}
-import zio.{System, ZLayer}
+import io.getquill.{
+  EntityQuery,
+  PostgresZioJdbcContext,
+  Query,
+  Quoted,
+  SnakeCase
+}
+import zio.{IO, System, ZEnvironment, ZIO, ZLayer}
 
+import java.sql.SQLException
 import java.util.UUID
 import javax.sql.DataSource
 import scala.jdk.CollectionConverters.MapHasAsJava
 
-
 object QuillContext extends PostgresZioJdbcContext(SnakeCase) with QuillCodecs {
+
   val dataSourceLayer: ZLayer[Any, Nothing, DataSource] =
     ZLayer {
       for {
         herokuURL <- System.env("DATABASE_URL").orDie
         localDBConfig = Map(
-          "dataSource.user"     -> "postgres",
+          "dataSource.user" -> "postgres",
           "dataSource.password" -> "postgres",
-          "dataSource.url"      -> "jdbc:postgresql://localhost:5434/civil_main"
+          "dataSource.url" -> "jdbc:postgresql://localhost:5434/civil_main"
         )
         config = ConfigFactory.parseMap(
-          localDBConfig.updated("dataSourceClassName", "org.postgresql.ds.PGSimpleDataSource").asJava
+          localDBConfig
+            .updated(
+              "dataSourceClassName",
+              "org.postgresql.ds.PGSimpleDataSource"
+            )
+            .asJava
         )
       } yield DataSourceLayer.fromConfig(config).orDie
     }.flatten
 
   import io.getquill.MappedEncoding
 
-  implicit val appreciationActionEncoder: MappedEncoding[LikeAction, String] = MappedEncoding {
-    case LikedState => "Like"
-    case DislikedState => "Dislike"
-    case NeutralState => "Neutral"
+  implicit val appreciationActionEncoder: MappedEncoding[LikeAction, String] =
+    MappedEncoding {
+      case LikedState => "Like"
+      case DislikedState => "Dislike"
+      case NeutralState => "Neutral"
 
-  }
+    }
 
-  implicit val appreciationActionDecoder: MappedEncoding[String, LikeAction] = MappedEncoding {
-    case "Like" => LikedState
-    case "Dislike" => DislikedState
-    case "Neutral" => NeutralState
-  }
+  implicit val appreciationActionDecoder: MappedEncoding[String, LikeAction] =
+    MappedEncoding {
+      case "Like" => LikedState
+      case "Dislike" => DislikedState
+      case "Neutral" => NeutralState
+    }
 
 }
 
-
 object QuillContextQueries {
+
   import QuillContext._
+
+  val getLikeRatio = quote { (discussionId: UUID) =>
+    sql"""
+      SELECT
+        (SELECT CASE
+                    WHEN COUNT(*) = 0 THEN 1
+                    ELSE COUNT(*)
+                END
+         FROM discussion_likes
+         WHERE discussion_id = $discussionId AND like_state = 'LikedState')::float /
+        (SELECT CASE
+                    WHEN COUNT(*) = 0 THEN 1
+                    ELSE COUNT(*)
+                END
+         FROM discussion_likes
+         WHERE discussion_id = $discussionId AND like_state = 'DislikedState') AS ratio
+         """.pure.as[Query[Float]]
+
+  }
+
   val getCommentsWithReplies = quote { (id: UUID, userId: String) =>
     sql"""
      WITH RECURSIVE comments_tree as (

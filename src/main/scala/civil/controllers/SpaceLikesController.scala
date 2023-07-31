@@ -12,7 +12,6 @@ import zio.http.model.{HTTP_CHARSET, Method}
 final case class SpaceLikesController(spaceLikeService: SpaceLikesService) {
   val routes: Http[Any, Throwable, Request, Response] = Http.collectZIO[Request] {
     case req @ Method.PUT -> !!  / "api" / "v1" / "space-likes"  => {
-      println(req.body.asString(HTTP_CHARSET))
       (for {
         updateSpaceLikes <- parseBody[UpdateSpaceLikes](req)
         authData <- extractJwtData(req)

@@ -110,7 +110,7 @@ case class CommentsRepositoryLive(dataSource: DataSource)
       skip: Int
   ): ZIO[Any, AppError, List[CommentNode]] = {
 
-     (for {
+    (for {
       joinedDataQuery <- run {
         query[Comments]
           .filter(c =>
@@ -130,7 +130,6 @@ case class CommentsRepositoryLive(dataSource: DataSource)
           .take(10)
       }
         .mapError(e => {
-          println(e)
           InternalServerError(e.toString)
         })
       commentsWithReplies <- ZIO
@@ -138,7 +137,9 @@ case class CommentsRepositoryLive(dataSource: DataSource)
           joinedDataQuery
             .map { case (comment, user, _, _) =>
               for {
-                comments <- run(getCommentsWithReplies(lift(comment.id), lift(userId)))
+                comments <- run(
+                  getCommentsWithReplies(lift(comment.id), lift(userId))
+                )
                 repliesWithDepth = comments
                   .map(c =>
                     Comments.commentToCommentReplyWithDepth(
@@ -172,11 +173,9 @@ case class CommentsRepositoryLive(dataSource: DataSource)
             }
         )
         .mapError(e => {
-          println(e.toString)
           InternalServerError(e.toString)
         })
     } yield commentsWithReplies).provideEnvironment(ZEnvironment(dataSource))
-
 
   }
 
@@ -184,10 +183,13 @@ case class CommentsRepositoryLive(dataSource: DataSource)
       userId: String,
       commentId: UUID
   ): ZIO[Any, AppError, CommentReply] = {
-   (for {
+    (for {
       commentWithUserData <-
         run(
-          query[Comments].filter(c => c.id == lift(commentId)).join(query[Users]).on(_.createdByUserId == _.userId)
+          query[Comments]
+            .filter(c => c.id == lift(commentId))
+            .join(query[Users])
+            .on(_.createdByUserId == _.userId)
         ).head
       (comment, user) = commentWithUserData
 //      user <- run(query[Users].filter(u => u.userId == lift(userId)))
@@ -201,7 +203,9 @@ case class CommentsRepositoryLive(dataSource: DataSource)
       .withFieldConst(_.createdByTag, user.tag)
       .withFieldConst(_.likeState, NeutralState)
       .withFieldConst(_.civility, 0f)
-      .transform).mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
+      .transform)
+      .mapError(e => InternalServerError(e.toString))
+      .provideEnvironment(ZEnvironment(dataSource))
   }
 
   override def getAllCommentReplies(
@@ -251,7 +255,9 @@ case class CommentsRepositoryLive(dataSource: DataSource)
           joinedData
             .map { case (comment, user, likeOpt, civilityOpt) =>
               for {
-                comments <- run(getCommentsWithReplies(lift(comment.id), lift(userId)))
+                comments <- run(
+                  getCommentsWithReplies(lift(comment.id), lift(userId))
+                )
                 repliesWithDepth = comments
                   .map(c =>
                     Comments.commentToCommentReplyWithDepth(
@@ -293,7 +299,10 @@ case class CommentsRepositoryLive(dataSource: DataSource)
         .withFieldConst(_.createdByExperience, user.experience)
         .withFieldConst(_.createdByIconSrc, user.iconSrc.get)
         .withFieldConst(_.createdByTag, user.tag)
-        .withFieldConst(_.likeState, likeOpt.map(_.likeState).getOrElse(NeutralState))
+        .withFieldConst(
+          _.likeState,
+          likeOpt.map(_.likeState).getOrElse(NeutralState)
+        )
         .withFieldConst(_.civility, civilityOpt.map(_.value).getOrElse(0f))
         .transform
     )).provideEnvironment(ZEnvironment(dataSource))
@@ -305,7 +314,7 @@ case class CommentsRepositoryLive(dataSource: DataSource)
       userId: String
   ): ZIO[Any, AppError, List[CommentNode]] = {
 
-   ( for {
+    (for {
       commentsUsersJoin <-
         run(
           query[Comments]
@@ -323,7 +332,9 @@ case class CommentsRepositoryLive(dataSource: DataSource)
               val c = joined._1
 
               for {
-                comments <- run(getCommentsWithReplies(lift(c.id), lift(userId)))
+                comments <- run(
+                  getCommentsWithReplies(lift(c.id), lift(userId))
+                )
                 repliesWithDepth = comments
                   .map(c =>
                     Comments.commentToCommentReplyWithDepth(
@@ -356,8 +367,9 @@ case class CommentsRepositoryLive(dataSource: DataSource)
             })
         )
 
-    } yield commentsWithReplies).mapError(e => InternalServerError(e.getMessage))
-     .provideEnvironment(ZEnvironment(dataSource))
+    } yield commentsWithReplies)
+      .mapError(e => InternalServerError(e.getMessage))
+      .provideEnvironment(ZEnvironment(dataSource))
 
   }
 }

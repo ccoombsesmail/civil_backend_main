@@ -1,6 +1,5 @@
 package civil.repositories
 
-
 import civil.errors.AppError
 import civil.errors.AppError.InternalServerError
 import civil.models.{TribunalVote, TribunalVotes}
@@ -10,25 +9,27 @@ import zio.{URLayer, ZEnvironment, ZIO, ZLayer}
 import javax.sql.DataSource
 
 trait TribunalVotesRepository {
-  def addTribunalVote(tribunalVote: TribunalVotes): ZIO[Any, AppError, TribunalVote]
+  def addTribunalVote(
+      tribunalVote: TribunalVotes
+  ): ZIO[Any, AppError, TribunalVote]
 }
 
-
-
 object TribunalVotesRepository {
-  def addTopicTribunalVote(tribunalVote: TribunalVotes): ZIO[TribunalVotesRepository, AppError, TribunalVote] =
+  def addTopicTribunalVote(
+      tribunalVote: TribunalVotes
+  ): ZIO[TribunalVotesRepository, AppError, TribunalVote] =
     ZIO.serviceWithZIO[TribunalVotesRepository](
       _.addTribunalVote(tribunalVote)
     )
 }
 
-
-case class TribunalVotesRepositoryLive(dataSource: DataSource) extends TribunalVotesRepository {
+case class TribunalVotesRepositoryLive(dataSource: DataSource)
+    extends TribunalVotesRepository {
   import civil.repositories.QuillContext._
 
-
-
-  override def addTribunalVote(tribunalVote: TribunalVotes): ZIO[Any, AppError, TribunalVote] = {
+  override def addTribunalVote(
+      tribunalVote: TribunalVotes
+  ): ZIO[Any, AppError, TribunalVote] = {
     for {
 //      juryMember <- ZIO.effect(run(
 //        query[TopicTribunalJury].filter(ttj => ttj.userId == lift(tribunalVote.userId))
@@ -36,18 +37,21 @@ case class TribunalVotesRepositoryLive(dataSource: DataSource) extends TribunalV
 //      _ <- ZIO.fail(
 //        Unauthorized("Must Be Selected As A Jury Member To Vote")
 //      ).unless(juryMember.nonEmpty)
-      vote <-run(
+      vote <- run(
         query[TribunalVotes]
           .insertValue(lift(tribunalVote))
+          .onConflictUpdate(_.userId, _.contentId)(
+            (t, _) => t.voteToAcquit -> lift(tribunalVote.voteToAcquit),
+            (t, _) => t.voteToStrike -> lift(tribunalVote.voteToStrike)
+          )
           .returning(r => r)
-      ).mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
+      ).mapError(e => InternalServerError(e.toString))
+        .provideEnvironment(ZEnvironment(dataSource))
     } yield vote.into[TribunalVote].transform
   }
 }
 
-
-
 object TribunalVotesRepositoryLive {
-  val layer: URLayer[DataSource, TribunalVotesRepository] = ZLayer.fromFunction(TribunalVotesRepositoryLive.apply _)
+  val layer: URLayer[DataSource, TribunalVotesRepository] =
+    ZLayer.fromFunction(TribunalVotesRepositoryLive.apply _)
 }
-

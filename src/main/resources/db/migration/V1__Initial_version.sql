@@ -2,8 +2,6 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS tsm_system_rows;
 create extension file_fdw;
 
--- Set the log destination to csvlog
-
 CREATE TYPE like_action AS ENUM ('LikedState', 'DislikedState', 'NeutralState');
 
 CREATE TYPE sentiment AS ENUM ('POSITIVE', 'NEUTRAL', 'NEGATIVE', 'MEME');
@@ -31,7 +29,7 @@ CREATE INDEX tag_users_index ON "users" (tag);
 
 
 
-CREATE TABLE spaces (
+CREATE TABLE spaces(
     id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
     title varchar(5000) NOT NULL,
     editor_state text NOT NULL,
@@ -54,7 +52,7 @@ CREATE TABLE spaces (
 CREATE INDEX id_spaces_index ON spaces (id);
 CREATE INDEX user_id_spaces_index ON spaces (created_by_user_id);
 
-CREATE TABLE space_metadata (
+CREATE TABLE space_metadata(
     id SERIAL PRIMARY KEY,
     space_id uuid UNIQUE NOT NULL,
     space_categories text[] DEFAULT '{}'::text[],
@@ -67,7 +65,7 @@ CREATE TABLE space_metadata (
 
 );
 
-CREATE TABLE space_similarity_scores (
+CREATE TABLE space_similarity_scores(
     space_id1 uuid NOT NULL,
     space_id2 uuid NOT NULL,
     similarity_score float NOT NULL,
@@ -76,7 +74,7 @@ CREATE TABLE space_similarity_scores (
     FOREIGN KEY(space_id2) REFERENCES spaces(id)
 );
 
-CREATE TABLE external_links (
+CREATE TABLE external_links(
     id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
     space_id uuid,
     link_type varchar(50) NOT NULL,
@@ -90,7 +88,7 @@ CREATE INDEX external_links_space_id_index ON external_links (space_id);
 
 
 
-CREATE TABLE space_vods (
+CREATE TABLE space_vods(
   id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
   user_id text NOT NULL,
   vod_url text NOT NULL,
@@ -102,7 +100,7 @@ CREATE TABLE space_vods (
 );
 
 
-CREATE TABLE discussions (
+CREATE TABLE discussions(
     id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     created_by_username varchar(100) NOT NULL,
@@ -118,6 +116,7 @@ CREATE TABLE discussions (
     space_id uuid NOT NULL,
     discussion_id uuid DEFAULT NULL,
     content_height decimal,
+    report_status text NOT NULL,
     UNIQUE(title, space_id),
     CONSTRAINT fk_spaces
       FOREIGN KEY(space_id)
@@ -129,7 +128,7 @@ CREATE INDEX id_discussions_index ON discussions (id);
 CREATE INDEX user_id_discussions_index ON discussions (created_by_user_id);
 
 
-CREATE TABLE discussion_metadata (
+CREATE TABLE discussion_metadata(
     id SERIAL PRIMARY KEY,
     discussion_id uuid UNIQUE NOT NULL,
     discussion_categories text[] DEFAULT '{}'::text[],
@@ -141,7 +140,7 @@ CREATE TABLE discussion_metadata (
         REFERENCES discussions(id)
 );
 
-CREATE TABLE discussion_similarity_scores (
+CREATE TABLE discussion_similarity_scores(
     discussion_id1 uuid NOT NULL,
     discussion_id2 uuid NOT NULL,
     similarity_score float NOT NULL,
@@ -153,7 +152,7 @@ CREATE TABLE discussion_similarity_scores (
 
 
 
-CREATE TABLE external_links_discussions (
+CREATE TABLE external_links_discussions(
     id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
     discussion_id uuid NOT NULL,
     link_type varchar(50) NOT NULL,
@@ -170,7 +169,7 @@ CREATE INDEX external_links_discussions_discussion_id_index ON external_links_di
 
 
 
-CREATE TABLE comments (
+CREATE TABLE comments(
     id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
     editor_state text NOT NULL,
     editor_text_content varchar(420) NOT NULL,
@@ -196,7 +195,7 @@ CREATE INDEX user_id_comments_index ON comments (created_by_user_id);
 CREATE INDEX parent_id_comments_index ON comments (parent_id);
 
 
-CREATE TABLE tribunal_comments (
+CREATE TABLE tribunal_comments(
     id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
     editor_state text NOT NULL,
     editor_text_content varchar(420) NOT NULL,
@@ -219,7 +218,7 @@ CREATE INDEX parent_id_tribunal_comments_index ON tribunal_comments (parent_id);
 
 
 
-CREATE TABLE comment_likes (
+CREATE TABLE comment_likes(
     id SERIAL PRIMARY KEY,
     user_id text NOT NULL,
     comment_id uuid NOT NULL,
@@ -230,7 +229,7 @@ CREATE TABLE comment_likes (
 CREATE INDEX user_id_comment_likes_index ON comment_likes (user_id);
 CREATE INDEX comment_id_comment_likes_index ON comment_likes (comment_id);
 
-CREATE TABLE space_likes (
+CREATE TABLE space_likes(
     id SERIAL PRIMARY KEY,
     user_id text NOT NULL,
     space_id uuid NOT NULL,
@@ -242,7 +241,7 @@ CREATE INDEX user_id_space_likes_index ON space_likes (user_id);
 CREATE INDEX space_id_space_likes_index ON space_likes (space_id);
 
 
-CREATE TABLE space_follows (
+CREATE TABLE space_follows(
     id SERIAL PRIMARY KEY,
     user_id text NOT NULL,
     followed_space_id uuid NOT NULL
@@ -252,7 +251,7 @@ CREATE TABLE space_follows (
 CREATE INDEX user_id_space_follows_index ON space_follows (user_id);
 CREATE INDEX space_id_space_follows_index ON space_follows (followed_space_id);
 
-CREATE TABLE discussion_likes (
+CREATE TABLE discussion_likes(
     id SERIAL PRIMARY KEY,
     user_id text NOT NULL,
     discussion_id uuid NOT NULL,
@@ -262,6 +261,16 @@ CREATE TABLE discussion_likes (
 
 CREATE INDEX user_id_discussion_likes_index ON discussion_likes (user_id);
 CREATE INDEX discussion_id_discussion_likes_index ON discussion_likes (discussion_id);
+
+
+CREATE TABLE discussion_follows(
+    id SERIAL PRIMARY KEY,
+    user_id text NOT NULL,
+    followed_discussion_id uuid NOT NULL
+);
+
+CREATE INDEX user_id_discussion_follows_index ON discussion_follows (user_id);
+CREATE INDEX discussion_id_discussion_follows_index ON discussion_follows (followed_discussion_id);
 
 
 CREATE TABLE comment_civility (
@@ -300,6 +309,17 @@ CREATE TABLE reports (
     UNIQUE(content_id, user_id)
 );
 
+CREATE TABLE reviewed_reports (
+    id SERIAL PRIMARY KEY,
+    user_id text NOT NULL,
+    content_id uuid NOT NULL,
+    toxic boolean,
+    spam boolean,
+    personal_attack boolean,
+    content_type varchar(10),
+    reviewed_at timestamp without time zone DEFAULT NOW(),
+);
+
 CREATE INDEX user_id_reports_index ON reports (user_id);
 CREATE INDEX content_id_reports_index ON reports (content_id);
 
@@ -308,7 +328,8 @@ CREATE TABLE report_timings(
     content_id uuid NOT NULL,
     report_period_start TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     report_period_end bigint NOT NULL,
-    deleted_at TIMESTAMP WITH TIME ZONE,
+    review_ending_times bigint[],
+    ongoing boolean default true,
     content_type varchar(10),
     UNIQUE(content_id)
 );
@@ -332,18 +353,17 @@ CREATE TABLE tribunal_votes(
     id SERIAL PRIMARY KEY,
     user_id text NOT NULL,
     content_id uuid NOT NULL,
-    vote_against boolean,
-    vote_for boolean,
-    check ( num_nonnulls(vote_against, vote_for) = 1),
+    vote_to_strike boolean,
+    vote_to_acquit boolean,
+    check ( num_nonnulls(vote_to_strike, vote_to_acquit) = 1),
     UNIQUE(content_id, user_id)
 );
-
 
 CREATE INDEX user_id_tribunal_votes_index ON tribunal_votes (user_id);
 CREATE INDEX content_id_tribunal_votes_index ON tribunal_votes (content_id);
 
 
-CREATE TABLE recommendations (
+CREATE TABLE recommendations(
     id SERIAL PRIMARY KEY,
     target_content_id uuid NOT NULL,
     recommended_content_id uuid NOT NULL,

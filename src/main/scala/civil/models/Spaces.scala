@@ -1,15 +1,19 @@
 package civil.models
 
 import civil.models.actions.LikeAction
-import civil.models.enums.ReportStatus.Clean
+import civil.models.enums.ReportStatus.CLEAN
 import civil.models.enums.UserVerificationType.NO_VERIFICATION
-import civil.models.enums.{LinkType, ReportStatus, SpaceCategories, UserVerificationType}
+import civil.models.enums.{
+  LinkType,
+  ReportStatus,
+  SpaceCategories,
+  UserVerificationType
+}
 
 import java.time.ZonedDateTime
 import java.util.UUID
 import zio.json.{DeriveJsonCodec, JsonCodec}
 import zio.{Random, Task, UIO, ZIO}
-
 
 case class SpaceId(
     id: UUID
@@ -67,7 +71,7 @@ case class Spaces(
     editorTextContent: String,
     likes: Int,
     category: String,
-    reportStatus: String = Clean.entryName,
+    reportStatus: String = CLEAN.entryName,
     userVerificationType: UserVerificationType = NO_VERIFICATION,
     createdAt: ZonedDateTime,
     updatedAt: ZonedDateTime,
@@ -92,7 +96,7 @@ case class OutgoingSpace(
     likes: Int,
     likeState: LikeAction,
     category: SpaceCategories,
-    reportStatus: String = ReportStatus.Clean.entryName,
+    reportStatus: String = ReportStatus.CLEAN.entryName,
     userVerificationType: UserVerificationType = NO_VERIFICATION,
     createdAt: ZonedDateTime,
     updatedAt: ZonedDateTime,
@@ -114,7 +118,6 @@ case class OutgoingSpacesPayload(
 
 case class Words(spaceWords: Seq[String])
 
-
 case class SpaceFollows(userId: String, followedSpaceId: UUID)
 
 object SpaceFollows {
@@ -122,8 +125,10 @@ object SpaceFollows {
     DeriveJsonCodec.gen[SpaceFollows]
 }
 
-
-case class SpaceSimilarityScores(spaceId1: UUID, spaceId2: UUID, similarityScore: Float)
+case class SpaceSimilarityScores(
+    spaceId1: UUID,
+    spaceId2: UUID,
+    similarityScore: Float
+)
 
 case class ForYouSpaces(id: Int, userId: String, spaceIds: Seq[String])
-

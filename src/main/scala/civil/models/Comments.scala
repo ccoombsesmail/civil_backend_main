@@ -1,7 +1,7 @@
 package civil.models
 
 import civil.models.actions.LikeAction
-import civil.models.enums.ReportStatus.Clean
+import civil.models.enums.ReportStatus.CLEAN
 import civil.models.enums.TribunalCommentType
 import io.circe.Encoder
 import io.circe.generic.semiauto.deriveEncoder
@@ -96,7 +96,7 @@ case class CommentWithDepthAndUser(
     rootId: Option[UUID],
     depth: Int,
     source: Option[String],
-    reportStatus: String = Clean.entryName,
+    reportStatus: String = CLEAN.entryName,
     toxicityStatus: Option[String] = None,
     userIconSrc: Option[String],
     userExperience: Option[String],
@@ -120,7 +120,7 @@ case class Comments(
     likes: Int,
     rootId: Option[UUID],
     source: Option[String],
-    reportStatus: String = Clean.entryName,
+    reportStatus: String = CLEAN.entryName,
     toxicityStatus: Option[String] =
       None // TODO: turn this into enum with varius toxicity values (profanity, racism etc.)
 )
@@ -135,7 +135,8 @@ case class IncomingComment(
     source: Option[String],
     toxicityStatus: Option[String] = None,
     spaceId: UUID,
-    commentType: TribunalCommentType = TribunalCommentType.General
+    commentType: TribunalCommentType = TribunalCommentType.General,
+    createdByUserId: Option[String] = None
 )
 
 object IncomingComment {
@@ -160,7 +161,7 @@ case class CommentReply(
     source: Option[String],
     createdByIconSrc: String,
     createdByExperience: Option[String],
-    reportStatus: String = Clean.entryName,
+    reportStatus: String = CLEAN.entryName,
     toxicityStatus: Option[String] = None
 )
 
@@ -183,7 +184,7 @@ case class CommentWithDepth(
     rootId: Option[UUID],
     depth: Int,
     source: Option[String],
-    reportStatus: String = Clean.entryName,
+    reportStatus: String = CLEAN.entryName,
     toxicityStatus: Option[String] = None
 )
 

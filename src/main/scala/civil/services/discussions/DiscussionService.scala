@@ -2,6 +2,7 @@ package civil.services.discussions
 
 import civil.errors.AppError
 import civil.models._
+import civil.models.enums.ReportStatus
 import civil.repositories.discussions.DiscussionRepository
 import civil.services.AuthenticationService
 import io.scalaland.chimney.dsl._
@@ -45,10 +46,15 @@ trait DiscussionService {
   ): ZIO[Any, AppError, List[OutgoingDiscussion]]
 
   def getPopularDiscussions(
-     jwt: String,
-     jwtType: String,
-     skip: Int
-   ): ZIO[Any, AppError, List[OutgoingDiscussion]]
+      jwt: String,
+      jwtType: String,
+      skip: Int
+  ): ZIO[Any, AppError, List[OutgoingDiscussion]]
+
+  def getFollowedDiscussions(
+      jwt: String,
+      jwtType: String
+  ): ZIO[Any, AppError, List[OutgoingDiscussion]]
 }
 
 object DiscussionService {
@@ -102,12 +108,20 @@ object DiscussionService {
     )
 
   def getPopularDiscussions(
-                             jwt: String,
-                             jwtType: String,
-                             skip: Int
-                           ): ZIO[DiscussionService, AppError, List[OutgoingDiscussion]] =
+      jwt: String,
+      jwtType: String,
+      skip: Int
+  ): ZIO[DiscussionService, AppError, List[OutgoingDiscussion]] =
     ZIO.serviceWithZIO[DiscussionService](
       _.getPopularDiscussions(jwt, jwtType, skip)
+    )
+
+  def getFollowedDiscussions(
+      jwt: String,
+      jwtType: String
+  ): ZIO[DiscussionService, AppError, List[OutgoingDiscussion]] =
+    ZIO.serviceWithZIO[DiscussionService](
+      _.getFollowedDiscussions(jwt, jwtType)
     )
 }
 
@@ -128,6 +142,7 @@ case class DiscussionServiceLive(
         incomingDiscussion
           .into[Discussions]
           .withFieldConst(_.likes, 0)
+          .withFieldConst(_.reportStatus, ReportStatus.CLEAN.entryName)
           .withFieldConst(_.popularityScore, 0.0)
           .withFieldConst(
             _.createdAt,
@@ -178,8 +193,8 @@ case class DiscussionServiceLive(
       id: UUID
   ): ZIO[Any, AppError, OutgoingDiscussion] = {
     for {
-      _ <- authService.extractUserData(jwt, jwtType)
-      discussions <- discussionRepository.getDiscussion(id)
+      userData <- authService.extractUserData(jwt, jwtType)
+      discussions <- discussionRepository.getDiscussion(id, userData.userId)
     } yield discussions
 
   }
@@ -217,13 +232,29 @@ case class DiscussionServiceLive(
     } yield discussions
   }
 
-  override def getPopularDiscussions(jwt: String, jwtType: String, skip: Int): ZIO[Any, AppError, List[OutgoingDiscussion]] = for {
+  override def getPopularDiscussions(
+      jwt: String,
+      jwtType: String,
+      skip: Int
+  ): ZIO[Any, AppError, List[OutgoingDiscussion]] = for {
     userData <- authService.extractUserData(jwt, jwtType)
     discussions <- discussionRepository.getPopularDiscussions(
       userData.userId,
       skip
     )
   } yield discussions
+
+  override def getFollowedDiscussions(
+      jwt: String,
+      jwtType: String
+  ): ZIO[Any, AppError, List[OutgoingDiscussion]] = {
+    for {
+      userData <- authService.extractUserData(jwt, jwtType)
+      discussions <- discussionRepository.getFollowedDiscussions(
+        userData.userId
+      )
+    } yield discussions
+  }
 }
 
 object DiscussionServiceLive {

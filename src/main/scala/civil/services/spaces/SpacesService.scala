@@ -99,10 +99,10 @@ object SpacesService {
     ZIO.serviceWithZIO[SpacesService](_.getFollowedSpaces(jwt, jwtType))
 
   def getSimilarSpaces(
-                     jwt: String,
-                     jwtType: String,
-                     spaceId: UUID
-                   ): ZIO[SpacesService, AppError, List[OutgoingSpace]] =
+      jwt: String,
+      jwtType: String,
+      spaceId: UUID
+  ): ZIO[SpacesService, AppError, List[OutgoingSpace]] =
     ZIO.serviceWithZIO[SpacesService](_.getSimilarSpaces(jwt, jwtType, spaceId))
 }
 
@@ -190,8 +190,7 @@ case class SpacesServiceLive(
       space <- spacesRepository
         .getSpace(id, userData.userId)
         .tapError(e => {
-          println(e)
-          ZIO.fail(e)
+          ZIO.logInfo(e.getMessage)
         })
     } yield space
   }
@@ -222,7 +221,11 @@ case class SpacesServiceLive(
     } yield spaces
   }
 
-  override def getSimilarSpaces(jwt: String, jwtType: String, spaceId: UUID): ZIO[Any, AppError, List[OutgoingSpace]] =
+  override def getSimilarSpaces(
+      jwt: String,
+      jwtType: String,
+      spaceId: UUID
+  ): ZIO[Any, AppError, List[OutgoingSpace]] =
     for {
       userData <- authService.extractUserData(jwt, jwtType)
       spaces <- spacesRepository.getSimilarSpaces(

@@ -7,7 +7,7 @@ val zioVersion = "2.0.8"
 val zioConfigVersion = "3.0.7"
 val ZIOHttpVersion = "0.0.5"
 
-ThisBuild / scalaVersion     := "2.13.8"
+ThisBuild / scalaVersion := "2.13.8"
 
 flywayUrl := "jdbc:postgresql://localhost:5434/civil_main"
 flywayUser := "postgres"
@@ -21,13 +21,12 @@ mainClass in (Compile, run) := Some("civil.Civil")
 Global / onChangedBuildSource := ReloadOnSourceChanges
 Compile / unmanagedSourceDirectories := (Compile / scalaSource).value :: Nil
 
-
 ThisBuild / javaOptions ++= Seq(
   "--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED"
 )
 
 ThisBuild / assemblyMergeStrategy := {
-  case PathList("module-info.class") => MergeStrategy.discard
+  case PathList("module-info.class")         => MergeStrategy.discard
   case x if x.endsWith("/module-info.class") => MergeStrategy.discard
   case x =>
     val oldStrategy = (ThisBuild / assemblyMergeStrategy).value
@@ -49,6 +48,7 @@ inThisBuild(
 //      "dev.zio" %% "zio-config-magnolia" % zioConfigVersion,
 //      "dev.zio" %% "zio-config-typesafe" % zioConfigVersion,
 //      "dev.zio" %% "zio-streams" % zioVersion,
+      "dev.zio" %% "zio-logging" % "2.1.13",
       "dev.zio" %% "zio-kafka" % "2.1.3",
       "dev.zio" %% "zio-json" % "0.4.2",
       "dev.zio" %% "zio-http" % ZIOHttpVersion,
@@ -87,9 +87,9 @@ lazy val root = project
       "io.circe" %% "circe-generic-extras" % "0.14.3",
       "io.getquill" %% "quill-jdbc-zio" % "4.6.0",
       "io.getquill" %% "quill-jdbc" % "4.6.0",
-      "io.jsonwebtoken" %  "jjwt-api" % "0.11.5",
-      "io.jsonwebtoken" %  "jjwt-impl" % "0.11.5",
-      "io.jsonwebtoken" %  "jjwt-jackson" % "0.11.5",
+      "io.jsonwebtoken" % "jjwt-api" % "0.11.5",
+      "io.jsonwebtoken" % "jjwt-impl" % "0.11.5",
+      "io.jsonwebtoken" % "jjwt-jackson" % "0.11.5",
       "org.postgresql" % "postgresql" % "42.5.4",
       "com.github.jwt-scala" %% "jwt-circe" % "9.2.0",
       "ch.qos.logback" % "logback-classic" % "1.4.6" % Runtime,

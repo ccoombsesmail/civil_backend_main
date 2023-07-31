@@ -12,7 +12,7 @@ case class CommentLike(
     receivingUserId: String,
     givingUserData: GivingUserNotificationData,
     spaceId: UUID,
-    subspaceId: UUID
+    discussionId: UUID
 )
 
 object CommentLike {
