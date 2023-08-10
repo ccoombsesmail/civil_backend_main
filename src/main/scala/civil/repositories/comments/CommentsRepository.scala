@@ -1,7 +1,7 @@
 package civil.repositories.comments
 
 import civil.errors.AppError
-import civil.errors.AppError.{GeneralError, InternalServerError}
+import civil.errors.AppError.{DatabaseError, InternalServerError}
 import civil.models._
 import civil.models.actions.{LikeAction, NeutralState}
 import civil.repositories.QuillContextQueries.getCommentsWithReplies
@@ -89,7 +89,7 @@ case class CommentsRepositoryLive(dataSource: DataSource)
         query[Comments]
           .insertValue(lift(comment))
           .returning(c => c)
-      ).mapError(e => InternalServerError(e.toString))
+      ).mapError(DatabaseError(_))
         .provideEnvironment(ZEnvironment(dataSource))
 
     } yield inserted
@@ -129,9 +129,7 @@ case class CommentsRepositoryLive(dataSource: DataSource)
           .drop(lift(skip))
           .take(10)
       }
-        .mapError(e => {
-          InternalServerError(e.toString)
-        })
+        .mapError(DatabaseError(_))
       commentsWithReplies <- ZIO
         .collectAll(
           joinedDataQuery
@@ -172,9 +170,7 @@ case class CommentsRepositoryLive(dataSource: DataSource)
               } yield replyTree
             }
         )
-        .mapError(e => {
-          InternalServerError(e.toString)
-        })
+        .mapError(DatabaseError(_))
     } yield commentsWithReplies).provideEnvironment(ZEnvironment(dataSource))
 
   }
@@ -204,7 +200,7 @@ case class CommentsRepositoryLive(dataSource: DataSource)
       .withFieldConst(_.likeState, NeutralState)
       .withFieldConst(_.civility, 0f)
       .transform)
-      .mapError(e => InternalServerError(e.toString))
+      .mapError(_ => DatabaseError(new Throwable("Error getting comment")))
       .provideEnvironment(ZEnvironment(dataSource))
   }
 
@@ -229,10 +225,10 @@ case class CommentsRepositoryLive(dataSource: DataSource)
             )
             .on(_._1._1.id == _.commentId)
             .map { case (((a, b), c), d) => (a, b, c, d) }
-        ).mapError(e => InternalServerError(e.toString))
+        ).mapError(DatabaseError(_))
       commentUserData <- ZIO
         .fromOption(commentUser.headOption)
-        .mapError(e => InternalServerError(e.toString))
+        .orElseFail(DatabaseError(new Throwable("error")))
 
       (comment, user, likeOpt, civilityOpt) = commentUserData
       joinedData <- run {
@@ -249,7 +245,7 @@ case class CommentsRepositoryLive(dataSource: DataSource)
           .map { case (((a, b), c), d) => (a, b, c, d) }
           .sortBy { case (comment, _, _, _) => comment.createdAt }(Ord.desc)
       }
-        .mapError(e => InternalServerError(e.getMessage))
+        .mapError(DatabaseError(_))
       commentsWithReplies <- ZIO
         .collectAll(
           joinedData
@@ -290,7 +286,7 @@ case class CommentsRepositoryLive(dataSource: DataSource)
               } yield replyTree
             }
         )
-        .mapError(e => InternalServerError(e.toString))
+        .mapError(DatabaseError(_))
     } yield CommentWithReplies(
       replies = commentsWithReplies,
       comment = comment
@@ -368,7 +364,7 @@ case class CommentsRepositoryLive(dataSource: DataSource)
         )
 
     } yield commentsWithReplies)
-      .mapError(e => InternalServerError(e.getMessage))
+      .mapError(DatabaseError(_))
       .provideEnvironment(ZEnvironment(dataSource))
 
   }

@@ -1,6 +1,6 @@
 package civil.repositories.comments
 
-import civil.errors.AppError.InternalServerError
+import civil.errors.AppError.{DatabaseError, InternalServerError}
 import civil.errors.AppError
 import civil.models.actions.{DislikedState, LikedState, NeutralState}
 import civil.models.enums.Sentiment.NEUTRAL
@@ -9,22 +9,23 @@ import civil.repositories.comments
 import zio.{URLayer, ZEnvironment, ZIO, ZLayer}
 
 import javax.sql.DataSource
+
 trait CommentLikesRepository {
   def addRemoveCommentLikeOrDislike(
-      commentLikeDislike: CommentLikes,
-      createdById: String
-  ): ZIO[Any, AppError, (CommentLiked, Comments)]
+                                     commentLikeDislike: CommentLikes,
+                                     createdById: String
+                                   ): ZIO[Any, AppError, (CommentLiked, Comments)]
 
   def addRemoveTribunalCommentLikeOrDislike(
-      commentLikeDislike: CommentLikes
-  ): ZIO[Any, AppError, CommentLiked]
+                                             commentLikeDislike: CommentLikes
+                                           ): ZIO[Any, AppError, CommentLiked]
 }
 
 object CommentLikesRepository {
   def addRemoveCommentLikeOrDislike(
-      commentLikeDislike: CommentLikes,
-      createdById: String
-  ): ZIO[CommentLikesRepository, AppError, (CommentLiked, Comments)] =
+                                     commentLikeDislike: CommentLikes,
+                                     createdById: String
+                                   ): ZIO[CommentLikesRepository, AppError, (CommentLiked, Comments)] =
     ZIO.environmentWithZIO[CommentLikesRepository] { env =>
       env
         .get[CommentLikesRepository]
@@ -32,8 +33,8 @@ object CommentLikesRepository {
     }
 
   def addRemoveTribunalCommentLikeOrDislike(
-      commentLikeDislike: CommentLikes
-  ): ZIO[CommentLikesRepository, AppError, CommentLiked] =
+                                             commentLikeDislike: CommentLikes
+                                           ): ZIO[CommentLikesRepository, AppError, CommentLiked] =
     ZIO.environmentWithZIO[CommentLikesRepository] { env =>
       env
         .get[CommentLikesRepository]
@@ -43,14 +44,16 @@ object CommentLikesRepository {
 }
 
 case class CommentLikesRepositoryLive(dataSource: DataSource)
-    extends CommentLikesRepository {
+  extends CommentLikesRepository {
+
   import civil.repositories.QuillContext._
+
   override def addRemoveCommentLikeOrDislike(
-      commentLikeDislike: CommentLikes,
-      createdById: String
-  ): ZIO[Any, AppError, (CommentLiked, Comments)] = {
+                                              commentLikeDislike: CommentLikes,
+                                              createdById: String
+                                            ): ZIO[Any, AppError, (CommentLiked, Comments)] = {
     for {
-//      _ <- log.info(s"Fetching previous like state for comment id ${commentLikeDislike.commentId}")
+      //      _ <- log.info(s"Fetching previous like state for comment id ${commentLikeDislike.commentId}")
       likeValueToAddSubtract <- getLikeValueToAddOrSubtract(commentLikeDislike)
       comment <-
         transaction {
@@ -79,7 +82,7 @@ case class CommentLikesRepositoryLive(dataSource: DataSource)
             )
           } yield updatedComment
         }
-          .mapError(e => InternalServerError(e.toString))
+          .mapError(DatabaseError(_))
           .provideEnvironment(ZEnvironment(dataSource))
     } yield (
       CommentLiked(
@@ -93,8 +96,8 @@ case class CommentLikesRepositoryLive(dataSource: DataSource)
   }
 
   override def addRemoveTribunalCommentLikeOrDislike(
-      commentLikeDislike: CommentLikes
-  ): ZIO[Any, AppError, CommentLiked] = {
+                                                      commentLikeDislike: CommentLikes
+                                                    ): ZIO[Any, AppError, CommentLiked] = {
     for {
       likeValueToAddSubtract <- getLikeValueToAddOrSubtract(commentLikeDislike)
       commentLikesData <-
@@ -131,14 +134,14 @@ case class CommentLikesRepositoryLive(dataSource: DataSource)
             )
           } yield updated
         }
-          .mapError(e => InternalServerError(e.toString))
+          .mapError(DatabaseError(_))
           .provideEnvironment(ZEnvironment(dataSource))
     } yield commentLikesData
   }
 
   private def getLikeValueToAddOrSubtract(
-      commentLikeDislike: CommentLikes
-  ): ZIO[Any, InternalServerError, Index] = {
+                                           commentLikeDislike: CommentLikes
+                                         ): ZIO[Any, AppError, Index] = {
     for {
       previousLikeState <- run(
         query[CommentLikes].filter(cl =>
@@ -147,11 +150,11 @@ case class CommentLikesRepositoryLive(dataSource: DataSource)
           ) && cl.userId == lift(commentLikeDislike.userId)
         )
       )
-        .mapError(e => InternalServerError(e.toString))
+        .mapError(DatabaseError(_))
         .provideEnvironment(ZEnvironment(dataSource))
       previousLikeStateResult = previousLikeState.headOption
 
-//      _ <- log.info(s"Previous like state for comment id ${commentLikeDislike.commentId} is: ${previousLikeState}")
+      //      _ <- log.info(s"Previous like state for comment id ${commentLikeDislike.commentId} is: ${previousLikeState}")
       newLikeState = commentLikeDislike.likeState
       prevLikeState = previousLikeStateResult
         .getOrElse(
@@ -163,18 +166,18 @@ case class CommentLikesRepositoryLive(dataSource: DataSource)
         )
         .likeState
       likeValueToAdd = (prevLikeState, newLikeState) match {
-        case (LikedState, NeutralState)    => -1
-        case (NeutralState, LikedState)    => 1
+        case (LikedState, NeutralState) => -1
+        case (NeutralState, LikedState) => 1
         case (DislikedState, NeutralState) => 1
         case (NeutralState, DislikedState) => -1
-        case (LikedState, DislikedState)   => -2
-        case (DislikedState, LikedState)   => 2
-        case (NeutralState, NeutralState)  => 0
-        case _                             => -100
+        case (LikedState, DislikedState) => -2
+        case (DislikedState, LikedState) => 2
+        case (NeutralState, NeutralState) => 0
+        case _ => -100
       }
       _ <- ZIO.when(likeValueToAdd == -100)(
-        ZIO.fail(InternalServerError("Invalid like value"))
-      )
+        ZIO.fail(DatabaseError(new Throwable("Invalid like value"))))
+
     } yield likeValueToAdd
   }
 

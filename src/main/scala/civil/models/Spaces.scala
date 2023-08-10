@@ -38,7 +38,7 @@ case class IncomingSpace(
     editorTextContent: String,
     category: String,
     referenceLinks: Option[List[String]],
-    //    userUploadedImageUrl: Option[String],
+    userUploadedImageUrl: Option[String],
     //    userUploadedVodUrl: Option[String],
     createdByUserId: Option[String] = None,
     createdByUsername: Option[String] = None,
@@ -78,7 +78,8 @@ case class Spaces(
     spaceId: Option[UUID] = None,
     discussionId: Option[UUID] = None,
     referenceLinks: Option[List[String]] = None,
-    contentHeight: Option[Float]
+    contentHeight: Option[Float],
+    userUploadedImageUrl: Option[String]
 )
 
 object Spaces {
@@ -103,7 +104,8 @@ case class OutgoingSpace(
     isFollowing: Boolean = false,
     referenceLinks: Option[List[String]] = None,
     contentHeight: Option[Float],
-    editorTextContent: String
+    editorTextContent: String,
+    userUploadedImageUrl: Option[String]
 )
 
 object OutgoingSpace {

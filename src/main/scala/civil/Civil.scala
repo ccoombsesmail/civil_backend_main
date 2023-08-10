@@ -15,12 +15,15 @@ import zio._
 import zio.http.ServerConfig
 import zio.logging.console
 
+
 object Civil extends zio.ZIOAppDefault {
+
   override val bootstrap: ZLayer[ZIOAppArgs, Any, Any] =
     Runtime.removeDefaultLoggers >>> console()
 
   implicit val ec: scala.concurrent.ExecutionContext =
     scala.concurrent.ExecutionContext.global
+
 
   override val run: Task[Unit] = {
     val ONE_MB = 1000000

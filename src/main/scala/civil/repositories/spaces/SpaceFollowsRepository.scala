@@ -1,7 +1,7 @@
 package civil.repositories.spaces
 
 import civil.errors.AppError
-import civil.errors.AppError.InternalServerError
+import civil.errors.AppError.{DatabaseError, InternalServerError}
 import civil.models._
 import zio._
 
@@ -9,6 +9,7 @@ import javax.sql.DataSource
 
 trait SpaceFollowsRepository {
   def insertSpaceFollow(follow: SpaceFollows): ZIO[Any, AppError, Unit]
+
   def deleteSpaceFollow(follow: SpaceFollows): ZIO[Any, AppError, Unit]
 }
 
@@ -36,7 +37,7 @@ case class SpaceFollowsRepositoryLive(dataSource: DataSource)
     _ <- run(query[SpaceFollows].insertValue(lift(follow)))
 
   } yield ())
-    .mapError(e => InternalServerError(e.toString))
+    .mapError(DatabaseError(_))
     .provideEnvironment(ZEnvironment(dataSource))
 
   override def deleteSpaceFollow(
@@ -54,7 +55,7 @@ case class SpaceFollowsRepositoryLive(dataSource: DataSource)
       )
 
   } yield ())
-    .mapError(e => InternalServerError(e.toString))
+    .mapError(DatabaseError(_))
     .provideEnvironment(ZEnvironment(dataSource))
 }
 

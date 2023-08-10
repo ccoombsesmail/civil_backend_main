@@ -3,7 +3,7 @@ package civil.services
 import civil.config.Config
 import civil.directives.OutgoingHttp.{Permissions, authenticateCivicTokenHeader}
 import civil.errors.AppError
-import civil.errors.AppError.{GeneralError, Unauthorized}
+import civil.errors.AppError.{InternalServerError, Unauthorized}
 import civil.models.JwtUserClaimsData
 import civil.repositories.UsersRepository
 import org.elastos.did.{DID, DIDBackend, DefaultDIDAdapter}
@@ -18,52 +18,53 @@ import zio.http.Client
 import javax.sql.DataSource
 import scala.language.postfixOps
 import civil.config.Config
+import civil.directives.OutgoingHttp
 
 trait AuthenticationService {
   def decodeClerkJWT(jwt: String): ZIO[Any, Throwable, JwtUserClaimsData]
 
   def decodeDIDJWT(
-                    jwt: String,
-                    did: String
-                  ): ZIO[Any, Throwable, JwtUserClaimsData]
+      jwt: String,
+      did: String
+  ): ZIO[Any, Throwable, JwtUserClaimsData]
 
   def civicAuthentication(jwt: String): ZIO[Any, Throwable, JwtUserClaimsData]
 
   def canPerformCaptchaRequiredAction(
-                                       userData: JwtUserClaimsData
-                                     ): ZIO[Any, Unauthorized, Unit]
+      userData: JwtUserClaimsData
+  ): ZIO[Any, Unauthorized, Unit]
 
   def extractUserData(
-                       jwt: String,
-                       jwtType: String
-                     ): ZIO[Any, Unauthorized, JwtUserClaimsData]
+      jwt: String,
+      jwtType: String
+  ): ZIO[Any, Unauthorized, JwtUserClaimsData]
 
 }
 
 object AuthenticationService {
 
   def decodeDIDJWT(
-                    jwt: String,
-                    did: String
-                  ): RIO[AuthenticationService, JwtUserClaimsData] =
+      jwt: String,
+      did: String
+  ): RIO[AuthenticationService, JwtUserClaimsData] =
     ZIO.serviceWithZIO[AuthenticationService](_.decodeDIDJWT(jwt, did))
 
   def extractUserData(
-                       jwt: String,
-                       jwtType: String
-                     ): ZIO[AuthenticationService, Unauthorized, JwtUserClaimsData] =
+      jwt: String,
+      jwtType: String
+  ): ZIO[AuthenticationService, Unauthorized, JwtUserClaimsData] =
     ZIO.serviceWithZIO[AuthenticationService](_.extractUserData(jwt, jwtType))
 }
 
 case class AuthenticationServiceLive(dataSource: DataSource)
-  extends AuthenticationService {
+    extends AuthenticationService {
   implicit val formats: Formats = DefaultFormats
   private val clerk_jwt_key = Config().getString("civil.clerk_jwt_key")
 
   override def extractUserData(
-                                jwt: String,
-                                jwtType: String
-                              ): ZIO[Any, Unauthorized, JwtUserClaimsData] = {
+      jwt: String,
+      jwtType: String
+  ): ZIO[Any, Unauthorized, JwtUserClaimsData] = {
     val testMode = Config().getString("test.test_mode")
     if (testMode == "on") {
       return ZIO.succeed(
@@ -83,30 +84,37 @@ case class AuthenticationServiceLive(dataSource: DataSource)
         jwtType match {
           case s"ELASTOS-DID ${didString}" =>
             decodeDIDJWT(jwt, didString).mapError(e =>
-              Unauthorized("Failed Elatos DID Authentication")
+              Unauthorized(new Throwable("Failed Elatos DID Authentication"))
             )
           case s"CIVIC-DID" =>
             civicAuthentication(jwt).mapError(e =>
               Unauthorized(
-                s"Failed Civic/Solana DID Authentication Due To: ${e.toString}"
+                new Throwable(
+                  s"Failed Civic/Solana DID Authentication Due To: ${e.toString}"
+                )
               )
             )
           case "CLERK" =>
             decodeClerkJWT(jwt).mapError(e =>
-              Unauthorized("Failed Clerk Authentication")
+              Unauthorized(new Throwable("Failed Clerk Authentication"))
             )
-          case _ => ZIO.fromOption(None).orElseFail(Unauthorized("Failed Auth"))
+          case _ =>
+            ZIO
+              .fromOption(None)
+              .orElseFail(Unauthorized(new Throwable("Failed Auth")))
         }
     } yield jwtClaimsData
   }
 
   override def canPerformCaptchaRequiredAction(
-                                                userData: JwtUserClaimsData
-                                              ): ZIO[Any, Unauthorized, Unit] = {
+      userData: JwtUserClaimsData
+  ): ZIO[Any, Unauthorized, Unit] = {
     ZIO.when(!userData.permissions.captchaPassActive)(
       ZIO.fail(
         Unauthorized(
-          "Must Have An Active CAPTCHA pass to give civility points"
+          new Throwable(
+            "Must Have An Active CAPTCHA pass to give civility points"
+          )
         )
       )
     )
@@ -114,28 +122,30 @@ case class AuthenticationServiceLive(dataSource: DataSource)
   }
 
   override def civicAuthentication(
-                                    jwt: String
-                                  ): ZIO[Any, AppError, JwtUserClaimsData] = {
+      jwt: String
+  ): ZIO[Any, AppError, JwtUserClaimsData] = {
     implicit val ec: scala.concurrent.ExecutionContext =
       scala.concurrent.ExecutionContext.global
 
     val decodedJwt = jwt match {
       case s"Bearer $authString" => authString
-      case _ => jwt
+      case _                     => jwt
     }
     for {
       res <- authenticateCivicTokenHeader(decodedJwt).mapError(e =>
-        GeneralError(e.toString)
+        Unauthorized(new Throwable(e.toString))
       )
 
-      body <- ZIO.fromEither(res.body).mapError(e => GeneralError(e.toString))
+      body <- ZIO
+        .fromEither(res.body)
+        .mapError(e => Unauthorized(new Throwable(e.toString)))
       userDataOpt <- UsersRepository
         .getUserInternal(body.pk)
         .provideEnvironment(ZEnvironment(dataSource))
-        .mapError(e => GeneralError(e.toString))
+        .mapError(e => Unauthorized(new Throwable(e.toString)))
       userData <- ZIO
         .fromOption(userDataOpt)
-        .mapError(e => GeneralError(e.toString))
+        .mapError(e => Unauthorized(new Throwable(e.toString)))
     } yield JwtUserClaimsData(
       userId = body.pk,
       username = body.name.getOrElse(body.pk),
@@ -152,8 +162,8 @@ case class AuthenticationServiceLive(dataSource: DataSource)
   }
 
   override def decodeClerkJWT(
-                               jwt: String
-                             ): ZIO[Any, Throwable, JwtUserClaimsData] = {
+      jwt: String
+  ): ZIO[Any, Throwable, JwtUserClaimsData] = {
     val decodedJwt = ZIO.attempt(jwt match {
       case s"Bearer $encodedJwt" =>
         JwtCirce.decode(
@@ -161,7 +171,7 @@ case class AuthenticationServiceLive(dataSource: DataSource)
           clerk_jwt_key,
           Seq(JwtAlgorithm.RS256)
         ) match {
-          case Success(value) => value
+          case Success(value)     => value
           case Failure(exception) => JwtClaim()
         }
       case _ => JwtClaim()
@@ -174,9 +184,9 @@ case class AuthenticationServiceLive(dataSource: DataSource)
   }
 
   override def decodeDIDJWT(
-                             jwt: String,
-                             didString: String
-                           ): ZIO[Any, Throwable, JwtUserClaimsData] = {
+      jwt: String,
+      didString: String
+  ): ZIO[Any, Throwable, JwtUserClaimsData] = {
     DIDBackend.initialize(new DefaultDIDAdapter("testnet"))
     val did = new DID(didString)
     val signer = did.resolve()
@@ -184,7 +194,7 @@ case class AuthenticationServiceLive(dataSource: DataSource)
     val parser = signer.jwtParserBuilder.build()
     val decodedJwt = jwt match {
       case s"Bearer $encodedJwt" => parser.parseClaimsJws(encodedJwt)
-      case _ => parser.parseClaimsJwt(jwt)
+      case _                     => parser.parseClaimsJwt(jwt)
     }
     val claims = decodedJwt.getBody()
 

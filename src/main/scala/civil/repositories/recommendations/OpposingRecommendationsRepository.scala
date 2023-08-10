@@ -1,8 +1,14 @@
 package civil.repositories.recommendations
 
-import civil.models.{Discussions, OpposingRecommendations, OutGoingOpposingRecommendations, Spaces, UrlsForTFIDFConversion}
+import civil.models.{
+  Discussions,
+  OpposingRecommendations,
+  OutGoingOpposingRecommendations,
+  Spaces,
+  UrlsForTFIDFConversion
+}
 import civil.errors.AppError
-import civil.errors.AppError.InternalServerError
+import civil.errors.AppError.{DatabaseError, InternalServerError}
 import io.getquill.Ord
 import zio._
 import io.scalaland.chimney.dsl._
@@ -11,24 +17,40 @@ import java.util.UUID
 import javax.sql.DataSource
 
 trait OpposingRecommendationsRepository {
-  def insertOpposingRecommendation(opposingRec: OpposingRecommendations): ZIO[Any, AppError, Unit]
-  def getAllOpposingRecommendations(targetContentId: UUID): ZIO[Any, AppError, List[OutGoingOpposingRecommendations]]
+  def insertOpposingRecommendation(
+      opposingRec: OpposingRecommendations
+  ): ZIO[Any, AppError, Unit]
+  def getAllOpposingRecommendations(
+      targetContentId: UUID
+  ): ZIO[Any, AppError, List[OutGoingOpposingRecommendations]]
 }
 
 object OpposingRecommendationsRepository {
-  def insertOpposingRecommendation(opposingRec: OpposingRecommendations): ZIO[OpposingRecommendationsRepository, AppError, Unit] =
-    ZIO.serviceWithZIO[OpposingRecommendationsRepository](_.insertOpposingRecommendation(opposingRec))
-  def getAllOpposingRecommendations(targetContentId: UUID): ZIO[OpposingRecommendationsRepository, AppError, List[OutGoingOpposingRecommendations]] =
-    ZIO.serviceWithZIO[OpposingRecommendationsRepository](_.getAllOpposingRecommendations(targetContentId))
+  def insertOpposingRecommendation(
+      opposingRec: OpposingRecommendations
+  ): ZIO[OpposingRecommendationsRepository, AppError, Unit] =
+    ZIO.serviceWithZIO[OpposingRecommendationsRepository](
+      _.insertOpposingRecommendation(opposingRec)
+    )
+  def getAllOpposingRecommendations(
+      targetContentId: UUID
+  ): ZIO[OpposingRecommendationsRepository, AppError, List[
+    OutGoingOpposingRecommendations
+  ]] =
+    ZIO.serviceWithZIO[OpposingRecommendationsRepository](
+      _.getAllOpposingRecommendations(targetContentId)
+    )
 }
 
-
-case class OpposingRecommendationsRepositoryLive(dataSource: DataSource) extends OpposingRecommendationsRepository {
+case class OpposingRecommendationsRepositoryLive(dataSource: DataSource)
+    extends OpposingRecommendationsRepository {
 
   import civil.repositories.QuillContext._
   import civil.repositories.QuillContext.extras._
 
-  override def insertOpposingRecommendation(opposingRec: OpposingRecommendations): ZIO[Any, AppError, Unit] = {
+  override def insertOpposingRecommendation(
+      opposingRec: OpposingRecommendations
+  ): ZIO[Any, AppError, Unit] = {
 //    val recommendedContentIdIsDiscussion = opposingRec.recommendedContentId.map((recId) => {
 //      val isDiscussion = run(query[Discussions].filter(st => st.id == lift(recId))).nonEmpty
 //      isDiscussion
@@ -56,21 +78,29 @@ case class OpposingRecommendationsRepositoryLive(dataSource: DataSource) extends
     ZIO.unit
   }
 
-  override def getAllOpposingRecommendations(targetContentId: UUID): ZIO[Any, AppError, List[OutGoingOpposingRecommendations]] = {
-
+  override def getAllOpposingRecommendations(
+      targetContentId: UUID
+  ): ZIO[Any, AppError, List[OutGoingOpposingRecommendations]] = {
 
     val q = quote {
       for {
-        rec <- query[OpposingRecommendations].filter(rec => rec.targetContentId == lift(targetContentId)).sortBy(r => r.similarityScore)(Ord.descNullsLast)
+        rec <- query[OpposingRecommendations]
+          .filter(rec => rec.targetContentId == lift(targetContentId))
+          .sortBy(r => r.similarityScore)(Ord.descNullsLast)
         t <- query[Spaces].leftJoin(t => t.id === rec.recommendedContentId)
-        st <- query[Discussions].leftJoin(st => st.id === rec.recommendedContentId)
+        st <- query[Discussions].leftJoin(st =>
+          st.id === rec.recommendedContentId
+        )
       } yield (rec, t, st)
     }
 
-    for  {
-      outgoingRecs <- run(q).mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
+    for {
+      outgoingRecs <- run(q)
+        .mapError(DatabaseError(_))
+        .provideEnvironment(ZEnvironment(dataSource))
       out = outgoingRecs.map { case (rec, topic, discussion) =>
-        rec.into[OutGoingOpposingRecommendations]
+        rec
+          .into[OutGoingOpposingRecommendations]
           .withFieldConst(_.topic, topic)
           .withFieldConst(_.discussion, discussion)
           .withFieldConst(_.id, UUID.randomUUID())
@@ -78,11 +108,11 @@ case class OpposingRecommendationsRepositoryLive(dataSource: DataSource) extends
       }
     } yield out
 
-
   }
 
 }
 
 object OpposingRecommendationsRepositoryLive {
-  val layer: URLayer[DataSource, OpposingRecommendationsRepository] = ZLayer.fromFunction(OpposingRecommendationsRepositoryLive.apply _)
+  val layer: URLayer[DataSource, OpposingRecommendationsRepository] =
+    ZLayer.fromFunction(OpposingRecommendationsRepositoryLive.apply _)
 }

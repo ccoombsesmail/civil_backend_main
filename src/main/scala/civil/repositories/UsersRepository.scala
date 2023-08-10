@@ -1,7 +1,7 @@
 package civil.repositories
 
 import civil.errors.AppError
-import civil.errors.AppError.InternalServerError
+import civil.errors.AppError.{DatabaseError, InternalServerError}
 import civil.models._
 import io.scalaland.chimney.dsl.TransformerOps
 import zio._
@@ -33,9 +33,12 @@ trait UsersRepository {
       commentId: UUID,
       civility: Int,
       removeCivility: Boolean
-  ):  ZIO[Any, AppError, CivilityGivenResponse]
+  ): ZIO[Any, AppError, CivilityGivenResponse]
 
-  def createUserTag(userId: String, tag: String): ZIO[Any, AppError, OutgoingUser]
+  def createUserTag(
+      userId: String,
+      tag: String
+  ): ZIO[Any, AppError, OutgoingUser]
   def checkIfTagExists(tag: String): ZIO[Any, AppError, TagExists]
 
 }
@@ -85,10 +88,11 @@ object UsersRepository {
 
   import civil.repositories.QuillContext._
 
-
-  def getUserInternal(userId: String): ZIO[DataSource, SQLException, Option[Users]] = {
+  def getUserInternal(
+      userId: String
+  ): ZIO[DataSource, AppError, Option[Users]] = {
     for {
-      user <- run(query[Users].filter(u => u.userId == lift(userId)))
+      user <- run(query[Users].filter(u => u.userId == lift(userId))).mapError(InternalServerError)
     } yield user.headOption
   }
 
@@ -121,40 +125,42 @@ case class UsersRepositoryLive(dataSource: DataSource) extends UsersRepository {
   ): ZIO[Any, AppError, OutgoingUser] = {
     for {
       upsertedUser <- run(
-            query[Users]
-              .insertValue(
-                lift(
-                  Users(
-                    incomingUser.userId,
-                    incomingUser.username,
-                    None,
-                    Some(
-                      incomingUser.iconSrc.getOrElse(
-                        profile_img_map.getOrElse("profile_img_1", "")
-                      )
-                    ),
-                    13.60585f,
-                    ZonedDateTime.now(ZoneId.systemDefault()),
-                    false,
-                    None,
-                    None,
-                    true
+        query[Users]
+          .insertValue(
+            lift(
+              Users(
+                incomingUser.userId,
+                incomingUser.username,
+                None,
+                Some(
+                  incomingUser.iconSrc.getOrElse(
+                    profile_img_map.getOrElse("profile_img_1", "")
                   )
-                )
+                ),
+                13.60585f,
+                ZonedDateTime.now(ZoneId.systemDefault()),
+                false,
+                None,
+                None,
+                true
               )
-              .onConflictUpdate(_.userId)(
-                (t, e) => t.username -> e.username,
-                (t, e) => t.iconSrc -> e.iconSrc
-              )
-              .returning(u => u)
-
-        )
-        .mapError(e => InternalServerError(e.getMessage))
+            )
+          )
+          .onConflictUpdate(_.userId)(
+            (t, e) => t.username -> e.username,
+            (t, e) => t.iconSrc -> e.iconSrc
+          )
+          .returning(u => u)
+      )
+        .mapError(DatabaseError(_))
         .provideEnvironment(ZEnvironment(dataSource))
     } yield upsertedUser
       .into[OutgoingUser]
       .withFieldConst(_.isFollowing, Some(false))
-      .withFieldComputed(_.userLevelData, u => Some(UserLevel.apply(u.civility.toDouble)))
+      .withFieldComputed(
+        _.userLevelData,
+        u => Some(UserLevel.apply(u.civility.toDouble))
+      )
       .enableDefaultValues
       .transform
 
@@ -165,42 +171,45 @@ case class UsersRepositoryLive(dataSource: DataSource) extends UsersRepository {
       requesterId: String
   ): ZIO[Any, AppError, OutgoingUser] = {
     for {
-      userQuery <- run(query[Users].filter(u => u.userId == lift(id))).mapError(e => InternalServerError(e.toString))
+      userQuery <- run(query[Users].filter(u => u.userId == lift(id)))
+        .mapError(DatabaseError(_))
         .provideEnvironment(ZEnvironment(dataSource))
-      user <- ZIO.fromOption(userQuery.headOption).orElseFail(InternalServerError("Could Not Locate User"))
+      user <- ZIO
+        .fromOption(userQuery.headOption)
+        .orElseFail(DatabaseError(new Throwable("Could Not Locate User")))
       isFollowing <-
-          run(
-            query[Follows].filter(f =>
+        run(
+          query[Follows]
+            .filter(f =>
               f.userId == lift(requesterId) && f.followedUserId == lift(id)
-            ).nonEmpty
+            )
+            .nonEmpty
         )
-        .mapError(e => InternalServerError(e.toString))
-        .provideEnvironment(ZEnvironment(dataSource))
+          .mapError(DatabaseError(_))
+          .provideEnvironment(ZEnvironment(dataSource))
       following <- run(
-            query[Follows].filter(f =>
-              f.userId == lift(requesterId)
-            ).size
-          )
-        .mapError(e => InternalServerError(e.toString))
+        query[Follows].filter(f => f.userId == lift(requesterId)).size
+      )
+        .mapError(DatabaseError(_))
         .provideEnvironment(ZEnvironment(dataSource))
       followed <-
-          run(
-            query[Follows].filter(f =>
-              f.followedUserId == lift(requesterId)
-            ).size
-          )
-        .mapError(e => InternalServerError(e.toString))
-        .provideEnvironment(ZEnvironment(dataSource))
+        run(
+          query[Follows].filter(f => f.followedUserId == lift(requesterId)).size
+        )
+          .mapError(DatabaseError(_))
+          .provideEnvironment(ZEnvironment(dataSource))
       numPosts <- run(
-            query[Spaces].filter(t =>
-              t.createdByUserId == lift(requesterId)
-            ).map(_.createdByUserId) ++ query[Discussions].filter(st =>
-              st.createdByUserId == lift(requesterId) && st.title != "General"
-            ).map(_.createdByUserId) ++ query[Comments].filter(c =>
-            c.createdByUserId == lift(requesterId)
-            ).map(_.createdByUserId)
+        query[Spaces]
+          .filter(t => t.createdByUserId == lift(requesterId))
+          .map(_.createdByUserId) ++ query[Discussions]
+          .filter(st =>
+            st.createdByUserId == lift(requesterId) && st.title != "General"
           )
-        .mapError(e => InternalServerError(e.toString))
+          .map(_.createdByUserId) ++ query[Comments]
+          .filter(c => c.createdByUserId == lift(requesterId))
+          .map(_.createdByUserId)
+      )
+        .mapError(DatabaseError(_))
         .provideEnvironment(ZEnvironment(dataSource))
     } yield user
       .into[OutgoingUser]
@@ -208,9 +217,12 @@ case class UsersRepositoryLive(dataSource: DataSource) extends UsersRepository {
       .withFieldConst(_.numFollowed, Some(following.toInt))
       .withFieldConst(_.numFollowers, Some(followed.toInt))
       .withFieldConst(_.numPosts, Some(numPosts.size))
-      .withFieldComputed(_.userLevelData, u => {
-        Some(UserLevel.apply(u.civility.toDouble))
-        })
+      .withFieldComputed(
+        _.userLevelData,
+        u => {
+          Some(UserLevel.apply(u.civility.toDouble))
+        }
+      )
       .enableDefaultValues
       .transform
   }
@@ -221,18 +233,21 @@ case class UsersRepositoryLive(dataSource: DataSource) extends UsersRepository {
   ): ZIO[Any, AppError, OutgoingUser] = {
     for {
       user <-
-          run(
-            query[Users]
-              .filter(u => u.username == lift(username))
-              .update(user => user.iconSrc -> lift(Option(iconSrc)))
-              .returning(r => r)
-
+        run(
+          query[Users]
+            .filter(u => u.username == lift(username))
+            .update(user => user.iconSrc -> lift(Option(iconSrc)))
+            .returning(r => r)
         )
-        .mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
+          .mapError(DatabaseError(_))
+          .provideEnvironment(ZEnvironment(dataSource))
     } yield user
       .into[OutgoingUser]
       .withFieldConst(_.isFollowing, Some(false))
-      .withFieldComputed(_.userLevelData, u => Some(UserLevel.apply(u.civility.toDouble)))
+      .withFieldComputed(
+        _.userLevelData,
+        u => Some(UserLevel.apply(u.civility.toDouble))
+      )
       .enableDefaultValues
       .transform
 
@@ -245,21 +260,24 @@ case class UsersRepositoryLive(dataSource: DataSource) extends UsersRepository {
 
     for {
       user <-
-          run(
-            query[Users]
-              .filter(u => u.userId == lift(userId))
-              .update(
-                _.bio -> lift(bioInfo.bio),
-                _.experience -> lift(bioInfo.experience)
-              )
-              .returning(u => u)
-
+        run(
+          query[Users]
+            .filter(u => u.userId == lift(userId))
+            .update(
+              _.bio -> lift(bioInfo.bio),
+              _.experience -> lift(bioInfo.experience)
+            )
+            .returning(u => u)
         )
-        .mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
+          .mapError(DatabaseError(_))
+          .provideEnvironment(ZEnvironment(dataSource))
     } yield user
       .into[OutgoingUser]
       .withFieldConst(_.isFollowing, Some(false))
-      .withFieldComputed(_.userLevelData, u => Some(UserLevel.apply(u.civility.toDouble)))
+      .withFieldComputed(
+        _.userLevelData,
+        u => Some(UserLevel.apply(u.civility.toDouble))
+      )
       .enableDefaultValues
       .transform
   }
@@ -272,23 +290,38 @@ case class UsersRepositoryLive(dataSource: DataSource) extends UsersRepository {
   ): ZIO[Any, AppError, CivilityGivenResponse] = {
 
     for {
-      commentQuery <- run(query[Comments].filter(c => c.id == lift(commentId))).mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
-      comment <- ZIO.fromOption(commentQuery.headOption).mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
-      res <- run(query[Users]
-        .filter(u => u.userId == lift(userId))
-        .update(user => user.civility -> (user.civility + lift(civility)))
-        .returning(user =>
-          CivilityGivenResponse(
-            user.civility,
-            lift(commentId),
-            lift(comment.rootId)
+      commentQuery <- run(query[Comments].filter(c => c.id == lift(commentId)))
+        .mapError(DatabaseError(_))
+        .provideEnvironment(ZEnvironment(dataSource))
+      comment <- ZIO
+        .fromOption(commentQuery.headOption)
+        .orElseFail(
+          DatabaseError(
+            new Throwable(
+              "Service: UsersRepo -> addOrRemoveCivility - Could Not find comment"
+            )
           )
         )
-      ).mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
+        .provideEnvironment(ZEnvironment(dataSource))
+      res <- run(
+        query[Users]
+          .filter(u => u.userId == lift(userId))
+          .update(user => user.civility -> (user.civility + lift(civility)))
+          .returning(user =>
+            CivilityGivenResponse(
+              user.civility,
+              lift(commentId),
+              lift(comment.rootId)
+            )
+          )
+      ).mapError(DatabaseError(_)).provideEnvironment(ZEnvironment(dataSource))
     } yield res
   }
 
-  override def createUserTag(userId: String, tag: String): ZIO[Any, AppError, OutgoingUser] = {
+  override def createUserTag(
+      userId: String,
+      tag: String
+  ): ZIO[Any, AppError, OutgoingUser] = {
 
     for {
       user <- run(
@@ -296,10 +329,16 @@ case class UsersRepositoryLive(dataSource: DataSource) extends UsersRepository {
           .filter(u => u.userId == lift(userId) && u.tag.isEmpty)
           .update(_.tag -> lift(Option(tag)))
           .returning(u => u)
-      ).mapError(_ => InternalServerError("Cannot Update Tag More Than Once")).provideEnvironment(ZEnvironment(dataSource))
-    } yield user.into[OutgoingUser]
+      ).mapError(_ =>
+        DatabaseError(new Throwable("Cannot Update Tag More Than Once"))
+      ).provideEnvironment(ZEnvironment(dataSource))
+    } yield user
+      .into[OutgoingUser]
       .withFieldConst(_.isFollowing, None)
-      .withFieldComputed(_.userLevelData, u => Some(UserLevel.apply(u.civility.toDouble)))
+      .withFieldComputed(
+        _.userLevelData,
+        u => Some(UserLevel.apply(u.civility.toDouble))
+      )
       .enableDefaultValues
       .transform
   }
@@ -308,11 +347,12 @@ case class UsersRepositoryLive(dataSource: DataSource) extends UsersRepository {
     for {
       userQuery <- run(
         query[Users].filter(u => u.tag == lift(Option(tag)))
-      ).mapError(e => InternalServerError(e.toString)).provideEnvironment(ZEnvironment(dataSource))
-    } yield TagExists(tagExists=userQuery.nonEmpty)
+      ).mapError(DatabaseError(_)).provideEnvironment(ZEnvironment(dataSource))
+    } yield TagExists(tagExists = userQuery.nonEmpty)
   }
 }
 
 object UsersRepositoryLive {
-  val layer: URLayer[DataSource, UsersRepository] = ZLayer.fromFunction(UsersRepositoryLive.apply _)
+  val layer: URLayer[DataSource, UsersRepository] =
+    ZLayer.fromFunction(UsersRepositoryLive.apply _)
 }

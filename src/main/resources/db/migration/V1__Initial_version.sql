@@ -44,6 +44,7 @@ CREATE TABLE spaces(
     space_id uuid DEFAULT NULL,
     discussion_id uuid DEFAULT NULL,
     content_height decimal,
+    user_uploaded_image_url varchar(300),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(title)

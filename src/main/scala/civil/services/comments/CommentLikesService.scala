@@ -1,7 +1,7 @@
 package civil.services.comments
 
 import civil.errors.AppError
-import civil.errors.AppError.GeneralError
+import civil.errors.AppError.InternalServerError
 import civil.models.{CommentLiked, CommentLikes, UpdateCommentLikes}
 import civil.models.NotifcationEvents.{CommentLike, GivingUserNotificationData}
 import civil.models.actions.LikedState
@@ -98,9 +98,7 @@ case class CommentLikesServiceLive(
             CommentLike.commentLikeSerde
           )
         )
-        .mapError(e => {
-          GeneralError(e.toString)
-        })
+        .mapError(InternalServerError)
         .forkDaemon
     } yield likeData
   }

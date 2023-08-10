@@ -1,6 +1,6 @@
 package civil.repositories.spaces
 
-import civil.errors.AppError.InternalServerError
+import civil.errors.AppError.{DatabaseError, InternalServerError}
 import civil.errors.AppError
 import civil.models.actions.{
   DislikedState,
@@ -34,6 +34,7 @@ object SpaceLikesRepository {
 
 case class SpaceLikesRepositoryLive(dataSource: DataSource)
     extends SpaceLikesRepository {
+
   import civil.repositories.QuillContext._
 
   override def addRemoveSpaceLikeOrDislike(
@@ -47,7 +48,7 @@ case class SpaceLikesRepositoryLive(dataSource: DataSource)
             userId
           )
         )
-      ).mapError(e => InternalServerError(e.toString))
+      ).mapError(DatabaseError(_))
       newLikeState = spaceLikeDislikeData.likeAction
       prevLikeState = previousLikeState.headOption
         .getOrElse(SpaceLikes(spaceLikeDislikeData.id, userId, NeutralState))
@@ -64,9 +65,9 @@ case class SpaceLikesRepositoryLive(dataSource: DataSource)
       }
       _ <- ZIO
         .when(likeValueToAdd == -100)(
-          ZIO.fail(InternalServerError("Invalid like value"))
+          ZIO.fail(DatabaseError(new Throwable("Invalid like value")))
         )
-        .mapError(e => InternalServerError(e.toString))
+        .mapError(DatabaseError(_))
       space <- transaction {
         for {
           _ <- run(
@@ -94,7 +95,7 @@ case class SpaceLikesRepositoryLive(dataSource: DataSource)
               .returning(t => t)
           )
         } yield updatedSpace
-      }.mapError(e => InternalServerError(e.toString))
+      }.mapError(DatabaseError(_))
     } yield (
       SpaceLiked(space.id, space.likes, spaceLikeDislikeData.likeAction),
       space

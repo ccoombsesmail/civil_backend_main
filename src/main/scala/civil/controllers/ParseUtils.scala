@@ -27,21 +27,21 @@ object ParseUtils {
     for {
       stringBody <- request.body
         .asString(HTTP_CHARSET)
-        .mapError(e => AppError.JsonDecodingError(e.toString))
+        .mapError(AppError.JsonDecodingError)
       parsed <- ZIO
         .from(stringBody.fromJson[A])
-        .mapError(e => AppError.JsonDecodingError(e))
+        .mapError(d => AppError.JsonDecodingError(new Throwable(d)))
     } yield parsed
   }
 
-  def extractJwtData(request: Request): IO[AppError, (String, String)] =
+  def extractJwtData(request: Request): ZIO[Any, AppError, (String, String)] =
     for {
       jwt <- ZIO
         .fromOption(request.bearerToken)
-        .mapError(e => JsonDecodingError(e.toString))
+        .orElseFail(JsonDecodingError(new Throwable("Error")))
       jwtTypeHeader <- ZIO
         .fromOption(request.header("X-JWT-TYPE"))
-        .mapError(e => JsonDecodingError(e.toString))
+        .orElseFail(JsonDecodingError(new Throwable("error")))
       jwtType = jwtTypeHeader.value.toString
     } yield (jwt, jwtType)
 
@@ -52,7 +52,9 @@ object ParseUtils {
     req.url.queryParams.get(paramName) match {
       case None =>
         ZIO.fail(
-          JsonDecodingError(s"Failed to parse query parameter '$paramName'")
+          JsonDecodingError(
+            new Throwable(s"Failed to parse query parameter '$paramName'")
+          )
         )
       case Some(value) => ZIO.succeed(value.toList)
     }
@@ -61,7 +63,8 @@ object ParseUtils {
   def parseQueryFirst(req: Request, key: String): IO[AppError, String] =
     parseQuery(req, key).flatMap {
       case head :: _ => ZIO.succeed(head)
-      case Nil       => ZIO.fail(JsonDecodingError(s"Missing parameter: $key"))
+      case Nil =>
+        ZIO.fail(JsonDecodingError(new Throwable(s"Missing parameter: $key")))
     }
 
   def parseSpaceId(id: String): IO[AppError.InvalidIdError, SpaceId] =

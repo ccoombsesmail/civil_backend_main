@@ -6,7 +6,7 @@ import civil.services.TribunalCommentsService
 import zio.http._
 import zio._
 import civil.controllers.ParseUtils._
-import civil.errors.AppError.JsonDecodingError
+import civil.errors.AppError.{InternalServerError, JsonDecodingError}
 import civil.models.IncomingComment
 import io.circe.syntax.EncoderOps
 import zio.http.model.Method
@@ -40,10 +40,8 @@ final case class TribunalCommentsController(
           commentTypeParam <- parseQuery(req, "commentType")
           contentId <- ZIO
             .fromOption(contentIdParam.headOption)
-            .mapError(e => JsonDecodingError(e.toString))
           commentType <- ZIO
             .fromOption(commentTypeParam.headOption)
-            .mapError(e => JsonDecodingError(e.toString))
           res <- tribunalCommentsService
             .getComments(
               jwt,
@@ -54,7 +52,9 @@ final case class TribunalCommentsController(
             .mapError(e => {
               e
             })
-        } yield Response.json(res.asJson.noSpaces)).catchAll(_.toResponse)
+        } yield Response.json(res.asJson.noSpaces))
+          .orElseFail(JsonDecodingError(new Throwable("error decoding")))
+          .catchAll(_.toResponse)
 
       case req @ Method.GET -> !! / "api" / "v1" / "tribunal-comments-batch" =>
         (for {
@@ -63,13 +63,14 @@ final case class TribunalCommentsController(
           contentIdParam <- parseQuery(req, "contentId")
           contentId <- ZIO
             .fromOption(contentIdParam.headOption)
-            .mapError(e => JsonDecodingError(e.toString))
           res <- tribunalCommentsService.getCommentsBatch(
             jwt,
             jwtType,
             UUID.fromString(contentId)
           )
-        } yield Response.json(res.asJson.noSpaces)).catchAll(_.toResponse)
+        } yield Response.json(res.asJson.noSpaces))
+          .orElseFail(JsonDecodingError(new Throwable("error decoding")))
+          .catchAll(_.toResponse)
     }
 }
 

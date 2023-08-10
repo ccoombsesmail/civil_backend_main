@@ -10,6 +10,7 @@ import civil.models.{
 }
 import com.typesafe.config.ConfigFactory
 import io.getquill.context.ZioJdbc.DataSourceLayer
+import io.getquill.jdbczio.Quill
 import io.getquill.{
   EntityQuery,
   PostgresZioJdbcContext,
@@ -43,22 +44,22 @@ object QuillContext extends PostgresZioJdbcContext(SnakeCase) with QuillCodecs {
             )
             .asJava
         )
-      } yield DataSourceLayer.fromConfig(config).orDie
+      } yield Quill.DataSource.fromConfig(config).orDie
     }.flatten
 
   import io.getquill.MappedEncoding
 
   implicit val appreciationActionEncoder: MappedEncoding[LikeAction, String] =
     MappedEncoding {
-      case LikedState => "Like"
+      case LikedState    => "Like"
       case DislikedState => "Dislike"
-      case NeutralState => "Neutral"
+      case NeutralState  => "Neutral"
 
     }
 
   implicit val appreciationActionDecoder: MappedEncoding[String, LikeAction] =
     MappedEncoding {
-      case "Like" => LikedState
+      case "Like"    => LikedState
       case "Dislike" => DislikedState
       case "Neutral" => NeutralState
     }

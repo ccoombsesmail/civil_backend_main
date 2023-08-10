@@ -29,10 +29,10 @@ final case class DiscussionFollowsController(
           discussionIdParam <- parseQuery(req, "followedDiscussionId")
           spaceIdStr <- ZIO
             .fromOption(discussionIdParam.headOption)
-            .mapError(e => JsonDecodingError(e.toString))
+            .orElseFail(JsonDecodingError(new Throwable("error decoding")))
           discussionId <- DiscussionId
             .fromString(spaceIdStr)
-            .mapError(e => JsonDecodingError(e.toString))
+            .mapError(e => JsonDecodingError(e))
           authData <- extractJwtData(req)
           (jwt, jwtType) = authData
           _ <- discussionFollowsService.deleteDiscussionFollow(

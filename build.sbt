@@ -6,6 +6,9 @@ val akkaHttpCirceVersion = "1.39.2"
 val zioVersion = "2.0.8"
 val zioConfigVersion = "3.0.7"
 val ZIOHttpVersion = "0.0.5"
+val zioMetricsConnectorsVersion = "2.0.0-RC6" // metrics library for ZIO
+val zioLoggingVersion = "2.0.0-RC10" // logging library for ZIO
+val slf4jVersion = "1.7.36" // logging framework
 
 ThisBuild / scalaVersion := "2.13.8"
 
@@ -41,26 +44,22 @@ inThisBuild(
   List(
     version := "0.2.0",
     organization := "ccoombsesmail",
-//    dependencyOverrides += "org.scala-lang" % "scala-collection-compat" % "2.13.6",
+    //    dependencyOverrides += "org.scala-lang" % "scala-collection-compat" % "2.13.6",
     libraryDependencies ++= Seq(
       "dev.zio" %% "zio" % zioVersion,
-//      "dev.zio" %% "zio-config" % zioConfigVersion,
-//      "dev.zio" %% "zio-config-magnolia" % zioConfigVersion,
-//      "dev.zio" %% "zio-config-typesafe" % zioConfigVersion,
-//      "dev.zio" %% "zio-streams" % zioVersion,
-      "dev.zio" %% "zio-logging" % "2.1.13",
+      "dev.zio" %% "zio-metrics-connectors-datadog" % "2.1.0", // DataDog client
+      "dev.zio" %% "zio-metrics-connectors" % zioMetricsConnectorsVersion,
+      //      "dev.zio" %% "zio-logging" % "2.1.13",
+      "dev.zio" %% "zio-logging-slf4j" % zioLoggingVersion,
       "dev.zio" %% "zio-kafka" % "2.1.3",
       "dev.zio" %% "zio-json" % "0.4.2",
       "dev.zio" %% "zio-http" % ZIOHttpVersion,
-      "org.postgresql" % "postgresql" % "42.5.4"
+      "org.postgresql" % "postgresql" % "42.5.4",
+      "org.slf4j" % "slf4j-api" % slf4jVersion,
+      "org.slf4j" % "slf4j-simple" % slf4jVersion
     )
   )
 )
-
-// lazy val root = project.in(file("."))
-
-// lazy val config = project
-//scalatsUnionWithLiteral
 
 lazy val root = project
   .in(file("."))

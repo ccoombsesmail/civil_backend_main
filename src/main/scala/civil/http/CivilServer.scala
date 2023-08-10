@@ -67,6 +67,8 @@ case class CivilServer(
       _ <- serve {
         (allRoutes @@ corsMiddleware @@ HttpAppMiddleware.debug @@ HttpAppMiddleware.beautifyErrors).withDefaultErrorResponse
       }
+      _ <- ZIO.logInfo("heheehehehasdfasdfasdf")
+
     } yield ()
 
   }

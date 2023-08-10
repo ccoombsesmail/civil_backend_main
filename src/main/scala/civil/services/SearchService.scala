@@ -2,7 +2,7 @@ package civil.services
 
 import cats.implicits.catsSyntaxOptionId
 import civil.errors.AppError
-import civil.errors.AppError.GeneralError
+import civil.errors.AppError.InternalServerError
 import civil.models._
 import civil.repositories.comments.CommentsRepository
 import civil.repositories.discussions.DiscussionRepository
@@ -95,7 +95,9 @@ case class SearchServiceLive(
           .take(5)
     }
     for {
-      res <- run(q).mapError(e => GeneralError(e.getMessage)).provideEnvironment(ZEnvironment(dataSource))
+      res <- run(q)
+        .mapError(InternalServerError)
+        .provideEnvironment(ZEnvironment(dataSource))
     } yield res.map {
       case ((id, textContent, createdByUserId, spaceId, discussionId), u) =>
         (spaceId, discussionId) match {
@@ -130,16 +132,17 @@ case class SearchServiceLive(
 
     for {
       res <-
-          run(
-            query[Users]
-              .filter(u =>
-                (u.username like lift(filter)) || (u.tag.getOrNull like lift(
-                  filter
-                ))
-              )
-              .map(u => (u.userId, u.tag, u.bio, u.username, u.iconSrc))
+        run(
+          query[Users]
+            .filter(u =>
+              (u.username like lift(filter)) || (u.tag.getOrNull like lift(
+                filter
+              ))
+            )
+            .map(u => (u.userId, u.tag, u.bio, u.username, u.iconSrc))
         )
-        .mapError(e => GeneralError(e.getMessage)).provideEnvironment(ZEnvironment(dataSource))
+          .mapError(InternalServerError)
+          .provideEnvironment(ZEnvironment(dataSource))
       users = res.map { case (userId, tag, bio, username, iconSrc) =>
         User(userId, iconSrc, tag, username, bio)
       }
@@ -149,7 +152,10 @@ case class SearchServiceLive(
 
 object SearchServiceLive {
   val layer: URLayer[
-    SpacesRepository with DiscussionRepository with CommentsRepository with DataSource,
+    SpacesRepository
+      with DiscussionRepository
+      with CommentsRepository
+      with DataSource,
     SearchService
   ] = ZLayer.fromFunction(SearchServiceLive.apply _)
 }

@@ -1,7 +1,7 @@
 package civil.repositories.comments
 
 import civil.errors.AppError
-import civil.errors.AppError.InternalServerError
+import civil.errors.AppError.{DatabaseError, InternalServerError}
 import civil.models.{CommentCivility, Comments, TribunalComments, Users}
 import civil.models._
 import civil.services.KafkaProducerServiceLive
@@ -16,6 +16,7 @@ trait CommentCivilityRepository {
       givingUserUsername: String,
       civilityData: UpdateCommentCivility
   ): ZIO[Any, AppError, (CivilityGivenResponse, Comments)]
+
   def addOrRemoveTribunalCommentCivility(
       givingUserId: String,
       givingUserUsername: String,
@@ -41,6 +42,7 @@ object CommentCivilityRepository {
         civilityData
       )
     )
+
   def addOrRemoveTribunalCommentCivility(
       givingUserId: String,
       givingUserUsername: String,
@@ -59,6 +61,7 @@ object CommentCivilityRepository {
 case class CommentCivilityRepositoryLive(dataSource: DataSource)
     extends CommentCivilityRepository {
   val kafka = new KafkaProducerServiceLive()
+
   import civil.repositories.QuillContext._
 
   private def addCivility(
@@ -122,7 +125,7 @@ case class CommentCivilityRepositoryLive(dataSource: DataSource)
         e
       })
     } yield civilityGivenRes)
-      .mapError(e => InternalServerError(e.toString))
+      .mapError(DatabaseError(_))
       .provideEnvironment(ZEnvironment(dataSource))
   }
 
@@ -138,6 +141,13 @@ case class CommentCivilityRepositoryLive(dataSource: DataSource)
       )
       commentData <- ZIO
         .fromOption(comment.headOption)
+        .orElseFail(
+          DatabaseError(
+            new Throwable(
+              "Service: CommentsCivilityRepo -> addOrRemoveCommentCivility - Could not find comment"
+            )
+          )
+        )
 
       civilityGiven <- addCivility(
         commentData.rootId,
@@ -146,7 +156,7 @@ case class CommentCivilityRepositoryLive(dataSource: DataSource)
         civilityData
       )
     } yield (civilityGiven, commentData))
-      .mapError(e => InternalServerError(e.toString))
+      .mapError(DatabaseError(_))
       .provideEnvironment(ZEnvironment(dataSource))
 
   }
@@ -175,6 +185,13 @@ case class CommentCivilityRepositoryLive(dataSource: DataSource)
       )
       commentData <- ZIO
         .fromOption(comment.headOption)
+        .orElseFail(
+          DatabaseError(
+            new Throwable(
+              "Service: CommentsCivilityRepo -> addOrRemoveTribunalCommentCivility - Could not find comment"
+            )
+          )
+        )
 
       civilityGiven <- addCivility(
         commentData.rootId,
@@ -183,7 +200,7 @@ case class CommentCivilityRepositoryLive(dataSource: DataSource)
         civilityData
       )
     } yield civilityGiven)
-      .mapError(e => InternalServerError(e.toString))
+      .mapError(DatabaseError(_))
       .provideEnvironment(ZEnvironment(dataSource))
   }
 

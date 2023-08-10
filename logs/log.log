@@ -1,0 +1,9 @@
+2023-08-04 03:24:03,800 INFO [ZScheduler-Worker-5] c.z.h.HikariDataSource [HikariDataSource.java:80] HikariPool-1 - Starting...
+2023-08-04 03:24:03,978 INFO [ZScheduler-Worker-5] c.z.h.HikariDataSource [HikariDataSource.java:82] HikariPool-1 - Start completed.
+2023-08-04 11:27:23,632 WARN [HikariPool-1 housekeeper] c.z.h.p.HikariPool [HikariPool.java:787] HikariPool-1 - Thread starvation or clock leap detected (housekeeper delta=7h32m49s160ms943µs300ns).
+2023-08-04 21:32:34,330 WARN [HikariPool-1 housekeeper] c.z.h.p.HikariPool [HikariPool.java:787] HikariPool-1 - Thread starvation or clock leap detected (housekeeper delta=9h34m9s89ms532µs400ns).
+2023-08-04 23:57:33,919 WARN [HikariPool-1 housekeeper] c.z.h.p.HikariPool [HikariPool.java:787] HikariPool-1 - Thread starvation or clock leap detected (housekeeper delta=1h44m29s105ms826µs500ns).
+2023-08-05 03:38:47,367 INFO [ZScheduler-Worker-10] c.z.h.HikariDataSource [HikariDataSource.java:80] HikariPool-1 - Starting...
+2023-08-05 03:38:47,516 INFO [ZScheduler-Worker-10] c.z.h.HikariDataSource [HikariDataSource.java:82] HikariPool-1 - Start completed.
+2023-08-05 03:40:12,161 INFO [zio-default-blocking-1] c.z.h.HikariDataSource [HikariDataSource.java:350] HikariPool-1 - Shutdown initiated...
+2023-08-05 03:40:12,186 INFO [zio-default-blocking-1] c.z.h.HikariDataSource [HikariDataSource.java:352] HikariPool-1 - Shutdown completed.

@@ -23,7 +23,7 @@ final case class UsersController(usersService: UsersService) {
           userIdParams <- parseQuery(req, "userId")
           userId <- ZIO
             .fromOption(userIdParams.headOption)
-            .mapError(e => JsonDecodingError(e.toString))
+            .orElseFail(JsonDecodingError(new Throwable("No user Id")))
           authData <- extractJwtData(req)
           (jwt, jwtType) = authData
           user <- usersService.getUser(
@@ -78,7 +78,9 @@ final case class UsersController(usersService: UsersService) {
           tagParams <- parseQuery(req, "tag")
           tag <- ZIO
             .fromOption(tagParams.headOption)
-            .mapError(e => JsonDecodingError(e.toString))
+            .orElseFail(
+              JsonDecodingError(new Throwable("Can't get tag from query param"))
+            )
           res <- usersService.checkIfTagExists(tag)
         } yield Response.json(res.toJson)).catchAll(_.toResponse)
     }

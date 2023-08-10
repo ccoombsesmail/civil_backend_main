@@ -1,7 +1,7 @@
 package civil.repositories
 
 import civil.errors.AppError
-import civil.errors.AppError.InternalServerError
+import civil.errors.AppError.{DatabaseError, InternalServerError}
 import civil.models.{TribunalVote, TribunalVotes}
 import io.scalaland.chimney.dsl.TransformerOps
 import zio.{URLayer, ZEnvironment, ZIO, ZLayer}
@@ -33,7 +33,7 @@ case class TribunalVotesRepositoryLive(dataSource: DataSource)
     for {
 //      juryMember <- ZIO.effect(run(
 //        query[TopicTribunalJury].filter(ttj => ttj.userId == lift(tribunalVote.userId))
-//      )).mapError(e => InternalServerError(e.toString))
+//      )).mapError(DatabaseError(_))
 //      _ <- ZIO.fail(
 //        Unauthorized("Must Be Selected As A Jury Member To Vote")
 //      ).unless(juryMember.nonEmpty)
@@ -45,7 +45,7 @@ case class TribunalVotesRepositoryLive(dataSource: DataSource)
             (t, _) => t.voteToStrike -> lift(tribunalVote.voteToStrike)
           )
           .returning(r => r)
-      ).mapError(e => InternalServerError(e.toString))
+      ).mapError(DatabaseError(_))
         .provideEnvironment(ZEnvironment(dataSource))
     } yield vote.into[TribunalVote].transform
   }

@@ -1,7 +1,7 @@
 package civil.repositories
 
 import civil.errors.AppError
-import civil.errors.AppError.InternalServerError
+import civil.errors.AppError.{DatabaseError}
 import civil.models.{ReportInfo, ReportTimings, Reports}
 import civil.models._
 import civil.models.NotifcationEvents._
@@ -15,40 +15,44 @@ import javax.sql.DataSource
 
 trait ReportsRepository {
   def addReport(report: Reports): ZIO[Any, AppError, Unit]
+
   def getReport(
-      contentId: UUID,
-      userId: String
-  ): ZIO[Any, AppError, ReportInfo]
+                 contentId: UUID,
+                 userId: String
+               ): ZIO[Any, AppError, ReportInfo]
 
 }
 
 object ReportsRepository {
   def addReport(
-      report: Reports
-  ): ZIO[ReportsRepository, AppError, Unit] =
+                 report: Reports
+               ): ZIO[ReportsRepository, AppError, Unit] =
     ZIO.serviceWithZIO[ReportsRepository](
       _.addReport(report)
     )
 
   def getReport(
-      contentId: UUID,
-      userId: String
-  ): ZIO[ReportsRepository, AppError, ReportInfo] =
+                 contentId: UUID,
+                 userId: String
+               ): ZIO[ReportsRepository, AppError, ReportInfo] =
     ZIO.serviceWithZIO[ReportsRepository](
       _.getReport(contentId, userId)
     )
 }
 
 case class ReportsRepositoryLive(dataSource: DataSource)
-    extends ReportsRepository {
+  extends ReportsRepository {
   val runtime = zio.Runtime.default
+
   import civil.repositories.QuillContext._
+
   val kafka = new KafkaProducerServiceLive()
 
   private val REPORT_THRESHOLD = 2
+
   override def addReport(
-      report: Reports
-  ): ZIO[Any, AppError, Unit] = {
+                          report: Reports
+                        ): ZIO[Any, AppError, Unit] = {
     (for {
       space <- run(
         query[Spaces].filter(t => t.id == lift(report.contentId))
@@ -62,9 +66,7 @@ case class ReportsRepositoryLive(dataSource: DataSource)
       allReportsBefore <- run(
         query[Reports].filter(r => r.contentId == lift(report.contentId))
       )
-        .mapError(e => {
-          InternalServerError(e.getMessage)
-        })
+        .mapError(DatabaseError(_))
       contentType =
         if (spaceOpt.isDefined) "SPACE"
         else if (discussionOpt.isDefined) "DISCUSSION"
@@ -73,17 +75,15 @@ case class ReportsRepositoryLive(dataSource: DataSource)
       _ <- run(
         query[Reports].insertValue(lift(reportWithContentType))
       )
-        .mapError(e => {
-          InternalServerError(
-            s"Sorry! There was an issue submitting the Report \n ${e.getMessage}"
+        .mapError(e =>
+          DatabaseError(
+            new Throwable(s"Sorry! There was an issue submitting the Report \n ${e.getMessage}")
           )
-        })
+        )
       allReports <- run(
         query[Reports].filter(r => r.contentId == lift(report.contentId))
       )
-        .mapError(e => {
-          InternalServerError(e.getMessage)
-        })
+        .mapError(DatabaseError(_))
       _ <- ZIO.logInfo(
         s"All Report Before: ${allReportsBefore.length}. \n All Reports After: ${allReports.length}"
       )
@@ -102,22 +102,22 @@ case class ReportsRepositoryLive(dataSource: DataSource)
             topic = "reports"
           )
         }
-        .mapError(e => InternalServerError(e.toString))
+        .mapError(DatabaseError(_))
     } yield ())
-      .mapError(e => InternalServerError(e.toString))
+      .mapError(DatabaseError(_))
       .provideEnvironment(ZEnvironment(dataSource))
 
   }
 
   override def getReport(
-      contentId: UUID,
-      userId: String
-  ): ZIO[Any, AppError, ReportInfo] = {
+                          contentId: UUID,
+                          userId: String
+                        ): ZIO[Any, AppError, ReportInfo] = {
     (for {
       votes <- run(
         query[TribunalVotes].filter(tv => tv.contentId == lift(contentId))
       )
-        .mapError(e => InternalServerError(e.toString))
+        .mapError(DatabaseError(_))
         .provideEnvironment(ZEnvironment(dataSource))
 
       numVotesToStrike = votes.count(tv => tv.voteToStrike.contains(true))
@@ -135,15 +135,16 @@ case class ReportsRepositoryLive(dataSource: DataSource)
       timings <- run(
         query[ReportTimings].filter(rt => rt.contentId == lift(contentId))
       )
-        .mapError(e => InternalServerError(e.toString))
+        .mapError(DatabaseError(_))
         .provideEnvironment(ZEnvironment(dataSource))
       timing <- ZIO
         .fromOption(timings.headOption)
-        .mapError(e => InternalServerError(e.toString))
+        .orElseFail(DatabaseError(new Throwable("sdf")))
+
       reports <- run(
         query[Reports].filter(tr => tr.contentId == lift(contentId))
       )
-        .mapError(e => InternalServerError(e.toString))
+        .mapError(DatabaseError(_))
         .provideEnvironment(ZEnvironment(dataSource))
       reportsMap = reports.foldLeft(Map[String, Int]()) { (m, t) =>
         val m1 = if (t.toxic.isDefined) {
@@ -173,7 +174,7 @@ case class ReportsRepositoryLive(dataSource: DataSource)
           .map { case (commentType, comments) =>
             (commentType, comments.size)
           }
-      ).mapError(e => InternalServerError(e.toString))
+      ).mapError(DatabaseError(_))
       commentTypeMap = groupedTComments.toMap
       numDefendantComments = commentTypeMap.getOrElse(Defendant, 0L)
       numJuryComments = commentTypeMap.getOrElse(Jury, 0L)

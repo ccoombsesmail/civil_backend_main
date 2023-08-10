@@ -1,7 +1,7 @@
 package civil.services
 
 import civil.errors.AppError
-import civil.errors.AppError.InternalServerError
+import civil.errors.AppError.{DatabaseError, InternalServerError}
 import civil.models.{
   CommentWithDepthAndUser,
   Comments,
@@ -34,12 +34,14 @@ object AlgorithmScoresCalculationService {
 
 case class AlgorithmScoresCalculationServiceLive(dataSource: DataSource)
     extends AlgorithmScoresCalculationService {
+
   import civil.repositories.QuillContext._
 
   private final val SMALL_OFFSET = 1
+
   def calculatePopularityScore(
       targetDiscussionId: UUID
-  ): ZIO[Any, InternalServerError, Unit] = {
+  ) = {
 
     case class DiscussionCommentCount(
         discussionId: UUID,
@@ -70,7 +72,10 @@ case class AlgorithmScoresCalculationServiceLive(dataSource: DataSource)
         .toEpochSecond - comments.createdAt.toEpochSecond))
 
       commentNumber = if (comments.comments == 0) 1 else comments.comments
-      popScore = Math.pow(ratio, 4) * timeBetween * Math.pow(commentNumber, 4)
+      popScore = Math.pow(ratio, 4) * timeBetween * Math.pow(
+        commentNumber.toDouble,
+        4
+      )
       _ <- ZIO.logInfo(s"Popularity Score $popScore ")
       _ <- run(
         query[Discussions]
@@ -78,7 +83,7 @@ case class AlgorithmScoresCalculationServiceLive(dataSource: DataSource)
           .update(d => d.popularityScore -> lift(popScore))
       )
     } yield ())
-      .mapError(e => InternalServerError(e.toString))
+      .orElseFail(InternalServerError(new Throwable("Calc error")))
       .provideEnvironment(ZEnvironment(dataSource))
 
   }

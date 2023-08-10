@@ -1,6 +1,6 @@
 package civil.repositories.discussions
 
-import civil.errors.AppError.InternalServerError
+import civil.errors.AppError.{DatabaseError, InternalServerError}
 import civil.errors.AppError
 import civil.models.actions.{
   DislikedState,
@@ -34,6 +34,7 @@ object DiscussionLikesRepository {
 
 case class DiscussionLikesRepositoryLive(dataSource: DataSource)
     extends DiscussionLikesRepository {
+
   import civil.repositories.QuillContext._
 
   override def addRemoveDiscussionLikeOrDislike(
@@ -47,7 +48,7 @@ case class DiscussionLikesRepositoryLive(dataSource: DataSource)
             discussionLikeDislikeData.id
           ) && tl.userId == lift(userId)
         )
-      ).mapError(e => InternalServerError(e.toString))
+      ).mapError(DatabaseError(_))
       newLikeState = discussionLikeDislikeData.likeAction
       prevLikeState = previousLikeState.headOption
         .getOrElse(
@@ -67,9 +68,9 @@ case class DiscussionLikesRepositoryLive(dataSource: DataSource)
       }
       _ <- ZIO
         .when(likeValueToAdd == -100)(
-          ZIO.fail(InternalServerError("Invalid like value"))
+          ZIO.fail(DatabaseError(new Throwable("Invalid like value")))
         )
-        .mapError(e => InternalServerError(e.toString))
+        .mapError(DatabaseError(_))
       discussion <- transaction {
         for {
           _ <- run(
@@ -97,7 +98,7 @@ case class DiscussionLikesRepositoryLive(dataSource: DataSource)
               .returning(t => t)
           )
         } yield updatedDiscussion
-      }.mapError(e => InternalServerError(e.toString))
+      }.mapError(DatabaseError(_))
     } yield (
       DiscussionLiked(
         discussion.id,

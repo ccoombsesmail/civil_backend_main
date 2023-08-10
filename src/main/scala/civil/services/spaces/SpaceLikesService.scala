@@ -1,6 +1,6 @@
 package civil.services.spaces
 
-import civil.errors.AppError.InternalServerError
+import civil.errors.AppError.{DatabaseError, InternalServerError}
 import civil.errors.AppError
 import civil.models._
 import civil.models.NotifcationEvents.{GivingUserNotificationData, SpaceLike}
@@ -49,13 +49,13 @@ case class SpaceLikesServiceLive(
     for {
       userData <- authenticationService
         .extractUserData(jwt, jwtType)
-        .mapError(e => InternalServerError(e.toString))
+        .mapError(DatabaseError(_))
       data <- spaceLikesRep
         .addRemoveSpaceLikeOrDislike(
           spaceLikeDislikeData,
           spaceLikeDislikeData.createdByUserId.getOrElse(userData.userId)
         )
-        .mapError(e => InternalServerError(e.toString))
+        .mapError(DatabaseError(_))
       (updatedLikeData, space) = data
       _ <- ZIO
         .when(updatedLikeData.likeState == LikedState)(
@@ -75,9 +75,7 @@ case class SpaceLikesServiceLive(
             SpaceLike.spaceLikeSerde
           )
         )
-        .mapError(e => {
-          InternalServerError(e.toString)
-        })
+        .mapError(DatabaseError)
         .forkDaemon
     } yield updatedLikeData
   }

@@ -1,7 +1,7 @@
 package civil.repositories.discussions
 
 import civil.errors.AppError
-import civil.errors.AppError.InternalServerError
+import civil.errors.AppError.{DatabaseError, InternalServerError}
 import civil.models._
 import zio._
 
@@ -11,6 +11,7 @@ trait DiscussionFollowsRepository {
   def insertDiscussionFollow(
       follow: DiscussionFollows
   ): ZIO[Any, AppError, Unit]
+
   def deleteDiscussionFollow(
       follow: DiscussionFollows
   ): ZIO[Any, AppError, Unit]
@@ -44,7 +45,7 @@ case class DiscussionFollowsRepositoryLive(dataSource: DataSource)
     _ <- run(query[DiscussionFollows].insertValue(lift(follow)))
 
   } yield ())
-    .mapError(e => InternalServerError(e.toString))
+    .mapError(DatabaseError(_))
     .provideEnvironment(ZEnvironment(dataSource))
 
   override def deleteDiscussionFollow(
@@ -62,7 +63,7 @@ case class DiscussionFollowsRepositoryLive(dataSource: DataSource)
       )
 
   } yield ())
-    .mapError(e => InternalServerError(e.toString))
+    .mapError(DatabaseError(_))
     .provideEnvironment(ZEnvironment(dataSource))
 }
 

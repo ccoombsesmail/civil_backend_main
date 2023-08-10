@@ -28,6 +28,9 @@ import org.json4s._
 import org.json4s.jackson.JsonMethods
 import org.json4s.jackson.Serialization
 import civil.config.Config
+import civil.errors.AppError
+import civil.errors.AppError.Unauthorized
+import io.circe
 import io.circe.generic.auto._
 
 import java.util.UUID
@@ -192,7 +195,9 @@ object OutgoingHttp {
     implicit val codec: JsonCodec[AuthRes] = DeriveJsonCodec.gen[AuthRes]
   }
 
-  def authenticateCivicTokenHeader(auth: String) = {
+  def authenticateCivicTokenHeader(auth: String): ZIO[Any, AppError, Response[
+    Either[ResponseException[String, circe.Error], AuthRes]
+  ]] = {
     for {
       res <- Client.request(
         s"${Config().getString("civil.misc_service")}/internal/civic-auth",
@@ -218,7 +223,7 @@ object OutgoingHttp {
         res
       }
     }
-    result
+    result.mapError(Unauthorized)
 
   }
 

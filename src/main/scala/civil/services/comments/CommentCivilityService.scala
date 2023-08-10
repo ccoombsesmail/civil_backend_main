@@ -1,8 +1,11 @@
 package civil.services.comments
 
 import civil.errors.AppError
-import civil.errors.AppError.GeneralError
-import civil.models.NotifcationEvents.{CommentCivilityGiven, GivingUserNotificationData}
+import civil.errors.AppError.InternalServerError
+import civil.models.NotifcationEvents.{
+  CommentCivilityGiven,
+  GivingUserNotificationData
+}
 import civil.models._
 import civil.repositories.comments.CommentCivilityRepository
 import civil.services.{AuthenticationService, KafkaProducerServiceLive}
@@ -70,25 +73,26 @@ case class CommentCivilityServiceLive(
           givingUserUsername = userData.username,
           civilityData
         )
-        .mapError(e => GeneralError(e.toString))
+        .mapError(InternalServerError)
       (civilityGiven, comment) = res
-      _ <- kafka.publish(
-            CommentCivilityGiven(
-              eventType = "CommentCivilityGiven",
-              value = civilityData.value,
-              commentId = civilityData.commentId,
-              receivingUserId = civilityData.receivingUserId,
-              givingUserData = GivingUserNotificationData(
-                givingUserId = userData.userId,
-                givingUserUsername = userData.username,
-                givingUserTag = Some(userData.userCivilTag),
-                givingUserIconSrc = Some(userData.userIconSrc)
-              ),
-              spaceId = comment.spaceId,
-              subtopicId = comment.discussionId
+      _ <- kafka
+        .publish(
+          CommentCivilityGiven(
+            eventType = "CommentCivilityGiven",
+            value = civilityData.value,
+            commentId = civilityData.commentId,
+            receivingUserId = civilityData.receivingUserId,
+            givingUserData = GivingUserNotificationData(
+              givingUserId = userData.userId,
+              givingUserUsername = userData.username,
+              givingUserTag = Some(userData.userCivilTag),
+              givingUserIconSrc = Some(userData.userIconSrc)
             ),
-            civilityData.receivingUserId,
-            CommentCivilityGiven.commentCivilityGivenSerde
+            spaceId = comment.spaceId,
+            subtopicId = comment.discussionId
+          ),
+          civilityData.receivingUserId,
+          CommentCivilityGiven.commentCivilityGivenSerde
         )
         .forkDaemon
     } yield civilityGiven
@@ -109,7 +113,7 @@ case class CommentCivilityServiceLive(
           givingUserUsername = userData.username,
           civilityData
         )
-        .mapError(e => GeneralError(e.toString))
+        .mapError(InternalServerError)
     } yield res
   }
 
@@ -117,6 +121,9 @@ case class CommentCivilityServiceLive(
 
 object CommentCivilityServiceLive {
 
-  val layer: URLayer[CommentCivilityRepository with AuthenticationService , CommentCivilityService] = ZLayer.fromFunction(CommentCivilityServiceLive.apply _)
+  val layer: URLayer[
+    CommentCivilityRepository with AuthenticationService,
+    CommentCivilityService
+  ] = ZLayer.fromFunction(CommentCivilityServiceLive.apply _)
 
 }

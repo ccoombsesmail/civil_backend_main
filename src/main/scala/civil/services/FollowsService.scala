@@ -1,7 +1,7 @@
 package civil.services
 
 import civil.errors.AppError
-import civil.errors.AppError.{InternalServerError, GeneralError}
+import civil.errors.AppError.InternalServerError
 
 import civil.models.NotifcationEvents.{GivingUserNotificationData, NewFollower}
 import civil.models.{BadRequest, FollowedUserId, Follows, OutgoingUser}
@@ -53,8 +53,10 @@ object FollowsService {
     ZIO.serviceWithZIO[FollowsService](_.getAllFollowed(userId))
 }
 
-case class FollowsServiceLive(followsRepository: FollowsRepository, authenticationService: AuthenticationService)
-    extends FollowsService {
+case class FollowsServiceLive(
+    followsRepository: FollowsRepository,
+    authenticationService: AuthenticationService
+) extends FollowsService {
   val kafka = new KafkaProducerServiceLive()
 
   override def insertFollow(
@@ -66,10 +68,13 @@ case class FollowsServiceLive(followsRepository: FollowsRepository, authenticati
     for {
       userData <- authenticationService.extractUserData(jwt, jwtType)
       _ <- ZIO
-        .fail(GeneralError("User can't follow self"))
+        .fail(InternalServerError(new Throwable("User can't follow self")))
         .when(userData.userId == followedUserId.followedUserId)
       outgoingUser <- followsRepository.insertFollow(
-        Follows(userId = userData.userId, followedUserId = followedUserId.followedUserId)
+        Follows(
+          userId = userData.userId,
+          followedUserId = followedUserId.followedUserId
+        )
       )
       _ <- ZIO
         .attempt(
@@ -99,10 +104,13 @@ case class FollowsServiceLive(followsRepository: FollowsRepository, authenticati
     for {
       userData <- authenticationService.extractUserData(jwt, jwtType)
       _ <- ZIO
-        .fail(GeneralError("User can't unfollow self"))
+        .fail(InternalServerError(new Throwable("User can't unfollow self")))
         .when(userData.userId == followedUserId.followedUserId)
       outgoingUser <- followsRepository.deleteFollow(
-        Follows(userId = userData.userId, followedUserId = followedUserId.followedUserId)
+        Follows(
+          userId = userData.userId,
+          followedUserId = followedUserId.followedUserId
+        )
       )
     } yield outgoingUser
   }
@@ -116,5 +124,7 @@ case class FollowsServiceLive(followsRepository: FollowsRepository, authenticati
 }
 
 object FollowsServiceLive {
-  val layer: URLayer[FollowsRepository with AuthenticationService, FollowsService] = ZLayer.fromFunction(FollowsServiceLive.apply _)
+  val layer
+      : URLayer[FollowsRepository with AuthenticationService, FollowsService] =
+    ZLayer.fromFunction(FollowsServiceLive.apply _)
 }
