@@ -1,11 +1,14 @@
 package civil.http
 
 import civil.controllers._
+import civil.errors.AppError.DatabaseError
+import civil.repositories.DiscussionQueries.getAllUserDiscussions
 import zio.http.{HttpAppMiddleware, _}
 import zio.http.Server._
 import zio._
 import zio.http.middleware.Cors.CorsConfig
 import zio.http.model.Method.{DELETE, GET, OPTIONS, PATCH, POST, PUT}
+import civil.repositories.QuillContext._
 
 case class CivilServer(
     topicLikesController: SpaceLikesController,
@@ -36,22 +39,22 @@ case class CivilServer(
       recommendationsController.routes ++ pollVotesController.routes ++ reportsController.routes ++ searchController.routes ++ tribunalCommentsController.routes ++ tribunalVotesController.routes ++ topicFollowsController.routes ++ discussionLikesController.routes
   }
 
-//  private val loggingMiddleware: HttpMiddleware[Any, Nothing] =
-//    new HttpMiddleware[Any, Nothing] {
-//      override def apply[R1 <: Any, E1 >: Nothing](
-//          http: Http[R1, E1, Request, Response]
-//      ): Http[R1, E1, Request, Response] =
-//        Http.fromOptionFunction[Request] { request =>
-//          Random.nextUUID.flatMap { requestId =>
-//            ZIO.logAnnotate("REQUEST-ID", requestId.toString) {
-//              for {
-//                _ <- ZIO.logInfo(s"Request: $request")
-//                result <- http(request)
-//              } yield result
-//            }
-//          }
-//        }
-//    }
+  //  private val loggingMiddleware: HttpMiddleware[Any, Nothing] =
+  //    new HttpMiddleware[Any, Nothing] {
+  //      override def apply[R1 <: Any, E1 >: Nothing](
+  //          http: Http[R1, E1, Request, Response]
+  //      ): Http[R1, E1, Request, Response] =
+  //        Http.fromOptionFunction[Request] { request =>
+  //          Random.nextUUID.flatMap { requestId =>
+  //            ZIO.logAnnotate("REQUEST-ID", requestId.toString) {
+  //              for {
+  //                _ <- ZIO.logInfo(s"Request: $request")
+  //                result <- http(request)
+  //              } yield result
+  //            }
+  //          }
+  //        }
+  //    }
 
   def start = {
     val corsMiddleware = HttpAppMiddleware.cors(
@@ -63,12 +66,34 @@ case class CivilServer(
     )
     HttpAppMiddleware.beautifyErrors
 
+//    val e = (for {
+//      res <- run(
+//        getAllUserDiscussions(
+//          lift("9UqP6nGyb6GYNT8PTmjMWb2FpqjLqAk6FXnNxctRFsY8"),
+//          lift(0),
+//          lift("9UqP6nGyb6GYNT8PTmjMWb2FpqjLqAk6FXnNxctRFsY8")
+//        )
+//      )
+//    } yield res).mapError(DatabaseError).provide(dataSourceLayer)
+//
+//    val runtime = Runtime.default
+//
+//    Unsafe.unsafe { implicit unsafe =>
+//      try {
+//        val result = runtime.unsafe.run(e)
+//        println(result)
+//      } catch {
+//        case e: Throwable =>
+//          println(s"Caught exception: ${e.getMessage}")
+//          e.printStackTrace() // This will print the stack trace for more detailed debugging
+//      }
+//    }
+
     for {
+      _ <- ZIO.logInfo("Starting Server")
       _ <- serve {
         (allRoutes @@ corsMiddleware @@ HttpAppMiddleware.debug @@ HttpAppMiddleware.beautifyErrors).withDefaultErrorResponse
       }
-      _ <- ZIO.logInfo("heheehehehasdfasdfasdf")
-
     } yield ()
 
   }

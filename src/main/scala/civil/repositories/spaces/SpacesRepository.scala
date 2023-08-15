@@ -7,6 +7,12 @@ import civil.directives.OutgoingHttp
 import civil.models.NotifcationEvents.SpaceMLEvent
 import civil.models.actions.{LikeAction, NeutralState}
 import civil.models.enums.SpaceCategories
+import civil.repositories.QuillContextQueries.{
+  SpacesData,
+  getAllFollowedSpacesQuery,
+  getAllSpacesQuery,
+  getAllUserSpacesQuery
+}
 import civil.repositories.recommendations.RecommendationsRepository
 import civil.services.{KafkaProducerService, KafkaProducerServiceLive}
 import io.scalaland.chimney.dsl._
@@ -56,7 +62,6 @@ case class SpaceRepoHelpers(
       case None =>
         quote {
           query[Spaces]
-            //            .filter(t => liftQuery(spaceIds).contains(t.id))
             .join(query[Users])
             .on(_.createdByUserId == _.userId)
             .leftJoin(query[SpaceFollows])
@@ -87,36 +92,40 @@ case class SpaceRepoHelpers(
   )
 
   def getSpacesWithLikeStatus(
-      requestingUserID: String,
+      requestingUserId: String,
       fromUserId: Option[String] = None,
       skip: Int = 0
   ): ZIO[Any, AppError, List[OutgoingSpace]] =
     (for {
-      likes <- run(query[SpaceLikes].filter(_.userId == lift(requestingUserID)))
-      likesMap = likes.foldLeft(Map[UUID, LikeAction]()) { (m, t) =>
-        m + (t.spaceId -> t.likeState)
+      spacesUsersVodsJoin <- fromUserId match {
+        case Some(value) =>
+          run(
+            getAllUserSpacesQuery(
+              lift(requestingUserId),
+              lift(skip),
+              lift(value)
+            )
+          )
+        case None =>
+          println("getAllSpacesQuery")
+          run(
+            getAllSpacesQuery(lift(requestingUserId), lift(skip))
+          )
       }
-
-      spacesUsersVodsJoin <- run(
-        spacesUsersVodsLinksJoin(fromUserId)
-          .drop(lift(skip))
-          .take(5)
-          .sortBy(_._1.createdAt)(Ord.desc)
-      )
       outgoingSpaces <- ZIO
         .foreachPar(spacesUsersVodsJoin)(row => {
-          val (space, user, spaceFollow) = row
+          println(row.userLikeState)
           ZIO
             .attempt(
-              space
+              row
                 .into[OutgoingSpace]
-                .withFieldConst(_.createdByIconSrc, user.iconSrc.get)
+                .withFieldConst(_.createdByIconSrc, row.iconSrc.get)
                 .withFieldConst(
                   _.likeState,
-                  likesMap.getOrElse(space.id, NeutralState)
+                  row.userLikeState.getOrElse(NeutralState)
                 )
-                .withFieldConst(_.createdByTag, user.tag)
-                .withFieldConst(_.isFollowing, spaceFollow.isDefined)
+                .withFieldConst(_.createdByTag, row.tag)
+                .withFieldConst(_.isFollowing, row.userFollowState)
                 .withFieldComputed(_.editorState, row => row.editorState)
                 .withFieldComputed(
                   _.category,
@@ -153,11 +162,13 @@ trait SpacesRepository {
 
   def getUserSpaces(
       requestingUserId: String,
-      userId: String
+      userId: String,
+      skip: Int
   ): ZIO[Any, AppError, List[OutgoingSpace]]
 
   def getFollowedSpaces(
-      requestingUserId: String
+      requestingUserId: String,
+      skip: Int
   ): ZIO[Any, AppError, List[OutgoingSpace]]
 
   def getSimilarSpaces(
@@ -194,16 +205,20 @@ object SpacesRepository {
 
   def getUserSpaces(
       requestingUserId: String,
-      userId: String
+      userId: String,
+      skip: Int
   ): ZIO[SpacesRepository, AppError, List[OutgoingSpace]] =
     ZIO.serviceWithZIO[SpacesRepository](
-      _.getUserSpaces(requestingUserId, userId)
+      _.getUserSpaces(requestingUserId, userId, skip)
     )
 
   def getFollowedSpaces(
-      requestingUserId: String
+      requestingUserId: String,
+      skip: Int
   ): ZIO[SpacesRepository, AppError, List[OutgoingSpace]] =
-    ZIO.serviceWithZIO[SpacesRepository](_.getFollowedSpaces(requestingUserId))
+    ZIO.serviceWithZIO[SpacesRepository](
+      _.getFollowedSpaces(requestingUserId, skip)
+    )
 
   def getSimilarSpaces(
       spaceId: UUID
@@ -235,8 +250,6 @@ case class SpaceRepositoryLive(
             u.userId == lift(incomingSpace.createdByUserId)
           )
         )
-      _ = println(incomingSpace)
-
       user <- ZIO
         .fromOption(userQuery.headOption)
         .orElseFail(DatabaseError(new Throwable("Can't find user")))
@@ -271,6 +284,8 @@ case class SpaceRepositoryLive(
           .withFieldConst(_.likeState, NeutralState)
           .withFieldConst(_.createdByTag, user.tag)
           .withFieldConst(_.isFollowing, false)
+          .withFieldConst(_.discussionCount, 0)
+          .withFieldConst(_.commentCount, 0)
           .withFieldComputed(
             _.category,
             row => SpaceCategories.withName(row.category)
@@ -323,7 +338,7 @@ case class SpaceRepositoryLive(
               .enableDefaultValues
               .transform
           )
-          .mapError(DatabaseError(_))
+          .mapError(DatabaseError)
       })
     } yield outgoingSpaces.sortWith((t1, t2) =>
       t2.createdAt.isBefore(t1.createdAt)
@@ -377,6 +392,8 @@ case class SpaceRepositoryLive(
           )
           .withFieldConst(_.createdByTag, user.tag)
           .withFieldConst(_.isFollowing, spaceFollow.isDefined)
+          .withFieldConst(_.discussionCount, 0)
+          .withFieldConst(_.commentCount, 0)
           .withFieldComputed(
             _.category,
             row => SpaceCategories.withName(row.category)
@@ -400,46 +417,34 @@ case class SpaceRepositoryLive(
 
   override def getUserSpaces(
       requestingUserId: String,
-      userId: String
+      userId: String,
+      skip: Int
   ): ZIO[Any, AppError, List[OutgoingSpace]] = {
-    getSpacesWithLikeStatus(requestingUserId, Some(userId), 0)
+    getSpacesWithLikeStatus(requestingUserId, Some(userId), skip)
 
   }
 
   override def getFollowedSpaces(
-      requestingUserId: String
+      requestingUserId: String,
+      skip: Int
   ): ZIO[Any, AppError, List[OutgoingSpace]] = {
     (for {
-      likes <- run(query[SpaceLikes].filter(_.userId == lift(requestingUserId)))
-      likesMap = likes.foldLeft(Map[UUID, LikeAction]()) { (m, t) =>
-        m + (t.spaceId -> t.likeState)
-      }
-      spacesUsersVodsJoin <- run(
-        query[Spaces]
-          .join(query[Users])
-          .on(_.createdByUserId == _.userId)
-          .leftJoin(query[SpaceFollows])
-          .on { case ((t, u), sf) => t.id == sf.followedSpaceId }
-          .filter { case ((t, u), sf) =>
-            sf.exists(_.userId == lift(requestingUserId))
-          }
-          .map { case ((t, u), tf) => (t, u, tf) }
-          .sortBy(_._1.createdAt)(Ord.desc)
+      followedSpaces <- run(
+        getAllFollowedSpacesQuery(lift(requestingUserId), lift(skip))
       )
       outgoingSpaces <- ZIO
-        .foreachPar(spacesUsersVodsJoin)(row => {
-          val (space, user, spaceFollow) = row
+        .foreachPar(followedSpaces)(row => {
           ZIO
             .attempt(
-              space
+              row
                 .into[OutgoingSpace]
-                .withFieldConst(_.createdByIconSrc, user.iconSrc.get)
+                .withFieldConst(_.createdByIconSrc, row.iconSrc.get)
                 .withFieldConst(
                   _.likeState,
-                  likesMap.getOrElse(space.id, NeutralState)
+                  row.userLikeState.getOrElse(NeutralState)
                 )
-                .withFieldConst(_.createdByTag, user.tag)
-                .withFieldConst(_.isFollowing, spaceFollow.isDefined)
+                .withFieldConst(_.createdByTag, row.tag)
+                .withFieldConst(_.isFollowing, row.userFollowState)
                 .withFieldComputed(_.editorState, row => row.editorState)
                 .withFieldComputed(
                   _.category,
@@ -447,7 +452,6 @@ case class SpaceRepositoryLive(
                 )
                 .transform
             )
-            .mapError(DatabaseError)
         })
         .withParallelism(10)
 
@@ -493,6 +497,8 @@ case class SpaceRepositoryLive(
               )
               .withFieldConst(_.createdByTag, user.tag)
               .withFieldConst(_.isFollowing, false)
+              .withFieldConst(_.discussionCount, 0)
+              .withFieldConst(_.commentCount, 0)
               .withFieldComputed(
                 _.category,
                 row => SpaceCategories.withName(row.category)

@@ -41,12 +41,14 @@ trait SpacesService {
   def getUserSpaces(
       jwt: String,
       jwtType: String,
-      userId: String
+      userId: String,
+      skip: Int
   ): ZIO[Any, AppError, List[OutgoingSpace]]
 
   def getFollowedSpaces(
       jwt: String,
-      jwtType: String
+      jwtType: String,
+      skip: Int
   ): ZIO[Any, AppError, List[OutgoingSpace]]
 
   def getSimilarSpaces(
@@ -88,15 +90,19 @@ object SpacesService {
   def getUserSpaces(
       jwt: String,
       jwtType: String,
-      userId: String
+      userId: String,
+      skip: Int
   ): ZIO[SpacesService, AppError, List[OutgoingSpace]] =
-    ZIO.serviceWithZIO[SpacesService](_.getUserSpaces(jwt, jwtType, userId))
+    ZIO.serviceWithZIO[SpacesService](
+      _.getUserSpaces(jwt, jwtType, userId, skip)
+    )
 
   def getFollowedSpaces(
       jwt: String,
-      jwtType: String
+      jwtType: String,
+      skip: Int
   ): ZIO[SpacesService, AppError, List[OutgoingSpace]] =
-    ZIO.serviceWithZIO[SpacesService](_.getFollowedSpaces(jwt, jwtType))
+    ZIO.serviceWithZIO[SpacesService](_.getFollowedSpaces(jwt, jwtType, skip))
 
   def getSimilarSpaces(
       jwt: String,
@@ -189,34 +195,35 @@ case class SpacesServiceLive(
       userData <- authService.extractUserData(jwt, jwtType)
       space <- spacesRepository
         .getSpace(id, userData.userId)
-        .tapError(e => {
-          ZIO.logInfo(e.getMessage)
-        })
     } yield space
   }
 
   override def getUserSpaces(
       jwt: String,
       jwtType: String,
-      userId: String
+      userId: String,
+      skip: Int
   ): ZIO[Any, AppError, List[OutgoingSpace]] = {
     for {
       userData <- authService.extractUserData(jwt, jwtType)
       spaces <- spacesRepository.getUserSpaces(
         userData.userId,
-        userId
+        userId,
+        skip
       )
     } yield spaces
   }
 
   override def getFollowedSpaces(
       jwt: String,
-      jwtType: String
+      jwtType: String,
+      skip: Int
   ): ZIO[Any, AppError, List[OutgoingSpace]] = {
     for {
       userData <- authService.extractUserData(jwt, jwtType)
       spaces <- spacesRepository.getFollowedSpaces(
-        userData.userId
+        userData.userId,
+        skip
       )
     } yield spaces
   }

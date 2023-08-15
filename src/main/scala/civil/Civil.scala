@@ -28,6 +28,7 @@ object Civil extends zio.ZIOAppDefault {
   override val run: Task[Unit] = {
     val ONE_MB = 1000000
 
+
     ZIO
       .serviceWithZIO[CivilServer](_.start)
       .provide(

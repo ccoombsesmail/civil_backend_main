@@ -32,7 +32,7 @@ final case class DiscussionsController(discussionsService: DiscussionService) {
           (jwt, jwtType) = authData
           spaceId <- parseQueryFirst(req, "spaceId")
           skip <- parseQueryFirst(req, "skip")
-          discussions <- discussionsService.getDiscussions(
+          discussions <- discussionsService.getSpaceDiscussions(
             jwt,
             jwtType,
             UUID.fromString(spaceId),
@@ -58,20 +58,24 @@ final case class DiscussionsController(discussionsService: DiscussionService) {
         (for {
           authData <- extractJwtData(req)
           (jwt, jwtType) = authData
+          skip <- parseQueryFirst(req, "skip")
           discussions <- discussionsService.getUserDiscussions(
             jwt,
             jwtType,
-            userId
+            userId,
+            skip.toInt
           )
         } yield Response.json(discussions.toJson)).catchAll(_.toResponse)
 
       case req @ Method.GET -> !! / "api" / "v1" / "discussions-followed" =>
         (for {
           authData <- extractJwtData(req)
+          skip <- parseQueryFirst(req, "skip")
           (jwt, jwtType) = authData
           discussions <- discussionsService.getFollowedDiscussions(
             jwt,
-            jwtType
+            jwtType,
+            skip.toInt
           )
         } yield Response.json(discussions.toJson)).catchAll(_.toResponse)
 

@@ -1,8 +1,10 @@
 package civil.services.discussions
 
+import civil.directives.OutgoingHttp.Permissions
 import civil.errors.AppError
 import civil.models._
 import civil.models.enums.ReportStatus
+import civil.models.enums.UserVerificationType._
 import civil.repositories.discussions.DiscussionRepository
 import civil.services.AuthenticationService
 import io.scalaland.chimney.dsl._
@@ -17,7 +19,7 @@ trait DiscussionService {
       jwtType: String,
       incomingDiscussion: IncomingDiscussion
   ): ZIO[Any, AppError, Discussions]
-  def getDiscussions(
+  def getSpaceDiscussions(
       jwt: String,
       jwtType: String,
       spaceId: UUID,
@@ -36,7 +38,8 @@ trait DiscussionService {
   def getUserDiscussions(
       jwt: String,
       jwtType: String,
-      userId: String
+      userId: String,
+      skip: Int
   ): ZIO[Any, AppError, List[OutgoingDiscussion]]
 
   def getSimilarDiscussions(
@@ -53,7 +56,8 @@ trait DiscussionService {
 
   def getFollowedDiscussions(
       jwt: String,
-      jwtType: String
+      jwtType: String,
+      skip: Int
   ): ZIO[Any, AppError, List[OutgoingDiscussion]]
 }
 
@@ -67,14 +71,14 @@ object DiscussionService {
       _.insertDiscussion(jwt, jwtType, incomingDiscussion)
     )
 
-  def getDiscussions(
+  def getSpaceDiscussions(
       jwt: String,
       jwtType: String,
       spaceId: UUID,
       skip: Int
   ): ZIO[DiscussionService, AppError, List[OutgoingDiscussion]] =
     ZIO.serviceWithZIO[DiscussionService](
-      _.getDiscussions(jwt, jwtType, spaceId, skip)
+      _.getSpaceDiscussions(jwt, jwtType, spaceId, skip)
     )
 
   def getDiscussion(
@@ -92,10 +96,11 @@ object DiscussionService {
   def getUserDiscussions(
       jwt: String,
       jwtType: String,
-      userId: String
+      userId: String,
+      skip: Int
   ): ZIO[DiscussionService, AppError, List[OutgoingDiscussion]] =
     ZIO.serviceWithZIO[DiscussionService](
-      _.getUserDiscussions(jwt, jwtType, userId)
+      _.getUserDiscussions(jwt, jwtType, userId, skip)
     )
 
   def getSimilarDiscussions(
@@ -118,10 +123,11 @@ object DiscussionService {
 
   def getFollowedDiscussions(
       jwt: String,
-      jwtType: String
+      jwtType: String,
+      skip: Int
   ): ZIO[DiscussionService, AppError, List[OutgoingDiscussion]] =
     ZIO.serviceWithZIO[DiscussionService](
-      _.getFollowedDiscussions(jwt, jwtType)
+      _.getFollowedDiscussions(jwt, jwtType, skip)
     )
 }
 
@@ -155,6 +161,15 @@ case class DiscussionServiceLive(
             _.spaceId,
             UUID.fromString(incomingDiscussion.spaceId)
           )
+          .withFieldConst(
+            _.userVerificationType,
+            userData.permissions match {
+              case Permissions(false, false) => NO_VERIFICATION
+              case Permissions(false, true)  => CAPTCHA_VERIFIED
+              case Permissions(true, false)  => FACE_ID_VERIFIED
+              case Permissions(true, true)   => FACE_ID_AND_CAPTCHA_VERIFIED
+            }
+          )
           .transform,
         incomingDiscussion.externalContentData.map(
           _.into[ExternalLinksDiscussions]
@@ -171,7 +186,7 @@ case class DiscussionServiceLive(
     } yield discussion
   }
 
-  override def getDiscussions(
+  override def getSpaceDiscussions(
       jwt: String,
       jwtType: String,
       spaceId: UUID,
@@ -179,7 +194,7 @@ case class DiscussionServiceLive(
   ): ZIO[Any, AppError, List[OutgoingDiscussion]] = {
     for {
       userData <- authService.extractUserData(jwt, jwtType)
-      discussions <- discussionRepository.getDiscussions(
+      discussions <- discussionRepository.getSpaceDiscussions(
         spaceId,
         skip,
         userData.userId
@@ -208,13 +223,15 @@ case class DiscussionServiceLive(
   override def getUserDiscussions(
       jwt: String,
       jwtType: String,
-      userId: String
+      userId: String,
+      skip: Int
   ): ZIO[Any, AppError, List[OutgoingDiscussion]] = {
     for {
       userData <- authService.extractUserData(jwt, jwtType)
       userDiscussions <- discussionRepository.getUserDiscussions(
         userData.userId,
-        userId
+        userId,
+        skip
       )
     } yield userDiscussions
   }
@@ -246,12 +263,14 @@ case class DiscussionServiceLive(
 
   override def getFollowedDiscussions(
       jwt: String,
-      jwtType: String
+      jwtType: String,
+      skip: Int
   ): ZIO[Any, AppError, List[OutgoingDiscussion]] = {
     for {
       userData <- authService.extractUserData(jwt, jwtType)
       discussions <- discussionRepository.getFollowedDiscussions(
-        userData.userId
+        userData.userId,
+        skip
       )
     } yield discussions
   }

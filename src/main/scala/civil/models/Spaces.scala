@@ -105,7 +105,9 @@ case class OutgoingSpace(
     referenceLinks: Option[List[String]] = None,
     contentHeight: Option[Float],
     editorTextContent: String,
-    userUploadedImageUrl: Option[String]
+    userUploadedImageUrl: Option[String],
+    discussionCount: Int = 0,
+    commentCount: Int = 0
 )
 
 object OutgoingSpace {

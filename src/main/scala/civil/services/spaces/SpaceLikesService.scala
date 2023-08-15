@@ -53,7 +53,7 @@ case class SpaceLikesServiceLive(
       data <- spaceLikesRep
         .addRemoveSpaceLikeOrDislike(
           spaceLikeDislikeData,
-          spaceLikeDislikeData.createdByUserId.getOrElse(userData.userId)
+          userData.userId
         )
         .mapError(DatabaseError(_))
       (updatedLikeData, space) = data

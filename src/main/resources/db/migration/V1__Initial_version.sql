@@ -118,6 +118,7 @@ CREATE TABLE discussions(
     discussion_id uuid DEFAULT NULL,
     content_height decimal,
     report_status text NOT NULL,
+    user_verification_type varchar(50) default 'NO_VERIFICATION',
     UNIQUE(title, space_id),
     CONSTRAINT fk_spaces
       FOREIGN KEY(space_id)

@@ -1,7 +1,8 @@
 package civil.models
 
 import civil.models.actions.LikeAction
-import civil.models.enums.{ReportStatus, SpaceCategories}
+import civil.models.enums.UserVerificationType.NO_VERIFICATION
+import civil.models.enums.{ReportStatus, SpaceCategories, UserVerificationType}
 import zio.{Random, Task, UIO, ZIO}
 import zio.json.{DeriveJsonCodec, JsonCodec}
 
@@ -51,7 +52,8 @@ case class Discussions(
     discussionId: Option[UUID] = None,
     contentHeight: Option[Float],
     popularityScore: Double,
-    reportStatus: String = ReportStatus.CLEAN.entryName
+    reportStatus: String = ReportStatus.CLEAN.entryName,
+    userVerificationType: UserVerificationType = NO_VERIFICATION
 )
 
 object Discussions {
@@ -92,16 +94,13 @@ case class OutgoingDiscussion(
     externalContentData: Option[ExternalContentData],
     likes: Int,
     likeState: LikeAction,
-    allComments: Long,
-    positiveComments: Long,
-    neutralComments: Long,
-    negativeComments: Long,
-    totalCommentsAndReplies: Long,
     contentHeight: Option[Float] = None,
     spaceTitle: Option[String] = None,
     spaceCategory: Option[SpaceCategories] = Some(SpaceCategories.General),
     reportStatus: String = ReportStatus.CLEAN.entryName,
-    isFollowing: Boolean = false
+    isFollowing: Boolean = false,
+    userVerificationType: UserVerificationType = NO_VERIFICATION,
+    commentCount: Int = 0
 )
 
 object OutgoingDiscussion {
