@@ -16,7 +16,8 @@ import java.util.UUID
 case class ContentReported(
     eventType: String,
     reportedContentId: UUID,
-    contentType: String
+    contentType: String,
+    severity: String
 )
 
 object ContentReported {

@@ -13,6 +13,8 @@ import civil.repositories.DiscussionQueries.{
   getAllFollowedDiscussions,
   getAllPopularDiscussions,
   getAllUserDiscussions,
+  getOneDiscussion,
+  getSimilarDiscussionsQuery,
   getSpaceDiscussionsQuery
 }
 import civil.services.KafkaProducerServiceLive
@@ -212,41 +214,24 @@ case class DiscussionRepositoryLive(dataSource: DataSource)
 
   override def getDiscussion(
       id: UUID,
-      userId: String
+      requestingUserId: String
   ): ZIO[Any, AppError, OutgoingDiscussion] = {
-
-    for {
+    (for {
       discussionsUsersLinksJoin <- run(
-        query[Discussions]
-          .filter(d => d.id == lift(id))
-          .join(query[Users])
-          .on(_.createdByUserId == _.userId)
-          .leftJoin(query[ExternalLinksDiscussions])
-          .on { case ((d, _), l) => d.id == l.discussionId }
-          .leftJoin(
-            query[DiscussionLikes].filter(l => l.userId == lift(userId))
-          )
-          .on { case (((d, _), l), dl) => d.id == dl.discussionId }
-          .map { case (((d, u), l), dl) => (d, u, l, dl.map(_.likeState)) }
+        getOneDiscussion(lift(requestingUserId), lift(id))
       )
-        .mapError(DatabaseError(_))
-        .provideEnvironment(ZEnvironment(dataSource))
-      discussionUserLinksLike <- ZIO
+      discussion <- ZIO
         .fromOption(discussionsUsersLinksJoin.headOption)
-        .orElseFail(DatabaseError(new Throwable("Can't Find Discussion")))
-      (discussion, user, linkData, likeState) = discussionUserLinksLike
-      totalCommentsAndReplies <- run(
-        query[Comments].filter(c => c.discussionId == lift(discussion.id)).size
-      )
-        .mapError(DatabaseError(_))
-        .provideEnvironment(ZEnvironment(dataSource))
-    } yield prepareOutgoingDiscussion(
-      discussion,
-      linkData,
-      user,
-      totalCommentsAndReplies,
-      likeState
-    )
+        .orElseFail(
+          DatabaseError(
+            new Throwable(s"Could Not Find Discussion with ID: $id")
+          )
+        )
+
+    } yield prepareOutgoingDiscussionRow(discussion))
+      .mapError(DatabaseError)
+      .provideEnvironment(ZEnvironment(dataSource))
+
   }
 
   override def getGeneralDiscussionId(
@@ -286,45 +271,26 @@ case class DiscussionRepositoryLive(dataSource: DataSource)
   override def getSimilarDiscussions(
       discussionId: UUID
   ): ZIO[Any, AppError, List[OutgoingDiscussion]] = {
-    for {
-      discussionsWithUser <- run(
-        query[Discussions]
-          .join(query[Users])
-          .on(_.createdByUserId == _.userId)
-          .join(query[DiscussionSimilarityScores])
-          .on { case ((d, _), dss) =>
-            (dss.discussionId1 == lift(
-              discussionId
-            ) && d.id == dss.discussionId2) || (dss.discussionId2 == lift(
-              discussionId
-            ) && d.id == dss.discussionId1)
-          }
-          .leftJoin(query[ExternalLinksDiscussions])
-          .on { case (((d, _), _), l) => d.id == l.discussionId }
-          .filter { case (((d, _), _), l) => d.id != lift(discussionId) }
-          .map { case (((d, u), dss), l) => (d, u, dss, l) }
-          .sortBy(_._3.similarityScore)(Ord.desc)
-          .take(30)
+    (for {
+      discussionsUsersLinksJoin <- run(
+        getSimilarDiscussionsQuery(lift(discussionId))
       )
-        .mapError(DatabaseError(_))
-        .provideEnvironment(ZEnvironment(dataSource))
-
-      outgoingDiscussions <- ZIO.foreachPar(discussionsWithUser)(row => {
-        val (discussion, user, dss, linkData) = row
-        ZIO
-          .attempt(
-            prepareOutgoingDiscussion(
-              discussion,
-              linkData,
-              user,
-              0L,
-              None
+      discussions <- ZIO
+        .foreachPar(discussionsUsersLinksJoin)(row =>
+          ZIO.attempt(
+            prepareOutgoingDiscussionRow(
+              row
+                .into[DiscussionsData]
+                .withFieldConst(_.userLikeState, NeutralState.some)
+                .withFieldConst(_.userFollowState, false)
+                .transform
             )
           )
-          .mapError(DatabaseError(_))
-          .provideEnvironment(ZEnvironment(dataSource))
-      })
-    } yield outgoingDiscussions
+        )
+        .withParallelism(10)
+    } yield discussions)
+      .mapError(DatabaseError)
+      .provideEnvironment(ZEnvironment(dataSource))
   }
 
   override def getPopularDiscussions(
@@ -381,43 +347,6 @@ case class DiscussionRepositoryLive(dataSource: DataSource)
 
   }
 
-  private def fetchDiscussionUserLinkLike(
-      spaceId: UUID,
-      userId: String,
-      skip: Int
-  ): IO[AppError, List[
-    (
-        Discussions,
-        Users,
-        Option[ExternalLinksDiscussions],
-        Option[LikeAction],
-        Option[DiscussionFollows]
-    )
-  ]] = {
-    run(
-      query[Discussions]
-        .filter(d => d.spaceId == lift(spaceId))
-        .join(query[Users])
-        .on(_.createdByUserId == _.userId)
-        .leftJoin(query[ExternalLinksDiscussions])
-        .on { case ((d, _), l) => d.id == l.discussionId }
-        .leftJoin(
-          query[DiscussionLikes].filter(l => l.userId == lift(userId))
-        )
-        .on { case (((d, _), l), dl) => d.id == dl.discussionId }
-        .leftJoin(
-          query[DiscussionFollows].filter(l => l.userId == lift(userId))
-        )
-        .on { case ((((d, _), l), dl), df) => d.id == df.followedDiscussionId }
-        .drop(lift(skip))
-        .map { case ((((d, u), l), dl), df) =>
-          (d, u, l, dl.map(_.likeState), df)
-        }
-    )
-      .mapError(DatabaseError(_))
-      .provideEnvironment(ZEnvironment(dataSource))
-  }
-
   private def prepareOutgoingDiscussionRow(
       d: DiscussionsData
   ): OutgoingDiscussion = {
@@ -444,43 +373,6 @@ case class DiscussionRepositoryLive(dataSource: DataSource)
                 thumbImgUrl = d.thumbImgUrl
               )
             )
-        )
-        .transform
-    )
-  }
-
-  private def prepareOutgoingDiscussion(
-      d: Discussions,
-      externalContentData: Option[ExternalLinksDiscussions],
-      user: Users,
-      commentAndRepliesCount: Long,
-      likeState: Option[LikeAction],
-      space: Option[Spaces] = None,
-      isFollowing: Boolean = false
-  ): OutgoingDiscussion = {
-
-    sanitizeDiscussion(
-      d.into[OutgoingDiscussion]
-        .withFieldConst(_.likeState, likeState.getOrElse(NeutralState))
-        .withFieldConst(_.spaceTitle, space.map(_.title))
-        .withFieldConst(
-          _.spaceCategory,
-          space.map(s => SpaceCategories.withName(s.category))
-        )
-        .withFieldConst(_.createdByIconSrc, user.iconSrc.getOrElse(""))
-        .withFieldConst(_.createdByTag, user.tag)
-        .withFieldConst(_.isFollowing, isFollowing)
-        .withFieldConst(_.commentCount, 0)
-        .withFieldConst(
-          _.externalContentData,
-          externalContentData.map(data =>
-            ExternalContentData(
-              linkType = data.linkType,
-              embedId = data.embedId,
-              externalContentUrl = data.externalContentUrl,
-              thumbImgUrl = data.thumbImgUrl
-            )
-          )
         )
         .transform
     )

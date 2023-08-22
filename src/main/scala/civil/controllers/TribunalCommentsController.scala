@@ -22,9 +22,7 @@ final case class TribunalCommentsController(
         (for {
           authData <- extractJwtData(req)
           (jwt, jwtType) = authData
-          tribunalComment <- parseBody[IncomingComment](req).tapError(e =>
-            ZIO.logInfo(e.toString)
-          )
+          tribunalComment <- parseBody[IncomingComment](req)
           res <- tribunalCommentsService.insertComment(
             jwt,
             jwtType,

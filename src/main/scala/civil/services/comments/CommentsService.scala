@@ -34,7 +34,7 @@ trait CommentsService {
       jwt: String,
       jwtType: String,
       commentId: UUID
-  ): ZIO[Any, AppError, CommentReply]
+  ): ZIO[Any, AppError, CommentReplyWithParent]
   def getAllCommentReplies(
       jwt: String,
       jwtType: String,
@@ -44,7 +44,8 @@ trait CommentsService {
   def getUserComments(
       jwt: String,
       jwtType: String,
-      userId: String
+      userId: String,
+      skip: Int
   ): ZIO[Any, AppError, List[CommentNode]]
 }
 
@@ -70,7 +71,7 @@ object CommentsService {
       jwt: String,
       jwtType: String,
       commentId: UUID
-  ): ZIO[CommentsService, AppError, CommentReply] =
+  ): ZIO[CommentsService, AppError, CommentReplyWithParent] =
     ZIO.serviceWithZIO[CommentsService](_.getComment(jwt, jwtType, commentId))
   def getAllCommentReplies(
       jwt: String,
@@ -84,9 +85,12 @@ object CommentsService {
   def getUserComments(
       jwt: String,
       jwtType: String,
-      userId: String
+      userId: String,
+      skip: Int
   ): ZIO[CommentsService, AppError, List[CommentNode]] =
-    ZIO.serviceWithZIO[CommentsService](_.getUserComments(jwt, jwtType, userId))
+    ZIO.serviceWithZIO[CommentsService](
+      _.getUserComments(jwt, jwtType, userId, skip)
+    )
 
 }
 
@@ -143,7 +147,7 @@ case class CommentsServiceLive(
       jwt: String,
       jwtType: String,
       commentId: UUID
-  ): ZIO[Any, AppError, CommentReply] = {
+  ): ZIO[Any, AppError, CommentReplyWithParent] = {
     for {
       userData <- authenticationService.extractUserData(jwt, jwtType)
       comments <- commentsRepo.getComment(userData.userId, commentId)
@@ -168,13 +172,15 @@ case class CommentsServiceLive(
   override def getUserComments(
       jwt: String,
       jwtType: String,
-      userId: String
+      userId: String,
+      skip: Int
   ): ZIO[Any, AppError, List[CommentNode]] = {
     for {
       userData <- authenticationService.extractUserData(jwt, jwtType)
       comments <- commentsRepo.getUserComments(
         userData.userId,
-        userId
+        userId,
+        skip
       )
     } yield comments
   }

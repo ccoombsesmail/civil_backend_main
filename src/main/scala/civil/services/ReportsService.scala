@@ -1,6 +1,7 @@
 package civil.services
 
 import civil.errors.AppError
+import civil.models.enums.ReportCause
 import civil.models.{Report, ReportInfo, Reports}
 import civil.repositories.ReportsRepository
 import io.scalaland.chimney.dsl.TransformerOps
@@ -58,7 +59,11 @@ case class ReportsServiceLive(
         report
           .into[Reports]
           .withFieldConst(_.userId, userData.userId)
-          .withFieldConst(_.contentType, "Dummy")
+          .withFieldComputed(_.reportCause, r => r.reportCause.entryName)
+          .withFieldComputed(
+            _.severity,
+            r => ReportCause.getSeverity(r.reportCause)
+          )
           .transform
       )
     } yield ()

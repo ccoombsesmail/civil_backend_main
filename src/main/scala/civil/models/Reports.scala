@@ -1,5 +1,6 @@
 package civil.models
 
+import civil.models.enums.ReportCause
 import zio.json.{DeriveJsonCodec, JsonCodec}
 
 import java.util.UUID
@@ -7,9 +8,8 @@ import java.time.{Instant, LocalDateTime, ZonedDateTime}
 
 case class Report(
     contentId: UUID,
-    toxic: Option[Boolean],
-    spam: Option[Boolean],
-    personalAttack: Option[Boolean],
+    reportCause: ReportCause,
+    contentType: String,
     userId: Option[String] = None
 )
 
@@ -20,17 +20,13 @@ object Report {
 case class Reports(
     userId: String,
     contentId: UUID,
-    toxic: Option[Boolean],
-    spam: Option[Boolean],
-    personalAttack: Option[Boolean],
+    reportCause: String,
+    severity: String,
     contentType: String
 )
 
 case class ReportInfo(
     contentId: UUID,
-    numToxicReports: Int,
-    numPersonalAttackReports: Int,
-    numSpamReports: Int,
     votedToAcquit: Option[Boolean],
     votedToStrike: Option[Boolean],
     reportPeriodEnd: Option[Long],
@@ -43,7 +39,10 @@ case class ReportInfo(
     numReporterComments: Long = 0L,
     numJuryComments: Long = 0L,
     numGeneralComments: Long = 0L,
-    numAllComments: Long = 0L
+    numAllComments: Long = 0L,
+    reportsByCauseUnderReviewMap: Map[String, Long],
+    reportsByCauseNotUnderReviewMap: Map[String, Long],
+    reportSeverityLevel: String
 ) {
 
   def attachVotingResults(

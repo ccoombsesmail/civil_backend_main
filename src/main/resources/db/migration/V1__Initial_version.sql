@@ -304,9 +304,8 @@ CREATE TABLE reports (
     id SERIAL PRIMARY KEY,
     user_id text NOT NULL,
     content_id uuid NOT NULL,
-    toxic boolean,
-    spam boolean,
-    personal_attack boolean,
+    report_cause varchar(30),
+    severity varchar(15),
     content_type varchar(10),
     UNIQUE(content_id, user_id)
 );
@@ -333,6 +332,7 @@ CREATE TABLE report_timings(
     review_ending_times bigint[],
     ongoing boolean default true,
     content_type varchar(10),
+    severity varchar(15),
     UNIQUE(content_id)
 );
 

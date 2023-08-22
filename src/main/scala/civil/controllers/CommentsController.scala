@@ -79,8 +79,18 @@ final case class CommentsController(commentsService: CommentsService) {
       case req @ Method.GET -> !! / "api" / "v1" / "comments" / "user" / userId =>
         (for {
           authData <- extractJwtData(req).mapError(e => JsonDecodingError(e))
+          skipParams <- parseQuery(req, "skip")
+          skip <- ZIO
+            .fromOption(skipParams.headOption)
+            .orElseFail(JsonDecodingError(new Throwable("error decoding")))
+
           (jwt, jwtType) = authData
-          comments <- commentsService.getUserComments(jwt, jwtType, userId)
+          comments <- commentsService.getUserComments(
+            jwt,
+            jwtType,
+            userId,
+            skip.toInt
+          )
         } yield Response.json(comments.asJson.noSpaces)).catchAll(_.toResponse)
     }
 

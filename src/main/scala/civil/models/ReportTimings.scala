@@ -8,5 +8,6 @@ case class ReportTimings(
     reportPeriodEnd: Long,
     contentType: String,
     reviewEndingTimes: Seq[Long] = Seq(),
-    ongoing: Boolean = true
+    ongoing: Boolean = true,
+    severity: String
 )

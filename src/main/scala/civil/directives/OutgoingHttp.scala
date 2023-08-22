@@ -216,10 +216,6 @@ object OutgoingHttp {
     val result = HttpClientZioBackend().flatMap { backend =>
       {
         val res = request.send(backend)
-        res.tapError(e => {
-          ZIO.logInfo(e.getMessage)
-        })
-        res.mapError(e => ZIO.logInfo(e.toString))
         res
       }
     }

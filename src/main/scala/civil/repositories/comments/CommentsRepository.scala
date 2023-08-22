@@ -18,15 +18,17 @@ trait CommentsRepository {
       comment: Comments,
       requestingUserData: JwtUserClaimsData
   ): ZIO[Any, AppError, CommentReply]
+
   def getComments(
       userId: String,
       discussionId: UUID,
       skip: Int
   ): ZIO[Any, AppError, List[CommentNode]]
+
   def getComment(
       userId: String,
       commentId: UUID
-  ): ZIO[Any, AppError, CommentReply]
+  ): ZIO[Any, AppError, CommentReplyWithParent]
 
   def getAllCommentReplies(
       userId: String,
@@ -35,7 +37,8 @@ trait CommentsRepository {
 
   def getUserComments(
       requestingUserId: String,
-      userId: String
+      userId: String,
+      skip: Int
   ): ZIO[Any, AppError, List[CommentNode]]
 }
 
@@ -47,6 +50,7 @@ object CommentsRepository {
     ZIO.serviceWithZIO[CommentsRepository](
       _.insertComment(comment, requestingUserData)
     )
+
   def getComments(
       userId: String,
       discussionId: UUID,
@@ -55,11 +59,13 @@ object CommentsRepository {
     ZIO.serviceWithZIO[CommentsRepository](
       _.getComments(userId, discussionId, skip)
     )
+
   def getComment(
       userId: String,
       commentId: UUID
-  ): ZIO[CommentsRepository, AppError, CommentReply] =
+  ): ZIO[CommentsRepository, AppError, CommentReplyWithParent] =
     ZIO.serviceWithZIO[CommentsRepository](_.getComment(userId, commentId))
+
   def getAllCommentReplies(
       userId: String,
       commentId: UUID
@@ -70,16 +76,19 @@ object CommentsRepository {
 
   def getUserComments(
       requestingUserId: String,
-      userId: String
+      userId: String,
+      skip: Int
   ): ZIO[CommentsRepository, AppError, List[CommentNode]] =
     ZIO.serviceWithZIO[CommentsRepository](
-      _.getUserComments(requestingUserId, userId)
+      _.getUserComments(requestingUserId, userId, skip)
     )
 }
 
 case class CommentsRepositoryLive(dataSource: DataSource)
     extends CommentsRepository {
+
   import civil.repositories.QuillContext._
+
   override def insertComment(
       comment: Comments,
       requestingUserData: JwtUserClaimsData
@@ -178,27 +187,30 @@ case class CommentsRepositoryLive(dataSource: DataSource)
   override def getComment(
       userId: String,
       commentId: UUID
-  ): ZIO[Any, AppError, CommentReply] = {
+  ): ZIO[Any, AppError, CommentReplyWithParent] = {
     (for {
-      commentWithUserData <-
-        run(
-          query[Comments]
-            .filter(c => c.id == lift(commentId))
-            .join(query[Users])
-            .on(_.createdByUserId == _.userId)
-        ).head
-      (comment, user) = commentWithUserData
-//      user <- run(query[Users].filter(u => u.userId == lift(userId)))
-//      userData <- ZIO
-//        .fromOption(user.headOption)
+      commentWithUserDataAndParent <- run(
+        query[Comments]
+          .filter(c => c.id == lift(commentId))
+          .join(query[Users])
+          .on(_.createdByUserId == _.userId)
+          .leftJoin(query[Comments])
+          .on((cu, parentComment) => cu._1.parentId.contains(parentComment.id))
+      ).head
+
+      ((comment, user), parentCommentOpt) = commentWithUserDataAndParent
+      //      user <- run(query[Users].filter(u => u.userId == lift(userId)))
+      //      userData <- ZIO
+      //        .fromOption(user.headOption)
     } yield comment
-      .into[CommentReply]
+      .into[CommentReplyWithParent]
       .withFieldConst(_.createdByIconSrc, user.iconSrc.getOrElse(""))
       .withFieldConst(_.createdByUserId, user.userId)
       .withFieldConst(_.createdByExperience, user.experience)
       .withFieldConst(_.createdByTag, user.tag)
       .withFieldConst(_.likeState, NeutralState)
       .withFieldConst(_.civility, 0f)
+      .withFieldConst(_.parentComment, parentCommentOpt)
       .transform)
       .mapError(_ => DatabaseError(new Throwable("Error getting comment")))
       .provideEnvironment(ZEnvironment(dataSource))
@@ -307,7 +319,8 @@ case class CommentsRepositoryLive(dataSource: DataSource)
 
   override def getUserComments(
       requestingUserId: String,
-      userId: String
+      userId: String,
+      skip: Int
   ): ZIO[Any, AppError, List[CommentNode]] = {
 
     (for {
@@ -317,6 +330,8 @@ case class CommentsRepositoryLive(dataSource: DataSource)
             .filter(c => c.createdByUserId == lift(userId))
             .join(query[Users])
             .on(_.createdByUserId == _.userId)
+            .drop(lift(skip))
+            .take(5)
         )
 
       rootComments = commentsUsersJoin.filter(j => j._1.parentId.isEmpty)

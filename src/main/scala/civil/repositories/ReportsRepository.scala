@@ -1,11 +1,16 @@
 package civil.repositories
 
 import civil.errors.AppError
-import civil.errors.AppError.{DatabaseError}
+import civil.errors.AppError.DatabaseError
 import civil.models.{ReportInfo, ReportTimings, Reports}
 import civil.models._
 import civil.models.NotifcationEvents._
+import civil.models.enums.ReportCause
 import civil.models.enums.TribunalCommentType._
+import civil.repositories.ReportQueries.{
+  getReportCountsByCause,
+  getReportCountsBySeverity
+}
 import zio._
 
 import java.util.UUID
@@ -17,108 +22,99 @@ trait ReportsRepository {
   def addReport(report: Reports): ZIO[Any, AppError, Unit]
 
   def getReport(
-                 contentId: UUID,
-                 userId: String
-               ): ZIO[Any, AppError, ReportInfo]
+      contentId: UUID,
+      userId: String
+  ): ZIO[Any, AppError, ReportInfo]
 
 }
 
 object ReportsRepository {
   def addReport(
-                 report: Reports
-               ): ZIO[ReportsRepository, AppError, Unit] =
+      report: Reports
+  ): ZIO[ReportsRepository, AppError, Unit] =
     ZIO.serviceWithZIO[ReportsRepository](
       _.addReport(report)
     )
 
   def getReport(
-                 contentId: UUID,
-                 userId: String
-               ): ZIO[ReportsRepository, AppError, ReportInfo] =
+      contentId: UUID,
+      userId: String
+  ): ZIO[ReportsRepository, AppError, ReportInfo] =
     ZIO.serviceWithZIO[ReportsRepository](
       _.getReport(contentId, userId)
     )
 }
 
 case class ReportsRepositoryLive(dataSource: DataSource)
-  extends ReportsRepository {
+    extends ReportsRepository {
   val runtime = zio.Runtime.default
 
   import civil.repositories.QuillContext._
 
   val kafka = new KafkaProducerServiceLive()
 
-  private val REPORT_THRESHOLD = 2
+  private val REPORT_THRESHOLD: Int = 1
 
-  override def addReport(
-                          report: Reports
-                        ): ZIO[Any, AppError, Unit] = {
+  override def addReport(report: Reports): ZIO[Any, AppError, Unit] = {
     (for {
-      space <- run(
-        query[Spaces].filter(t => t.id == lift(report.contentId))
-      )
-      discussion <- run(
-        query[Discussions].filter(d => d.id == lift(report.contentId))
-      )
-      spaceOpt = space.headOption
-      discussionOpt = discussion.headOption
+      // Get the number of reports by severity before the new report
+      reportsBySeverityBefore <- getReportCountsBySeverity(report.contentId)
 
-      allReportsBefore <- run(
-        query[Reports].filter(r => r.contentId == lift(report.contentId))
-      )
-        .mapError(DatabaseError(_))
-      contentType =
-        if (spaceOpt.isDefined) "SPACE"
-        else if (discussionOpt.isDefined) "DISCUSSION"
-        else "COMMENT"
-      reportWithContentType = report.copy(contentType = contentType)
+      reportsBySeverityBeforeMap = reportsBySeverityBefore.toMap
+      // Insert the new report
       _ <- run(
-        query[Reports].insertValue(lift(reportWithContentType))
+        query[Reports].insertValue(lift(report))
       )
         .mapError(e =>
           DatabaseError(
-            new Throwable(s"Sorry! There was an issue submitting the Report \n ${e.getMessage}")
+            new Throwable(
+              s"Sorry! There was an issue submitting the Report \n ${e.getMessage}"
+            )
           )
         )
-      allReports <- run(
-        query[Reports].filter(r => r.contentId == lift(report.contentId))
-      )
-        .mapError(DatabaseError(_))
-      _ <- ZIO.logInfo(
-        s"All Report Before: ${allReportsBefore.length}. \n All Reports After: ${allReports.length}"
-      )
-      _ <- ZIO
-        .when(
-          allReports.length >= REPORT_THRESHOLD && allReportsBefore.length < REPORT_THRESHOLD
-        ) {
-          kafka.publish(
-            ContentReported(
-              eventType = "ContentReported",
-              contentType = contentType,
-              reportedContentId = report.contentId
-            ),
-            report.contentId.toString,
-            ContentReported.contentReportedSerde,
-            topic = "reports"
-          )
-        }
-        .mapError(DatabaseError(_))
-    } yield ())
-      .mapError(DatabaseError(_))
-      .provideEnvironment(ZEnvironment(dataSource))
 
+      // Get the number of reports by severity after the new report
+      reportsBySeverityAfter <- getReportCountsBySeverity(report.contentId)
+
+      reportsBySeverityAfterMap = reportsBySeverityAfter.toMap
+
+      // Check if any severity category has just surpassed the VOTE_THRESHOLD
+      _ <- ZIO.foreach(reportsBySeverityAfterMap) {
+        case (severity, countAfter) =>
+          val countBefore: Long =
+            reportsBySeverityBeforeMap.getOrElse(severity, 0)
+          ZIO
+            .when(
+              countAfter.toInt >= REPORT_THRESHOLD && countBefore.toInt < REPORT_THRESHOLD
+            ) {
+              kafka.publish(
+                ContentReported(
+                  eventType = "ContentReported",
+                  contentType = report.contentType,
+                  reportedContentId = report.contentId,
+                  severity = report.severity
+                ),
+                report.contentId.toString,
+                ContentReported.contentReportedSerde,
+                topic = "reports"
+              )
+            }
+            .as(("", 0))
+      }
+    } yield ())
+      .mapError(e => DatabaseError(e))
+      .provideEnvironment(ZEnvironment(dataSource))
   }
 
   override def getReport(
-                          contentId: UUID,
-                          userId: String
-                        ): ZIO[Any, AppError, ReportInfo] = {
+      contentId: UUID,
+      userId: String
+  ): ZIO[Any, AppError, ReportInfo] = {
     (for {
       votes <- run(
         query[TribunalVotes].filter(tv => tv.contentId == lift(contentId))
       )
         .mapError(DatabaseError(_))
-        .provideEnvironment(ZEnvironment(dataSource))
 
       numVotesToStrike = votes.count(tv => tv.voteToStrike.contains(true))
       numVotesToAcquit = votes.count(tv => tv.voteToAcquit.contains(true))
@@ -132,39 +128,28 @@ case class ReportsRepositoryLive(dataSource: DataSource)
           voteToAcquit = None
         )
       )
-      timings <- run(
+      timingQueryResult <- run(
         query[ReportTimings].filter(rt => rt.contentId == lift(contentId))
       )
         .mapError(DatabaseError(_))
-        .provideEnvironment(ZEnvironment(dataSource))
       timing <- ZIO
-        .fromOption(timings.headOption)
+        .fromOption(timingQueryResult.headOption)
         .orElseFail(DatabaseError(new Throwable("sdf")))
 
-      reports <- run(
-        query[Reports].filter(tr => tr.contentId == lift(contentId))
-      )
-        .mapError(DatabaseError(_))
-        .provideEnvironment(ZEnvironment(dataSource))
-      reportsMap = reports.foldLeft(Map[String, Int]()) { (m, t) =>
-        val m1 = if (t.toxic.isDefined) {
-          if (m.contains("toxic"))
-            m + ("toxic" -> (m.getOrElse("toxic", 0) + 1))
-          else m + ("toxic" -> 1)
-        } else m
+      reportsByCauseQueryResult <- getReportCountsByCause(contentId)
 
-        val m2 = if (t.personalAttack.isDefined) {
-          if (m1.contains("personalAttack"))
-            m1 + ("personalAttack" -> (m1.getOrElse("personalAttack", 0) + 1))
-          else m1 + ("personalAttack" -> 1)
-        } else m1
-
-        val m3 = if (t.spam.isDefined) {
-          if (m2.contains("spam"))
-            m2 + ("spam" -> (m2.getOrElse("spam", 0) + 1))
-          else m2 + ("spam" -> 1)
-        } else m2
-        m3
+      reportsByCauseMap = reportsByCauseQueryResult.toMap
+      reportsByCauseUnderReviewMap = reportsByCauseMap.filter {
+        case (cause, _) =>
+          ReportCause.getSeverity(
+            ReportCause.withName(cause)
+          ) == timing.severity
+      }
+      reportsByCauseNotUnderReviewMap = reportsByCauseMap.filter {
+        case (cause, _) =>
+          ReportCause.getSeverity(
+            ReportCause.withName(cause)
+          ) != timing.severity
       }
 
       groupedTComments <- run(
@@ -174,7 +159,7 @@ case class ReportsRepositoryLive(dataSource: DataSource)
           .map { case (commentType, comments) =>
             (commentType, comments.size)
           }
-      ).mapError(DatabaseError(_))
+      ).mapError(DatabaseError)
       commentTypeMap = groupedTComments.toMap
       numDefendantComments = commentTypeMap.getOrElse(Defendant, 0L)
       numJuryComments = commentTypeMap.getOrElse(Jury, 0L)
@@ -184,25 +169,27 @@ case class ReportsRepositoryLive(dataSource: DataSource)
         numGeneralComments + numReporterComments + numJuryComments + numDefendantComments
     } yield ReportInfo(
       contentId,
-      reportsMap.getOrElse("toxic", 0),
-      reportsMap.getOrElse("personalAttack", 0),
-      reportsMap.getOrElse("spam", 0),
+      reportsByCauseUnderReviewMap = reportsByCauseUnderReviewMap,
+      reportsByCauseNotUnderReviewMap = reportsByCauseNotUnderReviewMap,
       votedToAcquit = vote.voteToAcquit,
       votedToStrike = vote.voteToStrike,
-      Some(timing.reportPeriodEnd),
-      timing.reviewEndingTimes,
+      reportPeriodEnd = Some(timing.reportPeriodEnd),
+      votingEndedAt = timing.reviewEndingTimes,
       contentType = timing.contentType,
       ongoing = timing.ongoing,
       numDefendantComments = numDefendantComments,
       numJuryComments = numJuryComments,
       numGeneralComments = numGeneralComments,
       numReporterComments = numReporterComments,
-      numAllComments = numAllComments
+      numAllComments = numAllComments,
+      reportSeverityLevel = timing.severity
     ).attachVotingResults(
       Some(timing.reportPeriodEnd),
       numVotesToStrike = numVotesToStrike,
       numVotesToAcquit = numVotesToAcquit
-    )).provideEnvironment(ZEnvironment(dataSource))
+    ))
+      .mapError(DatabaseError)
+      .provideEnvironment(ZEnvironment(dataSource))
   }
 }
 

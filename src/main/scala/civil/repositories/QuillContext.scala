@@ -8,6 +8,7 @@ import civil.models.enums.{LinkType, ReportStatus, UserVerificationType}
 import civil.models.enums.UserVerificationType.NO_VERIFICATION
 import civil.models.{
   CommentWithDepthAndUser,
+  Reports,
   SpaceFollows,
   SpaceLikes,
   Spaces,
@@ -74,6 +75,58 @@ object QuillContext extends PostgresZioJdbcContext(SnakeCase) with QuillCodecs {
 
 }
 
+object ReportQueries {
+
+  import QuillContext._
+
+  case class ReportCountBySeverity(severity: String, count: Int)
+
+  case class ReportCountByCause(cause: String, count: Int)
+
+  def getReportCountsBySeverity(contentId: UUID) = {
+    val q = quote {
+      query[Reports]
+        .filter(_.contentId == lift(contentId))
+        .groupBy(_.severity)
+        .map { case (severity, reports) =>
+          (severity, reports.size)
+        }
+    }
+    run(q)
+  }
+
+  def getReportCountsByCause(contentId: UUID) = {
+    val q = quote {
+      query[Reports]
+        .filter(_.contentId == lift(contentId))
+        .groupBy(_.reportCause)
+        .map { case (cause, reports) =>
+          (cause, reports.size)
+        }
+    }
+    run(q)
+  }
+
+//  val getReportCountsBySeverity = quote { (contentId: UUID) =>
+//    sql"""
+//    SELECT severity, COUNT(*) as count
+//    FROM reports
+//    WHERE content_id = $contentId
+//    GROUP BY severity;
+//          """.pure.as[Query[ReportCountBySeverity]]
+//  }
+//
+//  val getReportCountsByCause = quote { (contentId: UUID) =>
+//    sql"""
+//    SELECT report_cause, COUNT(*) as count
+//    FROM reports
+//    WHERE content_id = $contentId
+//    GROUP BY report_cause;
+//          """.pure.as[Query[ReportCountByCause]]
+//  }
+
+}
+
 object DiscussionQueries {
 
   import QuillContext._
@@ -110,8 +163,86 @@ object DiscussionQueries {
       commentCount: Int
   )
 
-  val getOneDiscussion = quote {
-    (requestingUserId: String, discussionId: UUID) =>
+  case class SimilarDiscussionsData(
+      id: UUID,
+      createdAt: ZonedDateTime,
+      createdByUsername: String,
+      createdByUserId: String,
+      title: String,
+      editorState: String,
+      editorTextContent: String,
+      evidenceLinks: Option[List[String]],
+      likes: Int,
+      userUploadedImageUrl: Option[String],
+      userUploadedVodUrl: Option[String],
+      discussionKeyWords: Seq[String] = Seq(),
+      spaceId: UUID,
+      discussionId: Option[UUID] = None,
+      contentHeight: Option[Float],
+      popularityScore: Double,
+      reportStatus: String = ReportStatus.CLEAN.entryName,
+      userVerificationType: UserVerificationType = NO_VERIFICATION,
+      spaceTitle: String,
+      spaceCategory: String,
+      linkType: Option[LinkType],
+      externalContentUrl: Option[String],
+      embedId: Option[String],
+      thumbImgUrl: Option[String],
+      tag: Option[String],
+      iconSrc: Option[String],
+      commentCount: Int
+  )
+
+  val getSimilarDiscussionsQuery
+      : Quoted[UUID => Query[SimilarDiscussionsData]] = quote {
+    (discussionId: UUID) =>
+      sql"""
+       WITH CommentCounts AS (
+        SELECT
+            discussion_id,
+            COUNT(id) AS comment_count
+        FROM
+            comments
+        GROUP BY
+            discussion_id
+      )
+
+          SELECT
+          d.*,
+          s.title as space_title,
+          s.category as space_category,
+          link_data.link_type,
+          link_data.external_content_url,
+          link_data.embed_id,
+          link_data.thumb_img_url,
+          u.tag,
+          u.icon_src,
+          COALESCE(cc.comment_count, 0) AS comment_count
+      FROM
+          discussions d
+      JOIN
+          users u ON d.created_by_user_id = u.user_id
+      JOIN
+          spaces s on d.space_id = s.id
+      JOIN
+          discussion_similarity_scores dss ON
+              (dss.discussion_id1 = $discussionId AND d.id = dss.discussion_id2) OR
+              (dss.discussion_id2 = $discussionId AND d.id = dss.discussion_id1)
+      LEFT JOIN
+          external_links_discussions link_data ON d.id = link_data.discussion_id
+      LEFT JOIN
+           CommentCounts cc ON d.id = cc.discussion_id
+      WHERE
+          d.id != $discussionId
+      ORDER BY
+          dss.similarity_score DESC
+      LIMIT 30
+
+           """.pure.as[Query[SimilarDiscussionsData]]
+  }
+
+  val getOneDiscussion: Quoted[(String, UUID) => Query[DiscussionsData]] =
+    quote { (requestingUserId: String, discussionId: UUID) =>
       sql"""
         WITH CommentCounts AS (
           SELECT
@@ -151,9 +282,10 @@ object DiscussionQueries {
             CommentCounts cc ON d.id = cc.discussion_id
         WHERE d.id = $discussionId
       """.pure.as[Query[DiscussionsData]]
-  }
+    }
 
-  val getAllUserDiscussions = quote {
+  val getAllUserDiscussions
+      : Quoted[(String, Index, String) => Query[DiscussionsData]] = quote {
     (requestingUserId: String, skip: Int, userId: String) =>
       sql"""
         WITH CommentCounts AS (
@@ -294,7 +426,8 @@ object DiscussionQueries {
       """.pure.as[Query[DiscussionsData]]
   }
 
-  val getAllPopularDiscussions = quote {
+  val getAllPopularDiscussions
+      : Quoted[(String, Index) => Query[DiscussionsData]] = quote {
     (requestingUserId: String, skip: Int) =>
       sql"""
         WITH CommentCounts AS (

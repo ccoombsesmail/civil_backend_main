@@ -165,6 +165,28 @@ case class CommentReply(
     toxicityStatus: Option[String] = None
 )
 
+case class CommentReplyWithParent(
+    id: UUID,
+    editorState: String,
+    createdByUsername: String,
+    createdByUserId: String,
+    createdByTag: Option[String],
+    sentiment: String,
+    discussionId: UUID,
+    parentId: Option[UUID],
+    createdAt: ZonedDateTime,
+    likes: Int,
+    rootId: Option[UUID],
+    likeState: LikeAction,
+    civility: Float,
+    source: Option[String],
+    createdByIconSrc: String,
+    createdByExperience: Option[String],
+    reportStatus: String = CLEAN.entryName,
+    toxicityStatus: Option[String] = None,
+    parentComment: Option[Comments] = None
+)
+
 object CommentReply {
 //  implicit val codec: JsonCodec[CommentReply] = DeriveJsonCodec.gen[CommentReply]
 
