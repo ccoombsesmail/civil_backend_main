@@ -19,15 +19,26 @@ trait DiscussionService {
       jwtType: String,
       incomingDiscussion: IncomingDiscussion
   ): ZIO[Any, AppError, Discussions]
+
   def getSpaceDiscussions(
       jwt: String,
       jwtType: String,
       spaceId: UUID,
       skip: Int
   ): ZIO[Any, AppError, List[OutgoingDiscussion]]
+
+  def getSpaceDiscussionsUnauthenticated(
+      spaceId: UUID,
+      skip: Int
+  ): ZIO[Any, AppError, List[OutgoingDiscussion]]
+
   def getDiscussion(
       jwt: String,
       jwtType: String,
+      id: UUID
+  ): ZIO[Any, AppError, OutgoingDiscussion]
+
+  def getDiscussionUnauthenticated(
       id: UUID
   ): ZIO[Any, AppError, OutgoingDiscussion]
 
@@ -42,15 +53,22 @@ trait DiscussionService {
       skip: Int
   ): ZIO[Any, AppError, List[OutgoingDiscussion]]
 
+  def getUserDiscussionsUnauthenticated(
+      userId: String,
+      skip: Int
+  ): ZIO[Any, AppError, List[OutgoingDiscussion]]
+
   def getSimilarDiscussions(
-      jwt: String,
-      jwtType: String,
       discussionId: UUID
   ): ZIO[Any, AppError, List[OutgoingDiscussion]]
 
   def getPopularDiscussions(
       jwt: String,
       jwtType: String,
+      skip: Int
+  ): ZIO[Any, AppError, List[OutgoingDiscussion]]
+
+  def getPopularDiscussionsUnauthenticated(
       skip: Int
   ): ZIO[Any, AppError, List[OutgoingDiscussion]]
 
@@ -81,12 +99,25 @@ object DiscussionService {
       _.getSpaceDiscussions(jwt, jwtType, spaceId, skip)
     )
 
+  def getSpaceDiscussionsUnauthenticated(
+      spaceId: UUID,
+      skip: Int
+  ): ZIO[DiscussionService, AppError, List[OutgoingDiscussion]] =
+    ZIO.serviceWithZIO[DiscussionService](
+      _.getSpaceDiscussionsUnauthenticated(spaceId, skip)
+    )
+
   def getDiscussion(
       jwt: String,
       jwtType: String,
       id: UUID
   ): ZIO[DiscussionService, AppError, OutgoingDiscussion] =
     ZIO.serviceWithZIO[DiscussionService](_.getDiscussion(jwt, jwtType, id))
+
+  def getDiscussionUnauthenticated(
+      id: UUID
+  ): ZIO[DiscussionService, AppError, OutgoingDiscussion] =
+    ZIO.serviceWithZIO[DiscussionService](_.getDiscussionUnauthenticated(id))
 
   def getGeneralDiscussionId(
       spaceId: UUID
@@ -103,13 +134,28 @@ object DiscussionService {
       _.getUserDiscussions(jwt, jwtType, userId, skip)
     )
 
-  def getSimilarDiscussions(
+  def getUserDiscussionsUnauthenticated(
       jwt: String,
       jwtType: String,
+      userId: String,
+      skip: Int
+  ): ZIO[DiscussionService, AppError, List[OutgoingDiscussion]] =
+    ZIO.serviceWithZIO[DiscussionService](
+      _.getUserDiscussionsUnauthenticated(userId, skip)
+    )
+
+  def getSimilarDiscussions(
       discussionId: UUID
   ): ZIO[DiscussionService, AppError, List[OutgoingDiscussion]] =
     ZIO.serviceWithZIO[DiscussionService](
-      _.getSimilarDiscussions(jwt, jwtType, discussionId)
+      _.getSimilarDiscussions(discussionId)
+    )
+
+  def getPopularDiscussionsUnauthenticated(
+      skip: Int
+  ): ZIO[DiscussionService, AppError, List[OutgoingDiscussion]] =
+    ZIO.serviceWithZIO[DiscussionService](
+      _.getPopularDiscussionsUnauthenticated(skip)
     )
 
   def getPopularDiscussions(
@@ -202,6 +248,16 @@ case class DiscussionServiceLive(
     } yield discussions
   }
 
+  override def getSpaceDiscussionsUnauthenticated(
+      spaceId: UUID,
+      skip: Int
+  ): ZIO[Any, AppError, List[OutgoingDiscussion]] = {
+    discussionRepository.getSpaceDiscussionsUnauthenticated(
+      spaceId,
+      skip
+    )
+  }
+
   override def getDiscussion(
       jwt: String,
       jwtType: String,
@@ -213,6 +269,11 @@ case class DiscussionServiceLive(
     } yield discussions
 
   }
+
+  override def getDiscussionUnauthenticated(
+      id: UUID
+  ): ZIO[Any, AppError, OutgoingDiscussion] =
+    discussionRepository.getDiscussionUnauthenticated(id)
 
   override def getGeneralDiscussionId(
       spaceId: UUID
@@ -236,13 +297,21 @@ case class DiscussionServiceLive(
     } yield userDiscussions
   }
 
+  override def getUserDiscussionsUnauthenticated(
+      userId: String,
+      skip: Int
+  ): ZIO[Any, AppError, List[OutgoingDiscussion]] = {
+    discussionRepository.getUserDiscussionsUnauthenticated(
+      userId,
+      skip
+    )
+
+  }
+
   override def getSimilarDiscussions(
-      jwt: String,
-      jwtType: String,
       discussionId: UUID
   ): ZIO[Any, AppError, List[OutgoingDiscussion]] = {
     for {
-      userData <- authService.extractUserData(jwt, jwtType)
       discussions <- discussionRepository.getSimilarDiscussions(
         discussionId
       )
@@ -260,6 +329,14 @@ case class DiscussionServiceLive(
       skip
     )
   } yield discussions
+
+  override def getPopularDiscussionsUnauthenticated(
+      skip: Int
+  ): ZIO[Any, AppError, List[OutgoingDiscussion]] = {
+    discussionRepository.getPopularDiscussionsUnauthenticated(
+      skip
+    )
+  }
 
   override def getFollowedDiscussions(
       jwt: String,

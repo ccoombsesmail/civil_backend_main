@@ -68,6 +68,7 @@ case class DiscussionLikesServiceLive(
           kafka.publish(
             DiscussionLike(
               eventType = "DiscussionLike",
+              spaceId = discussionLikeDislikeData.spaceId,
               discussionId = updatedLikeData.id,
               receivingUserId = discussion.createdByUserId,
               givingUserData = GivingUserNotificationData(

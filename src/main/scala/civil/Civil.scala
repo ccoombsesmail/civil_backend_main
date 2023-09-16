@@ -15,7 +15,6 @@ import zio._
 import zio.http.ServerConfig
 import zio.logging.console
 
-
 object Civil extends zio.ZIOAppDefault {
 
   override val bootstrap: ZLayer[ZIOAppArgs, Any, Any] =
@@ -24,10 +23,8 @@ object Civil extends zio.ZIOAppDefault {
   implicit val ec: scala.concurrent.ExecutionContext =
     scala.concurrent.ExecutionContext.global
 
-
   override val run: Task[Unit] = {
     val ONE_MB = 1000000
-
 
     ZIO
       .serviceWithZIO[CivilServer](_.start)
@@ -93,7 +90,10 @@ object Civil extends zio.ZIOAppDefault {
         DiscussionFollowsController.layer,
         DiscussionFollowsServiceLive.layer,
         DiscussionFollowsRepositoryLive.layer,
-        AlgorithmScoresCalculationServiceLive.layer
+        AlgorithmScoresCalculationServiceLive.layer,
+        TribunalJuryMembersController.layer,
+        TribunalJuryMembersServiceLive.layer,
+        TribunalJuryMembersRepositoryLive.layer
       )
 
   }

@@ -2,10 +2,17 @@ package civil.models
 
 import civil.directives.OutgoingHttp.Permissions
 import civil.models.enums.ClerkEventType
-import zio.json.{DeriveJsonCodec, DeriveJsonDecoder, DeriveJsonEncoder, JsonCodec, JsonDecoder, JsonEncoder}
+import zio.json.{
+  DeriveJsonCodec,
+  DeriveJsonDecoder,
+  DeriveJsonEncoder,
+  JsonCodec,
+  JsonDecoder,
+  JsonEncoder
+}
 
-import java.time.{LocalDateTime, ZonedDateTime}
-import scala.math.{exp, round}
+import java.time.ZonedDateTime
+import scala.math.exp
 
 case class Users(
     userId: String,
@@ -18,7 +25,7 @@ case class Users(
     bio: Option[String],
     experience: Option[String],
     isDidUser: Boolean,
-    id: Int = 200,
+    id: Int = 200
 )
 
 case class OutgoingUser(
@@ -37,13 +44,32 @@ case class OutgoingUser(
     numFollowed: Option[Int] = None,
     numPosts: Option[Int] = None,
     userLevelData: Option[UserLevel],
-    permissions: Permissions = Permissions(false, false),
-    id: Int = 200
-
+    permissions: Permissions = Permissions(false, false)
 )
 
 object OutgoingUser {
-  implicit val codec: JsonCodec[OutgoingUser] = DeriveJsonCodec.gen[OutgoingUser]
+  implicit val codec: JsonCodec[OutgoingUser] =
+    DeriveJsonCodec.gen[OutgoingUser]
+}
+
+case class OutgoingUserUnauthenticated(
+    userId: String,
+    username: String,
+    tag: Option[String],
+    iconSrc: Option[String],
+    civility: Float,
+    createdAt: ZonedDateTime,
+    bio: Option[String],
+    experience: Option[String],
+    numFollowers: Option[Int] = None,
+    numFollowed: Option[Int] = None,
+    numPosts: Option[Int] = None,
+    userLevelData: Option[UserLevel]
+)
+
+object OutgoingUserUnauthenticated {
+  implicit val codec: JsonCodec[OutgoingUserUnauthenticated] =
+    DeriveJsonCodec.gen[OutgoingUserUnauthenticated]
 }
 
 case class IncomingUser(
@@ -53,16 +79,19 @@ case class IncomingUser(
 )
 
 object IncomingUser {
-  implicit val codec: JsonCodec[IncomingUser] = DeriveJsonCodec.gen[IncomingUser]
+  implicit val codec: JsonCodec[IncomingUser] =
+    DeriveJsonCodec.gen[IncomingUser]
 }
 
 case class UpdateUserIcon(username: String, iconSrc: String) {}
 object UpdateUserIcon {
-  implicit val codec: JsonCodec[UpdateUserIcon] = DeriveJsonCodec.gen[UpdateUserIcon]
+  implicit val codec: JsonCodec[UpdateUserIcon] =
+    DeriveJsonCodec.gen[UpdateUserIcon]
 }
 case class UpdateUserBio(bio: Option[String], experience: Option[String])
 object UpdateUserBio {
-  implicit val codec: JsonCodec[UpdateUserBio] = DeriveJsonCodec.gen[UpdateUserBio]
+  implicit val codec: JsonCodec[UpdateUserBio] =
+    DeriveJsonCodec.gen[UpdateUserBio]
 }
 case class TagData(tag: String)
 
@@ -195,7 +224,6 @@ case class JwtUserClaimsData(
     experience: Option[String]
 )
 
-
 case class UserLevel(exp: Double, level: Int, pointsForNextLevel: Double)
 
 object UserLevel {
@@ -204,10 +232,11 @@ object UserLevel {
   val LEVELS: Double = 40.0
   val xp_for_first_level: Double = 5.0
   val xp_for_last_level: Double = 1000000.0
-  val B: Double = math.log(xp_for_last_level / xp_for_first_level) / (LEVELS - 1)
+  val B: Double =
+    math.log(xp_for_last_level / xp_for_first_level) / (LEVELS - 1)
   val A: Double = xp_for_first_level / (scala.math.exp(B) - 1.0)
   def apply(exp: Double): UserLevel = {
-    val currLevel = (scala.math.log(exp/A) / B).toInt
+    val currLevel = (scala.math.log(exp / A) / B).toInt
     val currLevelExp = calcExpBasedOnLevel(currLevel)
     val expForNextLevel = calcExpBasedOnLevel(currLevel + 1) - currLevelExp
     new UserLevel(exp - currLevelExp, currLevel, expForNextLevel)

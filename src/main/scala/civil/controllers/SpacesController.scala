@@ -7,6 +7,7 @@ import civil.controllers.ParseUtils.{
   parseSpaceId
 }
 import civil.errors.AppError
+import civil.errors.AppError._
 import civil.models.IncomingSpace
 import civil.services.spaces.SpacesService
 import zio.http._
@@ -27,30 +28,83 @@ final case class SpacesController(spacesService: SpacesService) {
 
       case req @ Method.GET -> !! / "api" / "v1" / "spaces" =>
         (for {
-          authData <- extractJwtData(req)
-          (jwt, jwtType) = authData
-          spaces <- spacesService.getSpacesAuthenticated(
-            jwt,
-            jwtType,
-            req.url.queryParams("skip").head.toInt
-          )
+          skip <- parseQueryFirst(req, "skip")
+          spaces <- req.bearerToken match {
+            case Some(jwt) =>
+              for {
+                jwtTypeHeader <- ZIO
+                  .fromOption(req.header("X-JWT-TYPE"))
+                  .orElseFail(
+                    Unauthorized(
+                      new Throwable("X-JWT-TYPE header not provided")
+                    )
+                  )
+                jwtType = jwtTypeHeader.value.toString
+                spaces <- spacesService.getSpacesAuthenticated(
+                  jwt,
+                  jwtType,
+                  skip.toInt
+                )
+              } yield spaces
+            case None =>
+              spacesService.getSpacesUnauthenticated(
+                skip.toInt
+              )
+          }
         } yield Response.json(spaces.toJson)).catchAll(_.toResponse)
 
       case req @ Method.GET -> !! / "api" / "v1" / "spaces" / "user" / userId =>
         (for {
           skip <- parseQueryFirst(req, "skip")
-          authData <- extractJwtData(req)
-          (jwt, jwtType) = authData
-          res <- spacesService.getUserSpaces(jwt, jwtType, userId, skip.toInt)
-        } yield Response.json(res.toJson)).catchAll(_.toResponse)
+          spaces <- req.bearerToken match {
+            case Some(jwt) =>
+              for {
+                jwtTypeHeader <- ZIO
+                  .fromOption(req.header("X-JWT-TYPE"))
+                  .orElseFail(
+                    Unauthorized(
+                      new Throwable("X-JWT-TYPE header not provided")
+                    )
+                  )
+                jwtType = jwtTypeHeader.value.toString
+                spaces <- spacesService.getUserSpaces(
+                  jwt,
+                  jwtType,
+                  userId,
+                  skip.toInt
+                )
+              } yield spaces
+            case None =>
+              spacesService.getUserSpacesUnauthenticated(userId, skip.toInt)
+          }
+        } yield Response.json(spaces.toJson)).catchAll(_.toResponse)
 
       case req @ Method.GET -> !! / "api" / "v1" / "spaces" / spaceId =>
         (for {
-          authData <- extractJwtData(req)
-          (jwt, jwtType) = authData
           spaceId <- parseSpaceId(spaceId)
-          res <- spacesService.getSpace(jwt, jwtType, spaceId.id)
-        } yield Response.json(res.toJson)).catchAll(_.toResponse)
+          space <- req.bearerToken match {
+            case Some(jwt) =>
+              for {
+                jwtTypeHeader <- ZIO
+                  .fromOption(req.header("X-JWT-TYPE"))
+                  .orElseFail(
+                    Unauthorized(
+                      new Throwable("X-JWT-TYPE header not provided")
+                    )
+                  )
+                jwtType = jwtTypeHeader.value.toString
+                space <- spacesService.getSpace(
+                  jwt,
+                  jwtType,
+                  spaceId.id
+                )
+              } yield space
+            case None =>
+              spacesService.getSpaceUnauthenticated(
+                spaceId.id
+              )
+          }
+        } yield Response.json(space.toJson)).catchAll(_.toResponse)
 
       case req @ Method.GET -> !! / "api" / "v1" / "spaces-followed" =>
         (for {
@@ -66,12 +120,8 @@ final case class SpacesController(spacesService: SpacesService) {
 
       case req @ Method.GET -> !! / "api" / "v1" / "spaces" / "similar-spaces" / spaceId =>
         (for {
-          authData <- extractJwtData(req)
-          (jwt, jwtType) = authData
           spaceId <- parseSpaceId(spaceId)
           spaces <- spacesService.getSimilarSpaces(
-            jwt,
-            jwtType,
             spaceId.id
           )
         } yield Response.json(spaces.toJson)).catchAll(_.toResponse)

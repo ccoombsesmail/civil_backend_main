@@ -28,24 +28,78 @@ final case class DiscussionsController(discussionsService: DiscussionService) {
 
       case req @ Method.GET -> !! / "api" / "v1" / "discussions" / "space-discussions" =>
         (for {
-          authData <- extractJwtData(req)
-          (jwt, jwtType) = authData
           spaceId <- parseQueryFirst(req, "spaceId")
           skip <- parseQueryFirst(req, "skip")
-          discussions <- discussionsService.getSpaceDiscussions(
-            jwt,
-            jwtType,
-            UUID.fromString(spaceId),
-            skip.toInt
-          )
+          discussions <- req.bearerToken match {
+            case Some(jwt) =>
+              for {
+                jwtTypeHeader <- ZIO
+                  .fromOption(req.header("X-JWT-TYPE"))
+                  .orElseFail(JsonDecodingError(new Throwable("error")))
+                jwtType = jwtTypeHeader.value.toString
+                // Call the function for authenticated users
+                discussions <- discussionsService.getSpaceDiscussions(
+                  jwt,
+                  jwtType,
+                  UUID.fromString(spaceId),
+                  skip.toInt
+                )
+              } yield discussions
+            case None =>
+              // Call the function for non-authenticated users
+              discussionsService.getSpaceDiscussionsUnauthenticated(
+                UUID.fromString(spaceId),
+                skip.toInt
+              )
+          }
         } yield Response.json(discussions.toJson)).catchAll(_.toResponse)
 
-      case req @ Method.GET -> !! / "api" / "v1" / "discussions" / "get-one" / discussionId =>
+      case req @ Method.GET -> !! / "api" / "v1" / "discussions" / "popular-discussions" =>
         (for {
-          authData <- extractJwtData(req)
-          (jwt, jwtType) = authData
-          id <- parseDiscussionId(discussionId)
-          discussion <- discussionsService.getDiscussion(jwt, jwtType, id.id)
+          skip <- parseQueryFirst(req, "skip")
+          discussions <- req.bearerToken match {
+            case Some(jwt) =>
+              for {
+                jwtTypeHeader <- ZIO
+                  .fromOption(req.header("X-JWT-TYPE"))
+                  .orElseFail(JsonDecodingError(new Throwable("error")))
+                jwtType = jwtTypeHeader.value.toString
+                // Call the function for authenticated users
+                discussions <- discussionsService.getPopularDiscussions(
+                  jwt,
+                  jwtType,
+                  skip.toInt
+                )
+              } yield discussions
+            case None =>
+              // Call the function for non-authenticated users
+              discussionsService.getPopularDiscussionsUnauthenticated(
+                skip.toInt
+              )
+          }
+        } yield Response.json(discussions.toJson)).catchAll(_.toResponse)
+
+      case req @ Method.GET -> !! / "api" / "v1" / "discussions" / discussionId =>
+        (for {
+          discussionId <- parseDiscussionId(discussionId)
+          discussion <- req.bearerToken match {
+            case Some(jwt) =>
+              for {
+                jwtTypeHeader <- ZIO
+                  .fromOption(req.header("X-JWT-TYPE"))
+                  .orElseFail(JsonDecodingError(new Throwable("error")))
+                jwtType = jwtTypeHeader.value.toString
+                // Call the function for authenticated users
+                discussion <- discussionsService.getDiscussion(
+                  jwt,
+                  jwtType,
+                  discussionId.id
+                )
+              } yield discussion
+            case None =>
+              // Call the function for non-authenticated users
+              discussionsService.getDiscussionUnauthenticated(discussionId.id)
+          }
         } yield Response.json(discussion.toJson)).catchAll(_.toResponse)
 
       case _ @Method.GET -> !! / "api" / "v1" / "discussions" / "general" / spaceId =>
@@ -56,15 +110,30 @@ final case class DiscussionsController(discussionsService: DiscussionService) {
 
       case req @ Method.GET -> !! / "api" / "v1" / "discussions" / "user" / userId =>
         (for {
-          authData <- extractJwtData(req)
-          (jwt, jwtType) = authData
           skip <- parseQueryFirst(req, "skip")
-          discussions <- discussionsService.getUserDiscussions(
-            jwt,
-            jwtType,
-            userId,
-            skip.toInt
-          )
+
+          discussions <- req.bearerToken match {
+            case Some(jwt) =>
+              for {
+                jwtTypeHeader <- ZIO
+                  .fromOption(req.header("X-JWT-TYPE"))
+                  .orElseFail(JsonDecodingError(new Throwable("error")))
+                jwtType = jwtTypeHeader.value.toString
+                // Call the function for authenticated users
+                discussions <- discussionsService.getUserDiscussions(
+                  jwt,
+                  jwtType,
+                  userId,
+                  skip.toInt
+                )
+              } yield discussions
+            case None =>
+              // Call the function for non-authenticated users
+              discussionsService.getUserDiscussionsUnauthenticated(
+                userId,
+                skip.toInt
+              )
+          }
         } yield Response.json(discussions.toJson)).catchAll(_.toResponse)
 
       case req @ Method.GET -> !! / "api" / "v1" / "discussions-followed" =>
@@ -79,27 +148,11 @@ final case class DiscussionsController(discussionsService: DiscussionService) {
           )
         } yield Response.json(discussions.toJson)).catchAll(_.toResponse)
 
-      case req @ Method.GET -> !! / "api" / "v1" / "discussions" / "similar-discussions" / discussionId =>
+      case Method.GET -> !! / "api" / "v1" / "discussions" / "similar-discussions" / discussionId =>
         (for {
-          authData <- extractJwtData(req)
-          (jwt, jwtType) = authData
           id <- parseDiscussionId(discussionId)
           discussions <- discussionsService.getSimilarDiscussions(
-            jwt,
-            jwtType,
             id.id
-          )
-        } yield Response.json(discussions.toJson)).catchAll(_.toResponse)
-
-      case req @ Method.GET -> !! / "api" / "v1" / "discussions" / "popular-discussions" =>
-        (for {
-          authData <- extractJwtData(req)
-          (jwt, jwtType) = authData
-          skip <- parseQueryFirst(req, "skip")
-          discussions <- discussionsService.getPopularDiscussions(
-            jwt,
-            jwtType,
-            skip.toInt
           )
         } yield Response.json(discussions.toJson)).catchAll(_.toResponse)
     }

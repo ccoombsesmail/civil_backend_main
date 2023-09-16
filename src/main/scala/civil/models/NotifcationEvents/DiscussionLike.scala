@@ -15,6 +15,7 @@ import java.util.UUID
 
 case class DiscussionLike(
     eventType: String,
+    spaceId: UUID,
     discussionId: UUID,
     receivingUserId: String,
     givingUserData: GivingUserNotificationData

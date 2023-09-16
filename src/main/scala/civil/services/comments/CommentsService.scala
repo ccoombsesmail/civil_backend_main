@@ -20,92 +20,134 @@ import java.util.UUID
 
 trait CommentsService {
   def insertComment(
-      jwt: String,
-      jwtType: String,
-      incomingComment: IncomingComment
-  ): ZIO[Any, AppError, CommentReply]
+                     jwt: String,
+                     jwtType: String,
+                     incomingComment: IncomingComment
+                   ): ZIO[Any, AppError, CommentReply]
+
   def getComments(
-      jwt: String,
-      jwtType: String,
-      discussionId: UUID,
-      skip: Int
-  ): ZIO[Any, AppError, List[CommentNode]]
+                   jwt: String,
+                   jwtType: String,
+                   discussionId: UUID,
+                   skip: Int
+                 ): ZIO[Any, AppError, List[CommentNode]]
+
+  def getCommentsUnauthenticated(
+                                  discussionId: UUID,
+                                  skip: Int
+                                ): ZIO[Any, AppError, List[CommentNode]]
+
   def getComment(
-      jwt: String,
-      jwtType: String,
-      commentId: UUID
-  ): ZIO[Any, AppError, CommentReplyWithParent]
+                  jwt: String,
+                  jwtType: String,
+                  commentId: UUID
+                ): ZIO[Any, AppError, CommentReplyWithParent]
+
   def getAllCommentReplies(
-      jwt: String,
-      jwtType: String,
-      commentId: UUID
-  ): ZIO[Any, AppError, CommentWithReplies]
+                            jwt: String,
+                            jwtType: String,
+                            commentId: UUID
+                          ): ZIO[Any, AppError, CommentWithReplies]
+
+  def getAllCommentRepliesUnauthenticated(
+                                           commentId: UUID
+                                         ): ZIO[Any, AppError, CommentWithReplies]
 
   def getUserComments(
-      jwt: String,
-      jwtType: String,
-      userId: String,
-      skip: Int
-  ): ZIO[Any, AppError, List[CommentNode]]
+                       jwt: String,
+                       jwtType: String,
+                       userId: String,
+                       skip: Int
+                     ): ZIO[Any, AppError, List[CommentNode]]
+
+  def getUserCommentsUnauthenticated(
+                                      userId: String,
+                                      skip: Int
+                                    ): ZIO[Any, AppError, List[CommentNode]]
 }
 
 object CommentsService {
   def insertComment(
-      jwt: String,
-      jwtType: String,
-      incomingComment: IncomingComment
-  ): ZIO[CommentsService, AppError, CommentReply] =
+                     jwt: String,
+                     jwtType: String,
+                     incomingComment: IncomingComment
+                   ): ZIO[CommentsService, AppError, CommentReply] =
     ZIO.serviceWithZIO[CommentsService](
       _.insertComment(jwt, jwtType, incomingComment)
     )
+
   def getComments(
-      jwt: String,
-      jwtType: String,
-      discussionId: UUID,
-      skip: Int
-  ): ZIO[CommentsService, AppError, List[CommentNode]] =
+                   jwt: String,
+                   jwtType: String,
+                   discussionId: UUID,
+                   skip: Int
+                 ): ZIO[CommentsService, AppError, List[CommentNode]] =
     ZIO.serviceWithZIO[CommentsService](
       _.getComments(jwt, jwtType, discussionId, skip)
     )
+
+  def getCommentsUnauthenticated(
+                                  discussionId: UUID,
+                                  skip: Int
+                                ): ZIO[CommentsService, AppError, List[CommentNode]] =
+    ZIO.serviceWithZIO[CommentsService](
+      _.getCommentsUnauthenticated(discussionId, skip)
+    )
+
   def getComment(
-      jwt: String,
-      jwtType: String,
-      commentId: UUID
-  ): ZIO[CommentsService, AppError, CommentReplyWithParent] =
+                  jwt: String,
+                  jwtType: String,
+                  commentId: UUID
+                ): ZIO[CommentsService, AppError, CommentReplyWithParent] =
     ZIO.serviceWithZIO[CommentsService](_.getComment(jwt, jwtType, commentId))
+
   def getAllCommentReplies(
-      jwt: String,
-      jwtType: String,
-      commentId: UUID
-  ): ZIO[CommentsService, AppError, CommentWithReplies] =
+                            jwt: String,
+                            jwtType: String,
+                            commentId: UUID
+                          ): ZIO[CommentsService, AppError, CommentWithReplies] =
     ZIO.serviceWithZIO[CommentsService](
       _.getAllCommentReplies(jwt, jwtType, commentId)
     )
 
+  def getAllCommentRepliesUnauthenticated(
+                                           commentId: UUID
+                                         ): ZIO[CommentsService, AppError, CommentWithReplies] =
+    ZIO.serviceWithZIO[CommentsService](
+      _.getAllCommentRepliesUnauthenticated(commentId)
+    )
+
   def getUserComments(
-      jwt: String,
-      jwtType: String,
-      userId: String,
-      skip: Int
-  ): ZIO[CommentsService, AppError, List[CommentNode]] =
+                       jwt: String,
+                       jwtType: String,
+                       userId: String,
+                       skip: Int
+                     ): ZIO[CommentsService, AppError, List[CommentNode]] =
     ZIO.serviceWithZIO[CommentsService](
       _.getUserComments(jwt, jwtType, userId, skip)
     )
 
+  def getUserCommentsUnauthenticated(
+                                      userId: String,
+                                      skip: Int
+                                    ): ZIO[CommentsService, AppError, List[CommentNode]] =
+    ZIO.serviceWithZIO[CommentsService](
+      _.getUserCommentsUnauthenticated(userId, skip)
+    )
 }
 
 case class CommentsServiceLive(
-    commentsRepo: CommentsRepository,
-    usersRepo: UsersRepository,
-    discussionRepo: DiscussionRepository,
-    authenticationService: AuthenticationService
-) extends CommentsService {
+                                commentsRepo: CommentsRepository,
+                                usersRepo: UsersRepository,
+                                discussionRepo: DiscussionRepository,
+                                authenticationService: AuthenticationService
+                              ) extends CommentsService {
 
   override def insertComment(
-      jwt: String,
-      jwtType: String,
-      incomingComment: IncomingComment
-  ): ZIO[Any, AppError, CommentReply] = {
+                              jwt: String,
+                              jwtType: String,
+                              incomingComment: IncomingComment
+                            ): ZIO[Any, AppError, CommentReply] = {
     // val sentiment = SentimentAnalyzer.mainSentiment(incommingComment.rawText)
 
     for {
@@ -131,11 +173,11 @@ case class CommentsServiceLive(
   }
 
   override def getComments(
-      jwt: String,
-      jwtType: String,
-      discussionId: UUID,
-      skip: Int
-  ): ZIO[Any, AppError, List[CommentNode]] = {
+                            jwt: String,
+                            jwtType: String,
+                            discussionId: UUID,
+                            skip: Int
+                          ): ZIO[Any, AppError, List[CommentNode]] = {
 
     for {
       userData <- authenticationService.extractUserData(jwt, jwtType)
@@ -143,11 +185,18 @@ case class CommentsServiceLive(
     } yield comments
   }
 
+  override def getCommentsUnauthenticated(
+                                           discussionId: UUID,
+                                           skip: RuntimeFlags
+                                         ): ZIO[Any, AppError, List[CommentNode]] = {
+    commentsRepo.getCommentsUnauthenticated(discussionId, skip)
+  }
+
   override def getComment(
-      jwt: String,
-      jwtType: String,
-      commentId: UUID
-  ): ZIO[Any, AppError, CommentReplyWithParent] = {
+                           jwt: String,
+                           jwtType: String,
+                           commentId: UUID
+                         ): ZIO[Any, AppError, CommentReplyWithParent] = {
     for {
       userData <- authenticationService.extractUserData(jwt, jwtType)
       comments <- commentsRepo.getComment(userData.userId, commentId)
@@ -155,10 +204,10 @@ case class CommentsServiceLive(
   }
 
   override def getAllCommentReplies(
-      jwt: String,
-      jwtType: String,
-      commentId: UUID
-  ): ZIO[Any, AppError, CommentWithReplies] = {
+                                     jwt: String,
+                                     jwtType: String,
+                                     commentId: UUID
+                                   ): ZIO[Any, AppError, CommentWithReplies] = {
     for {
       userData <- authenticationService.extractUserData(jwt, jwtType)
       commentWithReplies <- commentsRepo.getAllCommentReplies(
@@ -169,12 +218,20 @@ case class CommentsServiceLive(
 
   }
 
+  override def getAllCommentRepliesUnauthenticated(
+                                                    commentId: UUID
+                                                  ): ZIO[Any, AppError, CommentWithReplies] = {
+    commentsRepo.getAllCommentRepliesUnauthenticated(
+      commentId
+    )
+  }
+
   override def getUserComments(
-      jwt: String,
-      jwtType: String,
-      userId: String,
-      skip: Int
-  ): ZIO[Any, AppError, List[CommentNode]] = {
+                                jwt: String,
+                                jwtType: String,
+                                userId: String,
+                                skip: Int
+                              ): ZIO[Any, AppError, List[CommentNode]] = {
     for {
       userData <- authenticationService.extractUserData(jwt, jwtType)
       comments <- commentsRepo.getUserComments(
@@ -183,6 +240,14 @@ case class CommentsServiceLive(
         skip
       )
     } yield comments
+  }
+
+  override def getUserCommentsUnauthenticated(userId: String, skip: Int): ZIO[Any, AppError, List[CommentNode]] = {
+    commentsRepo.getUserCommentsUnauthenticated(
+      userId,
+      skip
+    )
+
   }
 
 }

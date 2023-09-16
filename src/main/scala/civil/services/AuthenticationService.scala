@@ -94,10 +94,6 @@ case class AuthenticationServiceLive(dataSource: DataSource)
                 )
               )
             )
-          case "CLERK" =>
-            decodeClerkJWT(jwt).mapError(e =>
-              Unauthorized(new Throwable("Failed Clerk Authentication"))
-            )
           case _ =>
             ZIO
               .fromOption(None)
@@ -132,17 +128,14 @@ case class AuthenticationServiceLive(dataSource: DataSource)
       case _                     => jwt
     }
     for {
-      res <- authenticateCivicTokenHeader(decodedJwt).mapError(e =>
-        Unauthorized(new Throwable(e.toString))
-      )
+      res <- authenticateCivicTokenHeader(decodedJwt)
 
       body <- ZIO
         .fromEither(res.body)
-        .mapError(e => Unauthorized(new Throwable(e.toString)))
+        .mapError(e => Unauthorized(new Throwable(e.getMessage)))
       userDataOpt <- UsersRepository
         .getUserInternal(body.pk)
         .provideEnvironment(ZEnvironment(dataSource))
-        .mapError(e => Unauthorized(new Throwable(e.toString)))
       userData <- ZIO
         .fromOption(userDataOpt)
         .mapError(e => Unauthorized(new Throwable(e.toString)))

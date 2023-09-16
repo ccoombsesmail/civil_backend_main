@@ -1,24 +1,14 @@
 package civil.repositories.discussions
 
 import cats.implicits.catsSyntaxOptionId
+import civil.database.queries.DiscussionQueries._
 import civil.errors.AppError
-import civil.errors.AppError.{DatabaseError, InternalServerError}
+import civil.errors.AppError.DatabaseError
 import civil.models.NotifcationEvents.DiscussionMLEvent
-import civil.models.{Users, _}
-import civil.models.actions.{LikeAction, NeutralState}
-import civil.models.enums.LinkType.Web
+import civil.models._
+import civil.models.actions.NeutralState
 import civil.models.enums.{ReportStatus, SpaceCategories}
-import civil.repositories.DiscussionQueries.{
-  DiscussionsData,
-  getAllFollowedDiscussions,
-  getAllPopularDiscussions,
-  getAllUserDiscussions,
-  getOneDiscussion,
-  getSimilarDiscussionsQuery,
-  getSpaceDiscussionsQuery
-}
 import civil.services.KafkaProducerServiceLive
-import io.getquill.Ord
 import io.scalaland.chimney.dsl._
 import zio._
 
@@ -37,9 +27,18 @@ trait DiscussionRepository {
       userId: String
   ): ZIO[Any, AppError, List[OutgoingDiscussion]]
 
+  def getSpaceDiscussionsUnauthenticated(
+      spaceId: UUID,
+      skip: Int
+  ): ZIO[Any, AppError, List[OutgoingDiscussion]]
+
   def getDiscussion(
       id: UUID,
       userId: String
+  ): ZIO[Any, AppError, OutgoingDiscussion]
+
+  def getDiscussionUnauthenticated(
+      id: UUID
   ): ZIO[Any, AppError, OutgoingDiscussion]
 
   def getGeneralDiscussionId(
@@ -52,12 +51,21 @@ trait DiscussionRepository {
       skip: Int
   ): ZIO[Any, AppError, List[OutgoingDiscussion]]
 
+  def getUserDiscussionsUnauthenticated(
+      userId: String,
+      skip: Int
+  ): ZIO[Any, AppError, List[OutgoingDiscussion]]
+
   def getSimilarDiscussions(
       discussionId: UUID
   ): ZIO[Any, AppError, List[OutgoingDiscussion]]
 
   def getPopularDiscussions(
       userId: String,
+      skip: Int
+  ): ZIO[Any, AppError, List[OutgoingDiscussion]]
+
+  def getPopularDiscussionsUnauthenticated(
       skip: Int
   ): ZIO[Any, AppError, List[OutgoingDiscussion]]
 
@@ -85,11 +93,25 @@ object DiscussionRepository {
       _.getSpaceDiscussions(spaceId, skip, userId)
     )
 
+  def getSpaceDiscussionsUnauthenticated(
+      spaceId: UUID,
+      skip: Int
+  ): ZIO[DiscussionRepository, AppError, List[OutgoingDiscussion]] =
+    ZIO.serviceWithZIO[DiscussionRepository](
+      _.getSpaceDiscussionsUnauthenticated(spaceId, skip)
+    )
+
   def getDiscussion(
       id: UUID,
       userId: String
   ): ZIO[DiscussionRepository, AppError, OutgoingDiscussion] =
     ZIO.serviceWithZIO[DiscussionRepository](_.getDiscussion(id, userId))
+
+  def getDiscussionUnauthenticated(
+      id: UUID,
+      userId: String
+  ): ZIO[DiscussionRepository, AppError, OutgoingDiscussion] =
+    ZIO.serviceWithZIO[DiscussionRepository](_.getDiscussionUnauthenticated(id))
 
   def getGeneralDiscussionId(
       spaceId: UUID
@@ -105,11 +127,26 @@ object DiscussionRepository {
       _.getUserDiscussions(requestingUserId, userId, skip)
     )
 
+  def getUserDiscussionsUnauthenticated(
+      userId: String,
+      skip: Int
+  ): ZIO[DiscussionRepository, AppError, List[OutgoingDiscussion]] =
+    ZIO.serviceWithZIO[DiscussionRepository](
+      _.getUserDiscussionsUnauthenticated(userId, skip)
+    )
+
   def getSimilarDiscussions(
       discussionId: UUID
   ): ZIO[DiscussionRepository, AppError, List[OutgoingDiscussion]] =
     ZIO.serviceWithZIO[DiscussionRepository](
       _.getSimilarDiscussions(discussionId)
+    )
+
+  def getPopularDiscussionsUnauthenticated(
+      skip: Int
+  ): ZIO[DiscussionRepository, AppError, List[OutgoingDiscussion]] =
+    ZIO.serviceWithZIO[DiscussionRepository](
+      _.getPopularDiscussionsUnauthenticated(skip)
     )
 
   def getPopularDiscussions(
@@ -212,6 +249,33 @@ case class DiscussionRepositoryLive(dataSource: DataSource)
 
   }
 
+  override def getSpaceDiscussionsUnauthenticated(
+      spaceId: UUID,
+      skip: Int
+  ): ZIO[Any, AppError, List[OutgoingDiscussion]] = {
+
+    (for {
+
+      discussionsJoin <- run(
+        getSpaceDiscussionsUnauthenticatedQuery(
+          lift(skip),
+          lift(spaceId)
+        )
+      )
+      discussions = discussionsJoin.map { row =>
+        prepareOutgoingDiscussionRow(
+          row
+            .into[DiscussionsData]
+            .withFieldConst(_.userLikeState, NeutralState.some)
+            .withFieldConst(_.userFollowState, false)
+            .transform
+        )
+      }
+    } yield discussions)
+      .mapError(DatabaseError(_))
+      .provideEnvironment(ZEnvironment(dataSource))
+  }
+
   override def getDiscussion(
       id: UUID,
       requestingUserId: String
@@ -232,6 +296,32 @@ case class DiscussionRepositoryLive(dataSource: DataSource)
       .mapError(DatabaseError)
       .provideEnvironment(ZEnvironment(dataSource))
 
+  }
+
+  override def getDiscussionUnauthenticated(
+      id: UUID
+  ): ZIO[Any, AppError, OutgoingDiscussion] = {
+    (for {
+      discussionsUsersLinksJoin <- run(
+        getOneDiscussionUnauthenticatedQuery(lift(id))
+      )
+      discussion <- ZIO
+        .fromOption(discussionsUsersLinksJoin.headOption)
+        .orElseFail(
+          DatabaseError(
+            new Throwable(s"Could Not Find Discussion with ID: $id")
+          )
+        )
+
+    } yield prepareOutgoingDiscussionRow(
+      discussion
+        .into[DiscussionsData]
+        .withFieldConst(_.userLikeState, NeutralState.some)
+        .withFieldConst(_.userFollowState, false)
+        .transform
+    ))
+      .mapError(DatabaseError)
+      .provideEnvironment(ZEnvironment(dataSource))
   }
 
   override def getGeneralDiscussionId(
@@ -261,6 +351,30 @@ case class DiscussionRepositoryLive(dataSource: DataSource)
       )
       discussions = discussionsUsersLinksJoin.map { row =>
         prepareOutgoingDiscussionRow(row)
+      }
+    } yield discussions)
+      .mapError(DatabaseError(_))
+      .provideEnvironment(ZEnvironment(dataSource))
+
+  }
+
+  override def getUserDiscussionsUnauthenticated(
+      userId: String,
+      skip: Index
+  ): ZIO[Any, AppError, List[OutgoingDiscussion]] = {
+    (for {
+
+      discussionsUsersLinksJoin <- run(
+        getAllUserDiscussionsUnauthenticatdQuery(lift(skip), lift(userId))
+      )
+      discussions = discussionsUsersLinksJoin.map { row =>
+        prepareOutgoingDiscussionRow(
+          row
+            .into[DiscussionsData]
+            .withFieldConst(_.userFollowState, false)
+            .withFieldConst(_.userLikeState, NeutralState.some)
+            .transform
+        )
       }
     } yield discussions)
       .mapError(DatabaseError(_))
@@ -308,6 +422,34 @@ case class DiscussionRepositoryLive(dataSource: DataSource)
           ZIO.attempt(
             prepareOutgoingDiscussionRow(
               row
+            )
+          )
+        )
+        .withParallelism(10)
+
+    } yield discussions)
+      .mapError(DatabaseError)
+      .provideEnvironment(ZEnvironment(dataSource))
+  }
+
+  override def getPopularDiscussionsUnauthenticated(
+      skip: Index
+  ): ZIO[Any, AppError, List[OutgoingDiscussion]] = {
+
+    (for {
+      discussionsUsersLinksJoin <- run(
+        getAllPopularDiscussionsUnauthenticatedQuery(lift(skip))
+      )
+
+      discussions <- ZIO
+        .foreachPar(discussionsUsersLinksJoin)(row =>
+          ZIO.attempt(
+            prepareOutgoingDiscussionRow(
+              row
+                .into[DiscussionsData]
+                .withFieldConst(_.userFollowState, false)
+                .withFieldConst(_.userLikeState, NeutralState.some)
+                .transform
             )
           )
         )

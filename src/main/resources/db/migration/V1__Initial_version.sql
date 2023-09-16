@@ -119,6 +119,7 @@ CREATE TABLE discussions(
     content_height decimal,
     report_status text NOT NULL,
     user_verification_type varchar(50) default 'NO_VERIFICATION',
+    popularity_score DOUBLE PRECISION DEFAULT 0,
     UNIQUE(title, space_id),
     CONSTRAINT fk_spaces
       FOREIGN KEY(space_id)
@@ -314,11 +315,10 @@ CREATE TABLE reviewed_reports (
     id SERIAL PRIMARY KEY,
     user_id text NOT NULL,
     content_id uuid NOT NULL,
-    toxic boolean,
-    spam boolean,
-    personal_attack boolean,
+    report_cause varchar(30),
+    severity varchar(15),
     content_type varchar(10),
-    reviewed_at timestamp without time zone DEFAULT NOW(),
+    reviewed_at timestamp without time zone DEFAULT NOW()
 );
 
 CREATE INDEX user_id_reports_index ON reports (user_id);
@@ -343,6 +343,7 @@ CREATE TABLE tribunal_jury_members(
     user_id text NOT NULL,
     content_id uuid NOT NULL,
     content_type varchar(10),
+    jury_duty_completion_time bigint,
     UNIQUE(content_id, user_id)
 );
 

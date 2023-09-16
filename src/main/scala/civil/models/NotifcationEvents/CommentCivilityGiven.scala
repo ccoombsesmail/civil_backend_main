@@ -1,7 +1,14 @@
 package civil.models.NotifcationEvents
 
 import zio.ZIO
-import zio.json.{DecoderOps, DeriveJsonDecoder, DeriveJsonEncoder, EncoderOps, JsonDecoder, JsonEncoder}
+import zio.json.{
+  DecoderOps,
+  DeriveJsonDecoder,
+  DeriveJsonEncoder,
+  EncoderOps,
+  JsonDecoder,
+  JsonEncoder
+}
 import zio.kafka.serde.Serde
 
 import java.util.UUID
@@ -13,7 +20,7 @@ case class CommentCivilityGiven(
     receivingUserId: String,
     givingUserData: GivingUserNotificationData,
     spaceId: UUID,
-    subtopicId: UUID
+    discussionId: UUID
 )
 
 object CommentCivilityGiven {
@@ -22,15 +29,15 @@ object CommentCivilityGiven {
   implicit val encoder: JsonEncoder[CommentCivilityGiven] =
     DeriveJsonEncoder.gen[CommentCivilityGiven]
 
-  val commentCivilityGivenSerde: Serde[Any, CommentCivilityGiven] = Serde.string.inmapM {
-    newFollowerAsString =>
+  val commentCivilityGivenSerde: Serde[Any, CommentCivilityGiven] =
+    Serde.string.inmapM { newFollowerAsString =>
       ZIO.fromEither(
         newFollowerAsString
           .fromJson[CommentCivilityGiven]
           .left
           .map(new RuntimeException(_))
       )
-  } { newFollowerAsObj =>
-    ZIO.attempt(newFollowerAsObj.toJson)
-  }
+    } { newFollowerAsObj =>
+      ZIO.attempt(newFollowerAsObj.toJson)
+    }
 }

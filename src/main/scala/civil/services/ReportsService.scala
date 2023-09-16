@@ -15,12 +15,14 @@ trait ReportsService {
       jwtType: String,
       report: Report
   ): ZIO[Any, AppError, Unit]
+
   def getReport(
       jwt: String,
       jwtType: String,
       contentId: UUID
   ): ZIO[Any, AppError, ReportInfo]
 
+  def getReportUnauthenticated(contentId: UUID): ZIO[Any, AppError, ReportInfo]
 }
 
 object ReportsService {
@@ -40,6 +42,13 @@ object ReportsService {
   ): ZIO[ReportsService, AppError, ReportInfo] =
     ZIO.serviceWithZIO[ReportsService](
       _.getReport(jwt, jwtType, contentId)
+    )
+
+  def getReportUnauthenticated(
+      contentId: UUID
+  ): ZIO[ReportsService, AppError, ReportInfo] =
+    ZIO.serviceWithZIO[ReportsService](
+      _.getReportUnauthenticated(contentId)
     )
 }
 
@@ -78,6 +87,12 @@ case class ReportsServiceLive(
       userData <- authenticationService.extractUserData(jwt, jwtType)
       reportInfo <- reportsRepo.getReport(contentId, userData.userId)
     } yield reportInfo
+  }
+
+  override def getReportUnauthenticated(
+      contentId: UUID
+  ): ZIO[Any, AppError, ReportInfo] = {
+    reportsRepo.getReportUnauthenticated(contentId)
   }
 }
 

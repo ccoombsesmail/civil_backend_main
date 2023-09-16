@@ -14,11 +14,11 @@ import io.circe._
 import io.circe.parser._
 
 final case class TribunalCommentsController(
-    tribunalCommentsService: TribunalCommentsService
-) {
+                                             tribunalCommentsService: TribunalCommentsService
+                                           ) {
   val routes: Http[Any, Throwable, Request, Response] =
     Http.collectZIO[Request] {
-      case req @ Method.POST -> !! / "api" / "v1" / "tribunal-comments" =>
+      case req@Method.POST -> !! / "api" / "v1" / "tribunal-comments" =>
         (for {
           authData <- extractJwtData(req)
           (jwt, jwtType) = authData
@@ -30,31 +30,41 @@ final case class TribunalCommentsController(
           )
         } yield Response.json(res.asJson.noSpaces)).catchAll(_.toResponse)
 
-      case req @ Method.GET -> !! / "api" / "v1" / "tribunal-comments" =>
+      case req@Method.GET -> !! / "api" / "v1" / "tribunal-comments" =>
         (for {
-          authData <- extractJwtData(req)
-          (jwt, jwtType) = authData
-          contentIdParam <- parseQuery(req, "contentId")
-          commentTypeParam <- parseQuery(req, "commentType")
-          contentId <- ZIO
-            .fromOption(contentIdParam.headOption)
-          commentType <- ZIO
-            .fromOption(commentTypeParam.headOption)
-          res <- tribunalCommentsService
-            .getComments(
-              jwt,
-              jwtType,
-              UUID.fromString(contentId),
-              TribunalCommentType.withName(commentType)
-            )
-            .mapError(e => {
-              e
-            })
-        } yield Response.json(res.asJson.noSpaces))
+
+          contentId <- parseQueryFirst(req, "contentId")
+          commentType <- parseQueryFirst(req, "commentType")
+
+          tComments <- req.bearerToken match {
+            case Some(jwt) =>
+              for {
+                jwtTypeHeader <- ZIO
+                  .fromOption(req.header("X-JWT-TYPE"))
+                  .orElseFail(JsonDecodingError(new Throwable("error")))
+                jwtType = jwtTypeHeader.value.toString
+                // Call the function for authenticated users
+                comments <- tribunalCommentsService
+                  .getComments(
+                    jwt,
+                    jwtType,
+                    UUID.fromString(contentId),
+                    TribunalCommentType.withName(commentType)
+                  )
+              } yield comments
+            case None =>
+              // Call the function for non-authenticated users
+              tribunalCommentsService
+                .getCommentsUnauthenticated(
+                  UUID.fromString(contentId),
+                  TribunalCommentType.withName(commentType)
+                )
+          }
+        } yield Response.json(tComments.asJson.noSpaces))
           .orElseFail(JsonDecodingError(new Throwable("error decoding")))
           .catchAll(_.toResponse)
 
-      case req @ Method.GET -> !! / "api" / "v1" / "tribunal-comments-batch" =>
+      case req@Method.GET -> !! / "api" / "v1" / "tribunal-comments-batch" =>
         (for {
           authData <- extractJwtData(req)
           (jwt, jwtType) = authData

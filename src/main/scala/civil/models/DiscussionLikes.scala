@@ -18,6 +18,7 @@ object DiscussionLikes {
 
 case class UpdateDiscussionLikes(
     id: UUID,
+    spaceId: UUID,
     likeAction: LikeAction,
     createdByUserId: Option[String] = None
 )

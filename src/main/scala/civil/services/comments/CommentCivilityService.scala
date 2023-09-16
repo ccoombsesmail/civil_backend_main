@@ -89,7 +89,7 @@ case class CommentCivilityServiceLive(
               givingUserIconSrc = Some(userData.userIconSrc)
             ),
             spaceId = comment.spaceId,
-            subtopicId = comment.discussionId
+            discussionId = comment.discussionId
           ),
           civilityData.receivingUserId,
           CommentCivilityGiven.commentCivilityGivenSerde

@@ -1,7 +1,7 @@
 package civil.controllers
 
 import civil.errors.AppError
-import civil.errors.AppError.JsonDecodingError
+import civil.errors.AppError.{JsonDecodingError, Unauthorized}
 import civil.models.{CommentId, DiscussionId, SpaceId}
 import zio.http._
 import zio.http.model.HTTP_CHARSET
@@ -38,7 +38,7 @@ object ParseUtils {
     for {
       jwt <- ZIO
         .fromOption(request.bearerToken)
-        .orElseFail(JsonDecodingError(new Throwable("Error")))
+        .orElseFail(Unauthorized(new Throwable("No Auth Token Provided")))
       jwtTypeHeader <- ZIO
         .fromOption(request.header("X-JWT-TYPE"))
         .orElseFail(JsonDecodingError(new Throwable("error")))

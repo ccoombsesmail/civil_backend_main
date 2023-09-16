@@ -15,9 +15,11 @@ case class TribunalCommentNode(
 )
 
 object TribunalCommentNode {
-  implicit val encoder: Encoder[TribunalCommentNode] = deriveEncoder[TribunalCommentNode]
+  implicit val encoder: Encoder[TribunalCommentNode] =
+    deriveEncoder[TribunalCommentNode]
 
 }
+
 case class TribunalEntryWithDepth(comment: TribunalCommentsReply, depth: Int)
 
 object TribunalComments {
@@ -102,7 +104,8 @@ case class TribunalCommentsReply(
 )
 
 object TribunalCommentsReply {
-  implicit val encoder: Encoder[TribunalCommentsReply] = deriveEncoder[TribunalCommentsReply]
+  implicit val encoder: Encoder[TribunalCommentsReply] =
+    deriveEncoder[TribunalCommentsReply]
 
 }
 
@@ -143,7 +146,26 @@ case class TribunalCommentWithDepthAndUser(
     userId: String,
     likeState: Option[LikeAction],
     civility: Option[Float]
+)
 
+case class TribunalCommentWithDepthAndUserUnauthenticated(
+    id: UUID,
+    editorState: String,
+    createdByUsername: String,
+    createdByUserId: String,
+    sentiment: String,
+    reportedContentId: UUID,
+    parentId: Option[UUID],
+    createdAt: ZonedDateTime,
+    likes: Int,
+    rootId: Option[UUID],
+    depth: Int,
+    source: Option[String],
+    commentType: TribunalCommentType,
+    userIconSrc: Option[String],
+    userExperience: Option[String],
+    createdByTag: Option[String],
+    userId: String
 )
 
 case class TribunalCommentsBatchResponse(

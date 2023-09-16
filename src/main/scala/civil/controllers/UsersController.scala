@@ -1,9 +1,21 @@
 package civil.controllers
 
 import civil.services.UsersService
-import civil.controllers.ParseUtils.{extractJwtData, parseBody, parseQuery}
+import civil.controllers.ParseUtils.{
+  extractJwtData,
+  parseBody,
+  parseQuery,
+  parseQueryFirst
+}
 import civil.errors.AppError.JsonDecodingError
-import civil.models.{IncomingUser, TagData, UpdateUserBio, UpdateUserIcon}
+import civil.models.{
+  IncomingUser,
+  OutgoingUser,
+  OutgoingUserUnauthenticated,
+  TagData,
+  UpdateUserBio,
+  UpdateUserIcon
+}
 import zio._
 import zio.http._
 import zio.http.model.Method
@@ -20,18 +32,30 @@ final case class UsersController(usersService: UsersService) {
 
       case req @ Method.GET -> !! / "api" / "v1" / "users" =>
         (for {
-          userIdParams <- parseQuery(req, "userId")
-          userId <- ZIO
-            .fromOption(userIdParams.headOption)
-            .orElseFail(JsonDecodingError(new Throwable("No user Id")))
-          authData <- extractJwtData(req)
-          (jwt, jwtType) = authData
-          user <- usersService.getUser(
-            jwt,
-            jwtType,
-            userId
-          )
-        } yield Response.json(user.toJson)).catchAll(_.toResponse)
+          userId <- parseQueryFirst(req, "userId")
+          user <- req.bearerToken match {
+            case Some(jwt) =>
+              for {
+                jwtTypeHeader <- ZIO
+                  .fromOption(req.header("X-JWT-TYPE"))
+                  .orElseFail(JsonDecodingError(new Throwable("error")))
+                jwtType = jwtTypeHeader.value.toString
+                // Call the function for authenticated users
+                user <- usersService.getUser(
+                  jwt,
+                  jwtType,
+                  userId
+                )
+              } yield user.toJson
+            case None =>
+              // Call the function for non-authenticated users
+              for {
+                user <- usersService.getUserUnauthenticated(
+                  userId
+                )
+              } yield user.toJson
+          }
+        } yield Response.json(user)).catchAll(_.toResponse)
 
       case req @ Method.PUT -> !! / "api" / "v1" / "users" =>
         (for {

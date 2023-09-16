@@ -1,11 +1,14 @@
 package civil.repositories
 
 import civil.errors.AppError
-import civil.errors.AppError.{DatabaseError, InternalServerError}
+import civil.errors.AppError.DatabaseError
 import civil.models._
 import civil.models.actions.NeutralState
 import civil.models.enums.TribunalCommentType
-import civil.repositories.QuillContextQueries.getTribunalCommentsWithReplies
+import civil.database.queries.CommentQueries.{
+  getTribunalCommentsWithReplies,
+  getTribunalCommentsWithRepliesUnauthenticatedQuery
+}
 import civil.utils.CommentsTreeConstructor
 import io.getquill.Ord
 import io.scalaland.chimney.dsl._
@@ -22,6 +25,11 @@ trait TribunalCommentsRepository {
 
   def getComments(
       userId: String,
+      contentId: UUID,
+      commentType: TribunalCommentType
+  ): ZIO[Any, AppError, List[TribunalCommentNode]]
+
+  def getCommentsUnauthenticated(
       contentId: UUID,
       commentType: TribunalCommentType
   ): ZIO[Any, AppError, List[TribunalCommentNode]]
@@ -51,6 +59,16 @@ object TribunalCommentsRepository {
   ]] =
     ZIO.serviceWithZIO[TribunalCommentsRepository](
       _.getComments(userId, contentId, commentType)
+    )
+
+  def getCommentsUnauthenticated(
+      contentId: UUID,
+      commentType: TribunalCommentType
+  ): ZIO[TribunalCommentsRepository, AppError, List[
+    TribunalCommentNode
+  ]] =
+    ZIO.serviceWithZIO[TribunalCommentsRepository](
+      _.getCommentsUnauthenticated(contentId, commentType)
     )
 
   def getCommentsBatch(
@@ -123,38 +141,6 @@ case class TribunalCommentsRepositoryLive(dataSource: DataSource)
       s = space.headOption
       _ <- ZIO.logInfo(s"Space exists: ${s.isDefined}")
 
-      //      userContentJoin <- run(
-      //        query[Users]
-      //          .leftJoin(query[Spaces])
-      //          .on((u, t) => u.userId == t.createdByUserId)
-      //          .leftJoin(query[Comments])
-      //          .on((ut, c) => ut._1.userId == c.createdByUserId)
-      //          .filter { case ((u, tOpt), cOpt) =>
-      //            u.userId == lift(comment.createdByUserId) &&
-      //            (
-      //              tOpt.exists(_.id == lift(comment.reportedContentId)) ||
-      //                cOpt.exists(_.id == lift(comment.reportedContentId))
-      //            )
-      //          }
-      //          .map { case ((u, tOpt), cOpt) =>
-      //            (u, tOpt, cOpt)
-      //          } // Select only required fields if needed
-      //      ).mapError(e => {
-      //        println(e)
-      //        e
-      //      })
-      //
-      //      (user, topicOpt, commentOpt) = userContentJoin.headOption.getOrElse(
-      //        User(
-      //          commentCreatorData.userId,
-      //          Some(commentCreatorData.userIconSrc),
-      //          Some(commentCreatorData.userCivilTag),
-      //          commentCreatorData.username,
-      //          commentCreatorData.experience
-      //        ),
-      //        None,
-      //        None
-      //      )
       commentType =
         if (c.isDefined || s.isDefined || d.isDefined)
           TribunalCommentType.Defendant
@@ -197,6 +183,16 @@ case class TribunalCommentsRepositoryLive(dataSource: DataSource)
       getAllComments(userId, contentId)
     else
       getCommentsByCommentType(userId, contentId, commentType)
+  }
+
+  override def getCommentsUnauthenticated(
+      contentId: UUID,
+      commentType: TribunalCommentType
+  ): ZIO[Any, AppError, List[TribunalCommentNode]] = {
+    if (commentType == TribunalCommentType.All)
+      getAllCommentsUnauthenticated(contentId)
+    else
+      getCommentsByCommentTypeUnauthenticated(contentId, commentType)
   }
 
   override def getCommentsBatch(
@@ -343,6 +339,120 @@ case class TribunalCommentsRepositoryLive(dataSource: DataSource)
               .toList
               .head
           } yield replyTree
+      })
+  } yield commentsNodes)
+    .provideEnvironment(ZEnvironment(dataSource))
+    .mapError(DatabaseError(_))
+
+  private def getAllCommentsUnauthenticated(
+      contentId: UUID
+  ): ZIO[Any, AppError, List[TribunalCommentNode]] = (for {
+    commentsWithUserLikesCivility <- run(
+      query[TribunalComments]
+        .filter(c =>
+          c.reportedContentId == lift(contentId) && c.parentId.isEmpty
+        )
+        .sortBy { case (comment) => comment.createdAt }(Ord.desc)
+    ).mapError(DatabaseError(_))
+    commentsNodes <- ZIO
+      .collectAll(commentsWithUserLikesCivility.map { case (comment) =>
+        for {
+          commentsWithDepth <- run(
+            getTribunalCommentsWithRepliesUnauthenticatedQuery(lift(comment.id))
+          ).mapError(DatabaseError(_))
+          repliesWithDepth = commentsWithDepth.map { c =>
+            TribunalComments.withDepthToReplyWithDepth(
+              c.into[TribunalCommentWithDepthAndUser]
+                .withFieldConst(_.likeState, Some(NeutralState))
+                .withFieldConst(_.civility, Some(0f))
+                .transform,
+              NeutralState,
+              0f,
+              c.userIconSrc.getOrElse(""),
+              c.userId,
+              c.userExperience,
+              c.createdByTag
+            )
+          }.reverse
+
+          replies = commentsWithDepth.map { c =>
+            TribunalComments.commentToCommentReply(
+              c.into[TribunalCommentWithDepthAndUser]
+                .withFieldConst(_.likeState, Some(NeutralState))
+                .withFieldConst(_.civility, Some(0f))
+                .transform,
+              NeutralState,
+              0f,
+              c.userIconSrc.getOrElse(""),
+              c.userId,
+              c.userExperience,
+              c.createdByTag
+            )
+          }
+          tc = CommentsTreeConstructor
+          replyTree <- ZIO
+            .fromOption(
+              tc
+                .constructTribunal(repliesWithDepth, replies)
+                .headOption
+            )
+            .orElseFail(DatabaseError(new Throwable("sd")))
+        } yield replyTree
+      })
+  } yield commentsNodes)
+    .provideEnvironment(ZEnvironment(dataSource))
+    .mapError(DatabaseError(_))
+
+  private def getCommentsByCommentTypeUnauthenticated(
+      contentId: UUID,
+      commentType: TribunalCommentType
+  ): ZIO[Any, AppError, List[TribunalCommentNode]] = (for {
+    commentsWithUserLikesCivility <- run(
+      query[TribunalComments]
+        .filter(c =>
+          c.reportedContentId == lift(contentId) && c.parentId.isEmpty
+        )
+        .filter(c => c.commentType == lift(commentType))
+    )
+    commentsNodes <- ZIO
+      .collectAll(commentsWithUserLikesCivility.map { case (comment) =>
+        for {
+          commentsWithDepth <- run(
+            getTribunalCommentsWithRepliesUnauthenticatedQuery(lift(comment.id))
+          )
+          repliesWithDepth = commentsWithDepth.map { c =>
+            TribunalComments.withDepthToReplyWithDepth(
+              c.into[TribunalCommentWithDepthAndUser]
+                .withFieldConst(_.likeState, Some(NeutralState))
+                .withFieldConst(_.civility, Some(0f))
+                .transform,
+              NeutralState,
+              0f,
+              c.userIconSrc.getOrElse(""),
+              c.userId,
+              c.userExperience,
+              c.createdByTag
+            )
+          }.reverse
+          replies = commentsWithDepth.map { c =>
+            TribunalComments.commentToCommentReply(
+              c.into[TribunalCommentWithDepthAndUser]
+                .withFieldConst(_.likeState, Some(NeutralState))
+                .withFieldConst(_.civility, Some(0f))
+                .transform,
+              NeutralState,
+              0f,
+              c.userIconSrc.getOrElse(""),
+              c.userId,
+              c.userExperience,
+              c.createdByTag
+            )
+          }
+          tc = CommentsTreeConstructor
+          replyTree = tc
+            .constructTribunal(repliesWithDepth, replies)
+            .head
+        } yield replyTree
       })
   } yield commentsNodes)
     .provideEnvironment(ZEnvironment(dataSource))

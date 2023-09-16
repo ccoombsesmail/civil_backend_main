@@ -19,47 +19,64 @@ import java.util.UUID
 
 trait TribunalCommentsService {
   def insertComment(
-      jwt: String,
-      jwtType: String,
-      incomingComment: IncomingComment
-  ): ZIO[Any, AppError, TribunalCommentsReply]
+                     jwt: String,
+                     jwtType: String,
+                     incomingComment: IncomingComment
+                   ): ZIO[Any, AppError, TribunalCommentsReply]
+
   def getComments(
-      jwt: String,
-      jwtType: String,
-      contentId: UUID,
-      commentType: TribunalCommentType
-  ): ZIO[Any, AppError, List[TribunalCommentNode]]
+                   jwt: String,
+                   jwtType: String,
+                   contentId: UUID,
+                   commentType: TribunalCommentType
+                 ): ZIO[Any, AppError, List[TribunalCommentNode]]
+
+  def getCommentsUnauthenticated(
+                                  contentId: UUID,
+                                  commentType: TribunalCommentType
+                                ): ZIO[Any, AppError, List[TribunalCommentNode]]
+
   def getCommentsBatch(
-      jwt: String,
-      jwtType: String,
-      contentId: UUID
-  ): ZIO[Any, AppError, List[TribunalCommentNode]]
+                        jwt: String,
+                        jwtType: String,
+                        contentId: UUID
+                      ): ZIO[Any, AppError, List[TribunalCommentNode]]
 
 }
 
 object TribunalCommentsService {
   def insertComment(
-      jwt: String,
-      jwtType: String,
-      incomingComment: IncomingComment
-  ): ZIO[TribunalCommentsService, AppError, TribunalCommentsReply] =
+                     jwt: String,
+                     jwtType: String,
+                     incomingComment: IncomingComment
+                   ): ZIO[TribunalCommentsService, AppError, TribunalCommentsReply] =
     ZIO.serviceWithZIO[TribunalCommentsService](
       _.insertComment(jwt, jwtType, incomingComment)
     )
+
   def getComments(
-      jwt: String,
-      jwtType: String,
-      contentId: UUID,
-      commentType: TribunalCommentType
-  ): ZIO[TribunalCommentsService, AppError, List[TribunalCommentNode]] =
+                   jwt: String,
+                   jwtType: String,
+                   contentId: UUID,
+                   commentType: TribunalCommentType
+                 ): ZIO[TribunalCommentsService, AppError, List[TribunalCommentNode]] =
     ZIO.serviceWithZIO[TribunalCommentsService](
       _.getComments(jwt, jwtType, contentId, commentType)
     )
+
+  def getCommentsUnauthenticated(
+                                  contentId: UUID,
+                                  commentType: TribunalCommentType
+                                ): ZIO[TribunalCommentsService, AppError, List[TribunalCommentNode]] =
+    ZIO.serviceWithZIO[TribunalCommentsService](
+      _.getCommentsUnauthenticated(contentId, commentType)
+    )
+
   def getCommentsBatch(
-      jwt: String,
-      jwtType: String,
-      contentId: UUID
-  ): ZIO[TribunalCommentsService, AppError, List[TribunalCommentNode]] =
+                        jwt: String,
+                        jwtType: String,
+                        contentId: UUID
+                      ): ZIO[TribunalCommentsService, AppError, List[TribunalCommentNode]] =
     ZIO.serviceWithZIO[TribunalCommentsService](
       _.getCommentsBatch(jwt, jwtType, contentId)
     )
@@ -67,15 +84,15 @@ object TribunalCommentsService {
 }
 
 case class TribunalCommentsServiceLive(
-    tribunalCommentsRepo: TribunalCommentsRepository,
-    authenticationService: AuthenticationService
-) extends TribunalCommentsService {
+                                        tribunalCommentsRepo: TribunalCommentsRepository,
+                                        authenticationService: AuthenticationService
+                                      ) extends TribunalCommentsService {
 
   override def insertComment(
-      jwt: String,
-      jwtType: String,
-      incomingComment: IncomingComment
-  ): ZIO[Any, AppError, TribunalCommentsReply] = {
+                              jwt: String,
+                              jwtType: String,
+                              incomingComment: IncomingComment
+                            ): ZIO[Any, AppError, TribunalCommentsReply] = {
     for {
       userData <- authenticationService.extractUserData(jwt, jwtType)
       insertedComment <- tribunalCommentsRepo.insertComment(
@@ -90,10 +107,10 @@ case class TribunalCommentsServiceLive(
           .withFieldConst(_.sentiment, Sentiment.POSITIVE.toString)
           .withFieldConst(_.reportedContentId, incomingComment.contentId)
           .withFieldConst(_.createdByUserId, userData.userId)
-//          .withFieldConst(
-//            _.createdByUserId,
-//            incomingComment.createdByUserId.get
-//          )
+          //          .withFieldConst(
+          //            _.createdByUserId,
+          //            incomingComment.createdByUserId.get
+          //          )
           .transform,
         userData
       )
@@ -102,11 +119,11 @@ case class TribunalCommentsServiceLive(
   }
 
   override def getComments(
-      jwt: String,
-      jwtType: String,
-      contentId: UUID,
-      commentType: TribunalCommentType
-  ): ZIO[Any, AppError, List[TribunalCommentNode]] = {
+                            jwt: String,
+                            jwtType: String,
+                            contentId: UUID,
+                            commentType: TribunalCommentType
+                          ): ZIO[Any, AppError, List[TribunalCommentNode]] = {
 
     for {
       userData <- authenticationService.extractUserData(jwt, jwtType)
@@ -118,11 +135,18 @@ case class TribunalCommentsServiceLive(
     } yield comments
   }
 
+  override def getCommentsUnauthenticated(contentId: UUID, commentType: TribunalCommentType): ZIO[Any, AppError, List[TribunalCommentNode]] = {
+    tribunalCommentsRepo.getCommentsUnauthenticated(
+      contentId,
+      commentType
+    )
+  }
+
   override def getCommentsBatch(
-      jwt: String,
-      jwtType: String,
-      contentId: UUID
-  ): ZIO[Any, AppError, List[TribunalCommentNode]] = {
+                                 jwt: String,
+                                 jwtType: String,
+                                 contentId: UUID
+                               ): ZIO[Any, AppError, List[TribunalCommentNode]] = {
 
     for {
       userData <- authenticationService.extractUserData(jwt, jwtType)
@@ -132,6 +156,7 @@ case class TribunalCommentsServiceLive(
       )
     } yield comments
   }
+
 
 }
 

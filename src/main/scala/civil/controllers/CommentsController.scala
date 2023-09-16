@@ -6,6 +6,7 @@ import civil.controllers.ParseUtils.{
   parseCommentId,
   parseDiscussionId,
   parseQuery,
+  parseQueryFirst,
   parseSkip
 }
 import civil.errors.AppError.{InternalServerError, JsonDecodingError}
@@ -41,31 +42,53 @@ final case class CommentsController(commentsService: CommentsService) {
 
       case req @ Method.GET -> !! / "api" / "v1" / "comments" =>
         (for {
-          authData <- extractJwtData(req).mapError(e => JsonDecodingError(e))
-          (jwt, jwtType) = authData
-
-          discussionIdParams <- parseQuery(req, "discussionId")
-          discussionId <- ZIO
-            .fromOption(discussionIdParams.headOption)
-            .orElseFail(JsonDecodingError(new Throwable("error decoding")))
-          skipParams <- parseQuery(req, "skip")
-          skip <- ZIO
-            .fromOption(skipParams.headOption)
-            .orElseFail(JsonDecodingError(new Throwable("error decoding")))
-          comments <- commentsService.getComments(
-            jwt,
-            jwtType,
-            UUID.fromString(discussionId),
-            skip.toInt
-          )
+          discussionId <- parseQueryFirst(req, "discussionId")
+          skip <- parseQueryFirst(req, "skip")
+          comments <- req.bearerToken match {
+            case Some(jwt) =>
+              for {
+                jwtTypeHeader <- ZIO
+                  .fromOption(req.header("X-JWT-TYPE"))
+                  .orElseFail(JsonDecodingError(new Throwable("error")))
+                jwtType = jwtTypeHeader.value.toString
+                // Call the function for authenticated users
+                comments <- commentsService.getComments(
+                  jwt,
+                  jwtType,
+                  UUID.fromString(discussionId),
+                  skip.toInt
+                )
+              } yield comments
+            case None =>
+              // Call the function for non-authenticated users
+              commentsService.getCommentsUnauthenticated(
+                UUID.fromString(discussionId),
+                skip.toInt
+              )
+          }
         } yield Response.json(comments.asJson.noSpaces)).catchAll(_.toResponse)
 
       case req @ Method.GET -> !! / "api" / "v1" / "comments" / "replies" / commentId =>
         (for {
-          id <- parseCommentId(commentId)
-          authData <- extractJwtData(req).mapError(e => JsonDecodingError(e))
-          (jwt, jwtType) = authData
-          comments <- commentsService.getAllCommentReplies(jwt, jwtType, id.id)
+          commentId <- parseCommentId(commentId)
+          comments <- req.bearerToken match {
+            case Some(jwt) =>
+              for {
+                jwtTypeHeader <- ZIO
+                  .fromOption(req.header("X-JWT-TYPE"))
+                  .orElseFail(JsonDecodingError(new Throwable("error")))
+                jwtType = jwtTypeHeader.value.toString
+                // Call the function for authenticated users
+                comments <- commentsService.getAllCommentReplies(
+                  jwt,
+                  jwtType,
+                  commentId.id
+                )
+              } yield comments
+            case None =>
+              // Call the function for non-authenticated users
+              commentsService.getAllCommentRepliesUnauthenticated(commentId.id)
+          }
         } yield Response.json(comments.asJson.noSpaces)).catchAll(_.toResponse)
 
       case req @ Method.GET -> !! / "api" / "v1" / "comments" / commentId =>
@@ -78,19 +101,29 @@ final case class CommentsController(commentsService: CommentsService) {
 
       case req @ Method.GET -> !! / "api" / "v1" / "comments" / "user" / userId =>
         (for {
-          authData <- extractJwtData(req).mapError(e => JsonDecodingError(e))
-          skipParams <- parseQuery(req, "skip")
-          skip <- ZIO
-            .fromOption(skipParams.headOption)
-            .orElseFail(JsonDecodingError(new Throwable("error decoding")))
-
-          (jwt, jwtType) = authData
-          comments <- commentsService.getUserComments(
-            jwt,
-            jwtType,
-            userId,
-            skip.toInt
-          )
+          skip <- parseQueryFirst(req, "skip")
+          comments <- req.bearerToken match {
+            case Some(jwt) =>
+              for {
+                jwtTypeHeader <- ZIO
+                  .fromOption(req.header("X-JWT-TYPE"))
+                  .orElseFail(JsonDecodingError(new Throwable("error")))
+                jwtType = jwtTypeHeader.value.toString
+                // Call the function for authenticated users
+                comments <- commentsService.getUserComments(
+                  jwt,
+                  jwtType,
+                  userId,
+                  skip.toInt
+                )
+              } yield comments
+            case None =>
+              // Call the function for non-authenticated users
+              commentsService.getUserCommentsUnauthenticated(
+                userId,
+                skip.toInt
+              )
+          }
         } yield Response.json(comments.asJson.noSpaces)).catchAll(_.toResponse)
     }
 

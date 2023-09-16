@@ -1,20 +1,22 @@
 package civil.repositories.spaces
 
 import civil.errors.AppError
-import civil.errors.AppError.{DatabaseError, InternalServerError}
+import civil.errors.AppError.{DatabaseError, NotFoundError}
 import civil.models._
-import civil.directives.OutgoingHttp
 import civil.models.NotifcationEvents.SpaceMLEvent
 import civil.models.actions.{LikeAction, NeutralState}
 import civil.models.enums.SpaceCategories
-import civil.repositories.QuillContextQueries.{
+import civil.database.queries.SpaceQueries.{
   SpacesData,
   getAllFollowedSpacesQuery,
   getAllSpacesQuery,
-  getAllUserSpacesQuery
+  getAllSpacesUnauthenticatedQuery,
+  getAllUserSpacesQuery,
+  getAllUserSpacesUnauthenticatedQuery,
+  getSpaceQueryUnauthenticated
 }
 import civil.repositories.recommendations.RecommendationsRepository
-import civil.services.{KafkaProducerService, KafkaProducerServiceLive}
+import civil.services.KafkaProducerServiceLive
 import io.scalaland.chimney.dsl._
 import zio.{ZIO, _}
 import io.getquill._
@@ -22,11 +24,6 @@ import io.getquill._
 import java.util.UUID
 import javax.sql.DataSource
 import scala.concurrent.ExecutionContext
-
-case class SpaceWithLinkData(
-    space: Spaces,
-    externalLinks: Option[ExternalLinks]
-)
 
 case class SpaceRepoHelpers(
     recommendationsRepository: RecommendationsRepository,
@@ -36,43 +33,6 @@ case class SpaceRepoHelpers(
   import civil.repositories.QuillContext._
 
   implicit val ec: ExecutionContext = ExecutionContext.global
-
-  private def spacesUsersVodsLinksJoin(
-      fromUserId: Option[String]
-  ): Quoted[Query[
-    (
-        Spaces,
-        Users,
-        Option[SpaceFollows]
-    )
-  ]] = {
-    fromUserId match {
-      case Some(userId) =>
-        quote {
-          query[Spaces]
-            .filter(_.createdByUserId == lift(userId))
-            .join(query[Users])
-            .on(_.createdByUserId == _.userId)
-            .leftJoin(query[SpaceFollows])
-            .on { case ((t, u), tf) =>
-              t.id == tf.followedSpaceId && u.userId == tf.userId
-            }
-            .map { case ((t, u), tf) => (t, u, tf) }
-        }
-      case None =>
-        quote {
-          query[Spaces]
-            .join(query[Users])
-            .on(_.createdByUserId == _.userId)
-            .leftJoin(query[SpaceFollows])
-            .on { case ((t, u), tf) =>
-              t.id == tf.followedSpaceId && u.userId == tf.userId
-            }
-            .map { case ((t, u), tf) => (t, u, tf) }
-        }
-    }
-
-  }
 
   def getDefaultDiscussion(space: Spaces): Discussions = Discussions(
     id = UUID.randomUUID(),
@@ -114,7 +74,6 @@ case class SpaceRepoHelpers(
       }
       outgoingSpaces <- ZIO
         .foreachPar(spacesUsersVodsJoin)(row => {
-          println(row.userLikeState)
           ZIO
             .attempt(
               row
@@ -155,13 +114,26 @@ trait SpacesRepository {
       skip: Int
   ): ZIO[Any, AppError, List[OutgoingSpace]]
 
+  def getSpacesUnauthenticated(
+      skip: Int
+  ): ZIO[Any, AppError, List[OutgoingSpace]]
+
   def getSpace(
       id: UUID,
       requestingUserID: String
   ): ZIO[Any, AppError, OutgoingSpace]
 
+  def getSpaceUnauthenticated(
+      id: UUID
+  ): ZIO[Any, AppError, OutgoingSpace]
+
   def getUserSpaces(
       requestingUserId: String,
+      userId: String,
+      skip: Int
+  ): ZIO[Any, AppError, List[OutgoingSpace]]
+
+  def getUserSpacesUnauthenticated(
       userId: String,
       skip: Int
   ): ZIO[Any, AppError, List[OutgoingSpace]]
@@ -197,11 +169,23 @@ object SpacesRepository {
       _.getSpacesAuthenticated(requestingUserID, userData, skip)
     )
 
+  def getSpacesUnauthenticated(
+      skip: Int
+  ): ZIO[SpacesRepository, AppError, List[OutgoingSpace]] =
+    ZIO.serviceWithZIO[SpacesRepository](
+      _.getSpacesUnauthenticated(skip)
+    )
+
   def getSpace(
       id: UUID,
       requestingUserID: String
   ): ZIO[SpacesRepository, AppError, OutgoingSpace] =
     ZIO.serviceWithZIO[SpacesRepository](_.getSpace(id, requestingUserID))
+
+  def getSpaceUnauthenticated(
+      id: UUID
+  ): ZIO[SpacesRepository, AppError, OutgoingSpace] =
+    ZIO.serviceWithZIO[SpacesRepository](_.getSpaceUnauthenticated(id))
 
   def getUserSpaces(
       requestingUserId: String,
@@ -210,6 +194,14 @@ object SpacesRepository {
   ): ZIO[SpacesRepository, AppError, List[OutgoingSpace]] =
     ZIO.serviceWithZIO[SpacesRepository](
       _.getUserSpaces(requestingUserId, userId, skip)
+    )
+
+  def getUserSpacesUnauthenticated(
+      userId: String,
+      skip: Int
+  ): ZIO[SpacesRepository, AppError, List[OutgoingSpace]] =
+    ZIO.serviceWithZIO[SpacesRepository](
+      _.getUserSpacesUnauthenticated(userId, skip)
     )
 
   def getFollowedSpaces(
@@ -404,15 +396,73 @@ case class SpaceRepositoryLive(
 
   }
 
+  override def getSpaceUnauthenticated(
+      id: UUID
+  ): ZIO[Any, AppError, OutgoingSpace] = {
+    (for {
+      spaceDataRes <- run(
+        getSpaceQueryUnauthenticated(lift(id))
+      )
+      spaceData <- ZIO
+        .fromOption(spaceDataRes.headOption)
+        .orElseFail(
+          NotFoundError(new Throwable(s"Discussion with id=$id not found"))
+        )
+    } yield spaceData
+      .into[OutgoingSpace]
+      .withFieldConst(_.createdByIconSrc, spaceData.iconSrc.get)
+      .withFieldConst(_.likeState, NeutralState)
+      .withFieldConst(_.createdByTag, spaceData.tag)
+      .withFieldConst(_.isFollowing, false)
+      .withFieldComputed(_.editorState, row => row.editorState)
+      .withFieldComputed(
+        _.category,
+        row => SpaceCategories.withName(row.category)
+      )
+      .transform)
+      .mapError(DatabaseError)
+      .provideEnvironment(ZEnvironment(dataSource))
+  }
+
   override def getSpacesAuthenticated(
       requestingUserID: String,
       userData: JwtUserClaimsData,
       skip: Int
   ): ZIO[Any, AppError, List[OutgoingSpace]] = {
-    //    val spaceIds = run(
-    //      query[ForYouSpaces].filter(_.userId == requestingUserID)
-    //    ).head
     getSpacesWithLikeStatus(requestingUserID, None, skip)
+  }
+
+  override def getSpacesUnauthenticated(
+      skip: Index
+  ): ZIO[Any, AppError, List[OutgoingSpace]] = {
+    (for {
+      spaceData <- run(
+        getAllSpacesUnauthenticatedQuery(lift(skip))
+      )
+      outgoingSpaces <- ZIO
+        .foreachPar(spaceData)(row => {
+          ZIO
+            .attempt(
+              row
+                .into[OutgoingSpace]
+                .withFieldConst(_.createdByIconSrc, row.iconSrc.get)
+                .withFieldConst(_.likeState, NeutralState)
+                .withFieldConst(_.createdByTag, row.tag)
+                .withFieldConst(_.isFollowing, false)
+                .withFieldComputed(_.editorState, row => row.editorState)
+                .withFieldComputed(
+                  _.category,
+                  row => SpaceCategories.withName(row.category)
+                )
+                .transform
+            )
+            .mapError(DatabaseError)
+        })
+        .withParallelism(10)
+    } yield outgoingSpaces)
+      .mapError(DatabaseError)
+      .provideEnvironment(ZEnvironment(dataSource))
+
   }
 
   override def getUserSpaces(
@@ -421,6 +471,40 @@ case class SpaceRepositoryLive(
       skip: Int
   ): ZIO[Any, AppError, List[OutgoingSpace]] = {
     getSpacesWithLikeStatus(requestingUserId, Some(userId), skip)
+
+  }
+
+  override def getUserSpacesUnauthenticated(
+      userId: String,
+      skip: Int
+  ): ZIO[Any, AppError, List[OutgoingSpace]] = {
+    (for {
+      spaceData <- run(
+        getAllUserSpacesUnauthenticatedQuery(lift(skip), lift(userId))
+      )
+      outgoingSpaces <- ZIO
+        .foreachPar(spaceData)(row => {
+          ZIO
+            .attempt(
+              row
+                .into[OutgoingSpace]
+                .withFieldConst(_.createdByIconSrc, row.iconSrc.get)
+                .withFieldConst(_.likeState, NeutralState)
+                .withFieldConst(_.createdByTag, row.tag)
+                .withFieldConst(_.isFollowing, false)
+                .withFieldComputed(_.editorState, row => row.editorState)
+                .withFieldComputed(
+                  _.category,
+                  row => SpaceCategories.withName(row.category)
+                )
+                .transform
+            )
+            .mapError(DatabaseError)
+        })
+        .withParallelism(10)
+    } yield outgoingSpaces)
+      .mapError(DatabaseError)
+      .provideEnvironment(ZEnvironment(dataSource))
 
   }
 

@@ -13,35 +13,39 @@ import javax.sql.DataSource
 
 trait UsersRepository {
   def upsertDidUser(
-                     incomingUser: IncomingUser
-                   ): ZIO[Any, AppError, OutgoingUser]
+      incomingUser: IncomingUser
+  ): ZIO[Any, AppError, OutgoingUser]
 
   def getUser(
-               id: String,
-               requesterId: String
-             ): ZIO[Any, AppError, OutgoingUser]
+      id: String,
+      requesterId: String
+  ): ZIO[Any, AppError, OutgoingUser]
+
+  def getUserUnauthenticated(
+      id: String
+  ): ZIO[Any, AppError, OutgoingUserUnauthenticated]
 
   def updateUserIcon(
-                      username: String,
-                      iconSrc: String
-                    ): ZIO[Any, AppError, OutgoingUser]
+      username: String,
+      iconSrc: String
+  ): ZIO[Any, AppError, OutgoingUser]
 
   def updateUserBio(
-                     userId: String,
-                     bioInfo: UpdateUserBio
-                   ): ZIO[Any, AppError, OutgoingUser]
+      userId: String,
+      bioInfo: UpdateUserBio
+  ): ZIO[Any, AppError, OutgoingUser]
 
   def addOrRemoveCivility(
-                           userId: String,
-                           commentId: UUID,
-                           civility: Int,
-                           removeCivility: Boolean
-                         ): ZIO[Any, AppError, CivilityGivenResponse]
+      userId: String,
+      commentId: UUID,
+      civility: Int,
+      removeCivility: Boolean
+  ): ZIO[Any, AppError, CivilityGivenResponse]
 
   def createUserTag(
-                     userId: String,
-                     tag: String
-                   ): ZIO[Any, AppError, OutgoingUser]
+      userId: String,
+      tag: String
+  ): ZIO[Any, AppError, OutgoingUser]
 
   def checkIfTagExists(tag: String): ZIO[Any, AppError, TagExists]
 
@@ -49,43 +53,48 @@ trait UsersRepository {
 
 object UsersRepository {
   def upsertDidUser(
-                     incomingUser: IncomingUser
-                   ): ZIO[UsersRepository, AppError, OutgoingUser] =
+      incomingUser: IncomingUser
+  ): ZIO[UsersRepository, AppError, OutgoingUser] =
     ZIO.serviceWithZIO[UsersRepository](_.upsertDidUser(incomingUser))
 
   def getUser(
-               id: String,
-               requesterId: String
-             ): ZIO[UsersRepository, AppError, OutgoingUser] =
+      id: String,
+      requesterId: String
+  ): ZIO[UsersRepository, AppError, OutgoingUser] =
     ZIO.serviceWithZIO[UsersRepository](_.getUser(id, requesterId))
 
+  def getUserUnauthenticated(
+      id: String
+  ): ZIO[UsersRepository, AppError, OutgoingUserUnauthenticated] =
+    ZIO.serviceWithZIO[UsersRepository](_.getUserUnauthenticated(id))
+
   def updateUserIcon(
-                      username: String,
-                      iconSrc: String
-                    ): ZIO[UsersRepository, AppError, OutgoingUser] =
+      username: String,
+      iconSrc: String
+  ): ZIO[UsersRepository, AppError, OutgoingUser] =
     ZIO.serviceWithZIO[UsersRepository](_.updateUserIcon(username, iconSrc))
 
   def updateUserBio(
-                     userId: String,
-                     bioInfo: UpdateUserBio
-                   ): ZIO[UsersRepository, AppError, OutgoingUser] =
+      userId: String,
+      bioInfo: UpdateUserBio
+  ): ZIO[UsersRepository, AppError, OutgoingUser] =
     ZIO.serviceWithZIO[UsersRepository](_.updateUserBio(userId, bioInfo))
 
   def createUserTag(
-                     userId: String,
-                     tag: String
-                   ): ZIO[UsersRepository, AppError, OutgoingUser] =
+      userId: String,
+      tag: String
+  ): ZIO[UsersRepository, AppError, OutgoingUser] =
     ZIO.serviceWithZIO[UsersRepository](_.createUserTag(userId, tag))
 
   def checkIfTagExists(tag: String): ZIO[UsersRepository, AppError, TagExists] =
     ZIO.serviceWithZIO[UsersRepository](_.checkIfTagExists(tag))
 
   def addOrRemoveCivility(
-                           userId: String,
-                           commentId: UUID,
-                           civility: Int,
-                           removeCivility: Boolean
-                         ): ZIO[UsersRepository, AppError, CivilityGivenResponse] =
+      userId: String,
+      commentId: UUID,
+      civility: Int,
+      removeCivility: Boolean
+  ): ZIO[UsersRepository, AppError, CivilityGivenResponse] =
     ZIO.serviceWithZIO[UsersRepository](
       _.addOrRemoveCivility(userId, commentId, civility, removeCivility)
     )
@@ -93,10 +102,11 @@ object UsersRepository {
   import civil.repositories.QuillContext._
 
   def getUserInternal(
-                       userId: String
-                     ): ZIO[DataSource, AppError, Option[Users]] = {
+      userId: String
+  ): ZIO[DataSource, AppError, Option[Users]] = {
     for {
-      user <- run(query[Users].filter(u => u.userId == lift(userId))).mapError(InternalServerError)
+      user <- run(query[Users].filter(u => u.userId == lift(userId)))
+        .mapError(InternalServerError)
     } yield user.headOption
   }
 
@@ -126,8 +136,8 @@ case class UsersRepositoryLive(dataSource: DataSource) extends UsersRepository {
   )
 
   override def upsertDidUser(
-                              incomingUser: IncomingUser
-                            ): ZIO[Any, AppError, OutgoingUser] = {
+      incomingUser: IncomingUser
+  ): ZIO[Any, AppError, OutgoingUser] = {
     for {
       upsertedUser <- run(
         query[Users]
@@ -172,9 +182,9 @@ case class UsersRepositoryLive(dataSource: DataSource) extends UsersRepository {
   }
 
   override def getUser(
-                        id: String,
-                        requesterId: String
-                      ): ZIO[Any, AppError, OutgoingUser] = {
+      id: String,
+      requesterId: String
+  ): ZIO[Any, AppError, OutgoingUser] = {
     (for {
       userQuery <- run(query[Users].filter(u => u.userId == lift(id)))
 
@@ -223,14 +233,62 @@ case class UsersRepositoryLive(dataSource: DataSource) extends UsersRepository {
         }
       )
       .enableDefaultValues
-      .transform).mapError(DatabaseError)
+      .transform)
+      .mapError(DatabaseError)
       .provideEnvironment(ZEnvironment(dataSource))
   }
 
+  override def getUserUnauthenticated(
+      id: String
+  ): ZIO[Any, AppError, OutgoingUserUnauthenticated] = {
+    (for {
+      userQuery <- run(query[Users].filter(u => u.userId == lift(id)))
+
+      user <- ZIO
+        .fromOption(userQuery.headOption)
+        .orElseFail(DatabaseError(new Throwable("Could Not Locate User")))
+
+      following <- run(
+        query[Follows].filter(f => f.userId == lift(id)).size
+      )
+
+      followed <-
+        run(
+          query[Follows].filter(f => f.followedUserId == lift(id)).size
+        )
+
+      numPosts <- run(
+        query[Spaces]
+          .filter(t => t.createdByUserId == lift(id))
+          .map(_.createdByUserId) ++ query[Discussions]
+          .filter(st => st.createdByUserId == lift(id) && st.title != "General")
+          .map(_.createdByUserId) ++ query[Comments]
+          .filter(c => c.createdByUserId == lift(id))
+          .map(_.createdByUserId)
+      )
+
+    } yield user
+      .into[OutgoingUserUnauthenticated]
+      .withFieldConst(_.numFollowed, Some(following.toInt))
+      .withFieldConst(_.numFollowers, Some(followed.toInt))
+      .withFieldConst(_.numPosts, Some(numPosts.size))
+      .withFieldComputed(
+        _.userLevelData,
+        u => {
+          Some(UserLevel.apply(u.civility.toDouble))
+        }
+      )
+      .enableDefaultValues
+      .transform)
+      .mapError(DatabaseError)
+      .provideEnvironment(ZEnvironment(dataSource))
+
+  }
+
   override def updateUserIcon(
-                               username: String,
-                               iconSrc: String
-                             ): ZIO[Any, AppError, OutgoingUser] = {
+      username: String,
+      iconSrc: String
+  ): ZIO[Any, AppError, OutgoingUser] = {
     for {
       user <-
         run(
@@ -254,9 +312,9 @@ case class UsersRepositoryLive(dataSource: DataSource) extends UsersRepository {
   }
 
   override def updateUserBio(
-                              userId: String,
-                              bioInfo: UpdateUserBio
-                            ): ZIO[Any, AppError, OutgoingUser] = {
+      userId: String,
+      bioInfo: UpdateUserBio
+  ): ZIO[Any, AppError, OutgoingUser] = {
 
     for {
       user <-
@@ -283,11 +341,11 @@ case class UsersRepositoryLive(dataSource: DataSource) extends UsersRepository {
   }
 
   override def addOrRemoveCivility(
-                                    userId: String,
-                                    commentId: UUID,
-                                    civility: Int,
-                                    removeCivility: Boolean
-                                  ): ZIO[Any, AppError, CivilityGivenResponse] = {
+      userId: String,
+      commentId: UUID,
+      civility: Int,
+      removeCivility: Boolean
+  ): ZIO[Any, AppError, CivilityGivenResponse] = {
 
     for {
       commentQuery <- run(query[Comments].filter(c => c.id == lift(commentId)))
@@ -319,9 +377,9 @@ case class UsersRepositoryLive(dataSource: DataSource) extends UsersRepository {
   }
 
   override def createUserTag(
-                              userId: String,
-                              tag: String
-                            ): ZIO[Any, AppError, OutgoingUser] = {
+      userId: String,
+      tag: String
+  ): ZIO[Any, AppError, OutgoingUser] = {
 
     for {
       user <- run(

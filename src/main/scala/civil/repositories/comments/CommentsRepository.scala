@@ -1,10 +1,13 @@
 package civil.repositories.comments
 
 import civil.errors.AppError
-import civil.errors.AppError.{DatabaseError, InternalServerError}
+import civil.errors.AppError.DatabaseError
 import civil.models._
-import civil.models.actions.{LikeAction, NeutralState}
-import civil.repositories.QuillContextQueries.getCommentsWithReplies
+import civil.models.actions.NeutralState
+import civil.database.queries.CommentQueries.{
+  getCommentsWithReplies,
+  getCommentsWithRepliesUnauthenticatedQuery
+}
 import civil.utils.CommentsTreeConstructor
 import io.getquill.Ord
 import io.scalaland.chimney.dsl._
@@ -25,6 +28,11 @@ trait CommentsRepository {
       skip: Int
   ): ZIO[Any, AppError, List[CommentNode]]
 
+  def getCommentsUnauthenticated(
+      discussionId: UUID,
+      skip: Int
+  ): ZIO[Any, AppError, List[CommentNode]]
+
   def getComment(
       userId: String,
       commentId: UUID
@@ -35,8 +43,17 @@ trait CommentsRepository {
       commentId: UUID
   ): ZIO[Any, AppError, CommentWithReplies]
 
+  def getAllCommentRepliesUnauthenticated(
+      commentId: UUID
+  ): ZIO[Any, AppError, CommentWithReplies]
+
   def getUserComments(
       requestingUserId: String,
+      userId: String,
+      skip: Int
+  ): ZIO[Any, AppError, List[CommentNode]]
+
+  def getUserCommentsUnauthenticated(
       userId: String,
       skip: Int
   ): ZIO[Any, AppError, List[CommentNode]]
@@ -60,6 +77,14 @@ object CommentsRepository {
       _.getComments(userId, discussionId, skip)
     )
 
+  def getCommentsUnauthenticated(
+      discussionId: UUID,
+      skip: Int
+  ): ZIO[CommentsRepository, AppError, List[CommentNode]] =
+    ZIO.serviceWithZIO[CommentsRepository](
+      _.getCommentsUnauthenticated(discussionId, skip)
+    )
+
   def getComment(
       userId: String,
       commentId: UUID
@@ -74,6 +99,12 @@ object CommentsRepository {
       _.getAllCommentReplies(userId, commentId)
     )
 
+  def getAllCommentRepliesUnauthenticated(
+      commentId: UUID
+  ): ZIO[CommentsRepository, AppError, CommentWithReplies] =
+    ZIO.serviceWithZIO[CommentsRepository](
+      _.getAllCommentRepliesUnauthenticated(commentId)
+    )
   def getUserComments(
       requestingUserId: String,
       userId: String,
@@ -82,6 +113,15 @@ object CommentsRepository {
     ZIO.serviceWithZIO[CommentsRepository](
       _.getUserComments(requestingUserId, userId, skip)
     )
+
+  def getUserCommentsUnauthenticated(
+      userId: String,
+      skip: Int
+  ): ZIO[CommentsRepository, AppError, List[CommentNode]] =
+    ZIO.serviceWithZIO[CommentsRepository](
+      _.getUserCommentsUnauthenticated(userId, skip)
+    )
+
 }
 
 case class CommentsRepositoryLive(dataSource: DataSource)
@@ -174,7 +214,7 @@ case class CommentsRepositoryLive(dataSource: DataSource)
                   )
 
                 tc = CommentsTreeConstructor
-                replyTree = tc.construct(repliesWithDepth, replies).toList.head
+                replyTree = tc.construct(repliesWithDepth, replies).head
 
               } yield replyTree
             }
@@ -182,6 +222,65 @@ case class CommentsRepositoryLive(dataSource: DataSource)
         .mapError(DatabaseError(_))
     } yield commentsWithReplies).provideEnvironment(ZEnvironment(dataSource))
 
+  }
+
+  override def getCommentsUnauthenticated(
+      discussionId: UUID,
+      skip: Int
+  ): ZIO[Any, AppError, List[CommentNode]] = {
+    (for {
+      joinedDataQuery <- run {
+        query[Comments]
+          .filter(c =>
+            c.discussionId == lift(discussionId) && c.parentId.isEmpty
+          )
+          .sortBy(comment => comment.createdAt)(Ord.desc)
+          .drop(lift(skip))
+          .take(10)
+      }
+        .mapError(DatabaseError(_))
+      commentsWithReplies <- ZIO
+        .collectAll(
+          joinedDataQuery
+            .map { case (comment) =>
+              for {
+                comments <- run(
+                  getCommentsWithRepliesUnauthenticatedQuery(lift(comment.id))
+                )
+                repliesWithDepth = comments
+                  .map(c =>
+                    Comments.commentToCommentReplyWithDepth(
+                      c.transformInto[CommentWithDepth],
+                      NeutralState,
+                      0,
+                      c.userIconSrc.getOrElse(""),
+                      c.userId,
+                      c.userExperience,
+                      c.createdByTag
+                    )
+                  )
+                  .reverse
+                replies = comments
+                  .map(c =>
+                    Comments.commentToCommentReply(
+                      c.transformInto[CommentWithDepth],
+                      NeutralState,
+                      0,
+                      c.userIconSrc.getOrElse(""),
+                      c.userId,
+                      c.userExperience,
+                      c.createdByTag
+                    )
+                  )
+
+                tc = CommentsTreeConstructor
+                replyTree = tc.construct(repliesWithDepth, replies).head
+
+              } yield replyTree
+            }
+        )
+        .mapError(DatabaseError(_))
+    } yield commentsWithReplies).provideEnvironment(ZEnvironment(dataSource))
   }
 
   override def getComment(
@@ -317,6 +416,86 @@ case class CommentsRepositoryLive(dataSource: DataSource)
 
   }
 
+  override def getAllCommentRepliesUnauthenticated(
+      commentId: UUID
+  ): ZIO[Any, AppError, CommentWithReplies] = {
+    (for {
+      commentUser <-
+        run(
+          query[Comments]
+            .filter(c => c.id == lift(commentId))
+            .join(query[Users])
+            .on(_.createdByUserId == _.userId)
+        ).mapError(DatabaseError(_))
+      commentUserData <- ZIO
+        .fromOption(commentUser.headOption)
+        .orElseFail(DatabaseError(new Throwable("error")))
+
+      (comment, user) = commentUserData
+      joinedData <- run {
+        query[Comments]
+          .filter(c => c.parentId == lift(Option(commentId)))
+          .sortBy { case (comment) => comment.createdAt }(Ord.desc)
+      }
+        .mapError(DatabaseError(_))
+      commentsWithReplies <- ZIO
+        .collectAll(
+          joinedData
+            .map(comment =>
+              for {
+                comments <- run(
+                  getCommentsWithRepliesUnauthenticatedQuery(lift(comment.id))
+                )
+                repliesWithDepth = comments
+                  .map(c =>
+                    Comments.commentToCommentReplyWithDepth(
+                      c.transformInto[CommentWithDepth],
+                      NeutralState,
+                      0,
+                      c.userIconSrc.getOrElse(""),
+                      c.userId,
+                      c.userExperience,
+                      c.createdByTag
+                    )
+                  )
+                  .reverse
+
+                replies = comments
+                  .map(c =>
+                    Comments.commentToCommentReply(
+                      c.transformInto[CommentWithDepth],
+                      NeutralState,
+                      0,
+                      c.userIconSrc.getOrElse(""),
+                      c.userId,
+                      c.userExperience,
+                      c.createdByTag
+                    )
+                  )
+
+                tc = CommentsTreeConstructor
+                replyTree = tc.construct(repliesWithDepth, replies).toList.head
+              } yield replyTree
+            )
+        )
+        .mapError(DatabaseError(_))
+    } yield CommentWithReplies(
+      replies = commentsWithReplies,
+      comment = comment
+        .into[CommentReply]
+        .withFieldConst(_.createdByUserId, user.userId)
+        .withFieldConst(_.createdByExperience, user.experience)
+        .withFieldConst(_.createdByIconSrc, user.iconSrc.get)
+        .withFieldConst(_.createdByTag, user.tag)
+        .withFieldConst(
+          _.likeState,
+          NeutralState
+        )
+        .withFieldConst(_.civility, 0f)
+        .transform
+    )).provideEnvironment(ZEnvironment(dataSource))
+  }
+
   override def getUserComments(
       requestingUserId: String,
       userId: String,
@@ -382,6 +561,70 @@ case class CommentsRepositoryLive(dataSource: DataSource)
       .mapError(DatabaseError(_))
       .provideEnvironment(ZEnvironment(dataSource))
 
+  }
+
+  override def getUserCommentsUnauthenticated(
+      userId: String,
+      skip: Int
+  ): ZIO[Any, AppError, List[CommentNode]] = {
+    (for {
+      commentsUsersJoin <-
+        run(
+          query[Comments]
+            .filter(c => c.createdByUserId == lift(userId))
+            .join(query[Users])
+            .on(_.createdByUserId == _.userId)
+            .drop(lift(skip))
+            .take(5)
+        )
+
+      rootComments = commentsUsersJoin.filter(j => j._1.parentId.isEmpty)
+
+      commentsWithReplies <- ZIO
+        .collectAll(
+          rootComments
+            .map(joined => {
+              val c = joined._1
+
+              for {
+                comments <- run(
+                  getCommentsWithRepliesUnauthenticatedQuery(lift(c.id))
+                )
+                repliesWithDepth = comments
+                  .map(c =>
+                    Comments.commentToCommentReplyWithDepth(
+                      c.transformInto[CommentWithDepth],
+                      NeutralState,
+                      0,
+                      c.userIconSrc.getOrElse(""),
+                      c.userId,
+                      c.userExperience,
+                      c.createdByTag
+                    )
+                  )
+                  .reverse
+                replies = comments
+                  .map(c =>
+                    Comments.commentToCommentReply(
+                      c.transformInto[CommentWithDepth],
+                      NeutralState,
+                      0,
+                      c.userIconSrc.getOrElse(""),
+                      c.userId,
+                      c.userExperience,
+                      c.createdByTag
+                    )
+                  )
+
+                tc = CommentsTreeConstructor
+                replyTree = tc.construct(repliesWithDepth, replies).toList.head
+              } yield replyTree
+            })
+        )
+
+    } yield commentsWithReplies)
+      .mapError(DatabaseError(_))
+      .provideEnvironment(ZEnvironment(dataSource))
   }
 }
 

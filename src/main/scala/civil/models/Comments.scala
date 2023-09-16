@@ -1,6 +1,6 @@
 package civil.models
 
-import civil.models.actions.LikeAction
+import civil.models.actions.{LikeAction, NeutralState}
 import civil.models.enums.ReportStatus.CLEAN
 import civil.models.enums.TribunalCommentType
 import io.circe.Encoder
@@ -30,8 +30,8 @@ object CommentId {
 case class CommentNode(data: CommentReply, children: List[CommentNode])
 
 object CommentNode {
-//  implicit val codec: JsonCodec[CommentNode] =
-//    DeriveJsonCodec.gen[CommentNode]
+  //  implicit val codec: JsonCodec[CommentNode] =
+  //    DeriveJsonCodec.gen[CommentNode]
 
   implicit val encoder: Encoder[CommentNode] = deriveEncoder[CommentNode]
 
@@ -102,8 +102,28 @@ case class CommentWithDepthAndUser(
     userExperience: Option[String],
     createdByTag: Option[String],
     userId: String,
-    likeState: Option[LikeAction],
+    likeState: Option[LikeAction] = Some(NeutralState),
     civility: Option[Float]
+)
+
+case class CommentWithDepthAndUserUnauthenticated(
+    id: UUID,
+    editorState: String,
+    createdByUsername: String,
+    sentiment: String,
+    discussionId: UUID,
+    parentId: Option[UUID],
+    createdAt: ZonedDateTime,
+    likes: Int,
+    rootId: Option[UUID],
+    depth: Int,
+    source: Option[String],
+    reportStatus: String = CLEAN.entryName,
+    toxicityStatus: Option[String] = None,
+    userIconSrc: Option[String],
+    userExperience: Option[String],
+    createdByTag: Option[String],
+    userId: String
 )
 
 case class Comments(
@@ -188,7 +208,7 @@ case class CommentReplyWithParent(
 )
 
 object CommentReply {
-//  implicit val codec: JsonCodec[CommentReply] = DeriveJsonCodec.gen[CommentReply]
+  //  implicit val codec: JsonCodec[CommentReply] = DeriveJsonCodec.gen[CommentReply]
 
   implicit val encoder: Encoder[CommentReply] = deriveEncoder[CommentReply]
 
@@ -216,8 +236,8 @@ case class CommentWithReplies(
 )
 
 object CommentWithReplies {
-//  implicit val codec: JsonCodec[CommentWithReplies] =
-//    DeriveJsonCodec.gen[CommentWithReplies]
+  //  implicit val codec: JsonCodec[CommentWithReplies] =
+  //    DeriveJsonCodec.gen[CommentWithReplies]
   implicit val encoder: Encoder[CommentWithReplies] =
     deriveEncoder[CommentWithReplies]
 

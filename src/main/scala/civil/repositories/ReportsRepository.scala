@@ -21,11 +21,9 @@ import javax.sql.DataSource
 trait ReportsRepository {
   def addReport(report: Reports): ZIO[Any, AppError, Unit]
 
-  def getReport(
-      contentId: UUID,
-      userId: String
-  ): ZIO[Any, AppError, ReportInfo]
+  def getReport(contentId: UUID, userId: String): ZIO[Any, AppError, ReportInfo]
 
+  def getReportUnauthenticated(contentId: UUID): ZIO[Any, AppError, ReportInfo]
 }
 
 object ReportsRepository {
@@ -42,6 +40,13 @@ object ReportsRepository {
   ): ZIO[ReportsRepository, AppError, ReportInfo] =
     ZIO.serviceWithZIO[ReportsRepository](
       _.getReport(contentId, userId)
+    )
+
+  def getReportUnauthenticated(
+      contentId: UUID
+  ): ZIO[ReportsRepository, AppError, ReportInfo] =
+    ZIO.serviceWithZIO[ReportsRepository](
+      _.getReportUnauthenticated(contentId)
     )
 }
 
@@ -68,7 +73,7 @@ case class ReportsRepositoryLive(dataSource: DataSource)
         .mapError(e =>
           DatabaseError(
             new Throwable(
-              s"Sorry! There was an issue submitting the Report \n ${e.getMessage}"
+              s"There was an issue submitting the Report -> ${report} \n ${e.getMessage}"
             )
           )
         )
@@ -187,6 +192,94 @@ case class ReportsRepositoryLive(dataSource: DataSource)
       Some(timing.reportPeriodEnd),
       numVotesToStrike = numVotesToStrike,
       numVotesToAcquit = numVotesToAcquit
+    ))
+      .mapError(DatabaseError)
+      .provideEnvironment(ZEnvironment(dataSource))
+  }
+
+  override def getReportUnauthenticated(
+      contentId: UUID
+  ): ZIO[Any, AppError, ReportInfo] = {
+    (for {
+
+      timingQueryResult <- run(
+        query[ReportTimings].filter(rt => rt.contentId == lift(contentId))
+      )
+        .mapError(e =>
+          DatabaseError(
+            new Throwable(
+              s"Error querying for report timing for contentId=${contentId} with error $e"
+            )
+          )
+        )
+      timing <- ZIO
+        .fromOption(timingQueryResult.headOption)
+        .orElseFail(
+          DatabaseError(
+            new Throwable(
+              s"Report timing for contentId=${contentId} does not exist"
+            )
+          )
+        )
+
+      reportsByCauseQueryResult <- getReportCountsByCause(contentId)
+
+      reportsByCauseMap = reportsByCauseQueryResult.toMap
+      reportsByCauseUnderReviewMap = reportsByCauseMap.filter {
+        case (cause, _) =>
+          ReportCause.getSeverity(
+            ReportCause.withName(cause)
+          ) == timing.severity
+      }
+      reportsByCauseNotUnderReviewMap = reportsByCauseMap.filter {
+        case (cause, _) =>
+          ReportCause.getSeverity(
+            ReportCause.withName(cause)
+          ) != timing.severity
+      }
+
+      groupedTComments <- run(
+        query[TribunalComments]
+          .filter(tc => tc.reportedContentId == lift(contentId))
+          .groupBy(_.commentType)
+          .map { case (commentType, comments) =>
+            (commentType, comments.size)
+          }
+      ).mapError(e =>
+        DatabaseError(
+          new Throwable(
+            s"Error querying for the number of tribunal comments of eahc type for content with contentId=${contentId} with error $e"
+          )
+        )
+      )
+
+      commentTypeMap = groupedTComments.toMap
+      numDefendantComments = commentTypeMap.getOrElse(Defendant, 0L)
+      numJuryComments = commentTypeMap.getOrElse(Jury, 0L)
+      numGeneralComments = commentTypeMap.getOrElse(General, 0L)
+      numReporterComments = commentTypeMap.getOrElse(Reporter, 0L)
+      numAllComments =
+        numGeneralComments + numReporterComments + numJuryComments + numDefendantComments
+    } yield ReportInfo(
+      contentId,
+      reportsByCauseUnderReviewMap = reportsByCauseUnderReviewMap,
+      reportsByCauseNotUnderReviewMap = reportsByCauseNotUnderReviewMap,
+      votedToAcquit = Some(false),
+      votedToStrike = Some(false),
+      reportPeriodEnd = Some(timing.reportPeriodEnd),
+      votingEndedAt = timing.reviewEndingTimes,
+      contentType = timing.contentType,
+      ongoing = timing.ongoing,
+      numDefendantComments = numDefendantComments,
+      numJuryComments = numJuryComments,
+      numGeneralComments = numGeneralComments,
+      numReporterComments = numReporterComments,
+      numAllComments = numAllComments,
+      reportSeverityLevel = timing.severity
+    ).attachVotingResults(
+      Some(timing.reportPeriodEnd),
+      numVotesToStrike = 0,
+      numVotesToAcquit = 0
     ))
       .mapError(DatabaseError)
       .provideEnvironment(ZEnvironment(dataSource))

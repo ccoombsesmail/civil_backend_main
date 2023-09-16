@@ -25,18 +25,26 @@ trait SpacesService {
       jwtType: String,
       incomingSpace: IncomingSpace
   ): ZIO[Any, AppError, OutgoingSpace]
+
   def getSpaces: ZIO[Any, AppError, List[OutgoingSpace]]
 
   def getSpacesAuthenticated(
       jwt: String,
       jwtType: String,
-      offset: Int
+      skip: Int
   ): ZIO[Any, AppError, List[OutgoingSpace]]
+
+  def getSpacesUnauthenticated(
+      skip: Int
+  ): ZIO[Any, AppError, List[OutgoingSpace]]
+
   def getSpace(
       jwt: String,
       jwtType: String,
       id: UUID
   ): ZIO[Any, AppError, OutgoingSpace]
+
+  def getSpaceUnauthenticated(id: UUID): ZIO[Any, AppError, OutgoingSpace]
 
   def getUserSpaces(
       jwt: String,
@@ -45,6 +53,10 @@ trait SpacesService {
       skip: Int
   ): ZIO[Any, AppError, List[OutgoingSpace]]
 
+  def getUserSpacesUnauthenticated(
+      userId: String,
+      skip: Int
+  ): ZIO[Any, AppError, List[OutgoingSpace]]
   def getFollowedSpaces(
       jwt: String,
       jwtType: String,
@@ -52,8 +64,6 @@ trait SpacesService {
   ): ZIO[Any, AppError, List[OutgoingSpace]]
 
   def getSimilarSpaces(
-      jwt: String,
-      jwtType: String,
       spaceId: UUID
   ): ZIO[Any, AppError, List[OutgoingSpace]]
 }
@@ -74,10 +84,17 @@ object SpacesService {
   def getSpacesAuthenticated(
       jwt: String,
       jwtType: String,
-      offset: Int
+      skip: Int
   ): ZIO[SpacesService, AppError, List[OutgoingSpace]] =
     ZIO.serviceWithZIO[SpacesService](
-      _.getSpacesAuthenticated(jwt, jwtType, offset)
+      _.getSpacesAuthenticated(jwt, jwtType, skip)
+    )
+
+  def getSpacesUnauthenticated(
+      skip: Int
+  ): ZIO[SpacesService, AppError, List[OutgoingSpace]] =
+    ZIO.serviceWithZIO[SpacesService](
+      _.getSpacesUnauthenticated(skip)
     )
 
   def getSpace(
@@ -86,6 +103,13 @@ object SpacesService {
       id: UUID
   ): ZIO[SpacesService, AppError, OutgoingSpace] =
     ZIO.serviceWithZIO[SpacesService](_.getSpace(jwt, jwtType, id))
+
+  def getSpaceUnauthenticated(
+      jwt: String,
+      jwtType: String,
+      id: UUID
+  ): ZIO[SpacesService, AppError, OutgoingSpace] =
+    ZIO.serviceWithZIO[SpacesService](_.getSpaceUnauthenticated(id))
 
   def getUserSpaces(
       jwt: String,
@@ -97,6 +121,13 @@ object SpacesService {
       _.getUserSpaces(jwt, jwtType, userId, skip)
     )
 
+  def getUserSpacesUnauthenticated(
+      userId: String,
+      skip: Int
+  ): ZIO[SpacesService, AppError, List[OutgoingSpace]] =
+    ZIO.serviceWithZIO[SpacesService](
+      _.getUserSpacesUnauthenticated(userId, skip)
+    )
   def getFollowedSpaces(
       jwt: String,
       jwtType: String,
@@ -105,11 +136,9 @@ object SpacesService {
     ZIO.serviceWithZIO[SpacesService](_.getFollowedSpaces(jwt, jwtType, skip))
 
   def getSimilarSpaces(
-      jwt: String,
-      jwtType: String,
       spaceId: UUID
   ): ZIO[SpacesService, AppError, List[OutgoingSpace]] =
-    ZIO.serviceWithZIO[SpacesService](_.getSimilarSpaces(jwt, jwtType, spaceId))
+    ZIO.serviceWithZIO[SpacesService](_.getSimilarSpaces(spaceId))
 }
 
 case class SpacesServiceLive(
@@ -186,6 +215,14 @@ case class SpacesServiceLive(
     } yield spaces
   }
 
+  override def getSpacesUnauthenticated(
+      skip: Int
+  ): ZIO[Any, AppError, List[OutgoingSpace]] = {
+    spacesRepository.getSpacesUnauthenticated(
+      skip
+    )
+  }
+
   override def getSpace(
       jwt: String,
       jwtType: String,
@@ -197,6 +234,12 @@ case class SpacesServiceLive(
         .getSpace(id, userData.userId)
     } yield space
   }
+
+  override def getSpaceUnauthenticated(
+      id: UUID
+  ): ZIO[Any, AppError, OutgoingSpace] =
+    spacesRepository
+      .getSpaceUnauthenticated(id)
 
   override def getUserSpaces(
       jwt: String,
@@ -214,6 +257,16 @@ case class SpacesServiceLive(
     } yield spaces
   }
 
+  override def getUserSpacesUnauthenticated(
+      userId: String,
+      skip: Int
+  ): ZIO[Any, AppError, List[OutgoingSpace]] = {
+    spacesRepository.getUserSpacesUnauthenticated(
+      userId,
+      skip
+    )
+  }
+
   override def getFollowedSpaces(
       jwt: String,
       jwtType: String,
@@ -229,12 +282,9 @@ case class SpacesServiceLive(
   }
 
   override def getSimilarSpaces(
-      jwt: String,
-      jwtType: String,
       spaceId: UUID
   ): ZIO[Any, AppError, List[OutgoingSpace]] =
     for {
-      userData <- authService.extractUserData(jwt, jwtType)
       spaces <- spacesRepository.getSimilarSpaces(
         spaceId
       )
