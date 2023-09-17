@@ -29,10 +29,13 @@ ThisBuild / javaOptions ++= Seq(
 )
 
 ThisBuild / assemblyMergeStrategy := {
-  case PathList("module-info.class")         => MergeStrategy.discard
-  case x if x.endsWith("/module-info.class") => MergeStrategy.discard
+  case PathList("META-INF", xs @ _*)                  => MergeStrategy.discard
+  case "module-info.class"                            => MergeStrategy.discard
+  case "deriving.conf"                                => MergeStrategy.concat
+  case "io.netty.versions.properties"                 => MergeStrategy.first
+  case PathList("google", "protobuf", "struct.proto") => MergeStrategy.first
   case x =>
-    val oldStrategy = (ThisBuild / assemblyMergeStrategy).value
+    val oldStrategy = (assemblyMergeStrategy in assembly).value
     oldStrategy(x)
 }
 
@@ -42,7 +45,7 @@ sysProperty := {
 }
 inThisBuild(
   List(
-    version := "0.2.0",
+    version := "0.0.1",
     organization := "ccoombsesmail",
     //    dependencyOverrides += "org.scala-lang" % "scala-collection-compat" % "2.13.6",
     libraryDependencies ++= Seq(

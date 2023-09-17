@@ -1,35 +1,12 @@
 package civil.repositories
 
-import civil.errors.AppError
-import civil.errors.AppError.InternalServerError
 import civil.models.actions._
-import civil.models.enums.ReportStatus.CLEAN
-import civil.models.enums.{LinkType, ReportStatus, UserVerificationType}
-import civil.models.enums.UserVerificationType.NO_VERIFICATION
-import civil.models.{
-  CommentWithDepthAndUser,
-  Reports,
-  SpaceFollows,
-  SpaceLikes,
-  Spaces,
-  TribunalCommentWithDepth,
-  TribunalCommentWithDepthAndUser,
-  Users
-}
+import civil.models.Reports
 import com.typesafe.config.ConfigFactory
-import io.getquill.context.ZioJdbc.DataSourceLayer
 import io.getquill.jdbczio.Quill
-import io.getquill.{
-  EntityQuery,
-  PostgresZioJdbcContext,
-  Query,
-  Quoted,
-  SnakeCase
-}
-import zio.{IO, System, ZEnvironment, ZIO, ZLayer}
+import io.getquill.{PostgresZioJdbcContext, Query, SnakeCase}
+import zio._
 
-import java.sql.SQLException
-import java.time.ZonedDateTime
 import java.util.UUID
 import javax.sql.DataSource
 import scala.jdk.CollectionConverters.MapHasAsJava
@@ -60,15 +37,15 @@ object QuillContext extends PostgresZioJdbcContext(SnakeCase) with QuillCodecs {
 
   implicit val appreciationActionEncoder: MappedEncoding[LikeAction, String] =
     MappedEncoding {
-      case LikedState => "Like"
+      case LikedState    => "Like"
       case DislikedState => "Dislike"
-      case NeutralState => "Neutral"
+      case NeutralState  => "Neutral"
 
     }
 
   implicit val appreciationActionDecoder: MappedEncoding[String, LikeAction] =
     MappedEncoding {
-      case "Like" => LikedState
+      case "Like"    => LikedState
       case "Dislike" => DislikedState
       case "Neutral" => NeutralState
     }
