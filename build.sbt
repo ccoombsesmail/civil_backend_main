@@ -8,7 +8,7 @@ val zioConfigVersion = "3.0.7"
 val ZIOHttpVersion = "0.0.5"
 val zioMetricsConnectorsVersion = "2.0.0-RC6" // metrics library for ZIO
 val zioLoggingVersion = "2.0.0-RC10" // logging library for ZIO
-val slf4jVersion = "1.7.36" // logging framework
+val slf4jVersion = "2.0.5" // logging framework
 
 ThisBuild / scalaVersion := "2.13.8"
 
@@ -101,13 +101,7 @@ lazy val root = project
       "com.softwaremill.sttp.client3" %% "core" % "3.8.13",
       "com.softwaremill.sttp.client3" %% "zio" % "3.8.13",
       "com.softwaremill.sttp.client3" %% "circe" % "3.8.13",
-      "edu.stanford.nlp" % "stanford-corenlp" % "4.5.2" artifacts (Artifact(
-        "stanford-corenlp",
-        "models"
-      ), Artifact("stanford-corenlp")),
       "org.elastos.did" % "didsdk" % "2.2.4",
-
-      //      "org.elastos.did" % "didsdk" % "2.2.4" exclude("io.jsonwebtoken", "jjwt-api") exclude("io.jsonwebtoken", "jjwt-impl") exclude("io.jsonwebtoken", "jjwt-jackson"),
       "com.googlecode.owasp-java-html-sanitizer" % "owasp-java-html-sanitizer" % "20220608.1"
     )
   )

@@ -3,6 +3,8 @@ package civil.repositories
 import civil.models.actions._
 import civil.models.Reports
 import com.typesafe.config.ConfigFactory
+import cats.implicits.catsSyntaxOptionId
+
 import io.getquill.jdbczio.Quill
 import io.getquill.{PostgresZioJdbcContext, Query, SnakeCase}
 import zio._
@@ -16,11 +18,18 @@ object QuillContext extends PostgresZioJdbcContext(SnakeCase) with QuillCodecs {
   val dataSourceLayer: ZLayer[Any, Nothing, DataSource] =
     ZLayer {
       for {
-        dbUrl <- System.env("DATABASE_URL").orDie
+        dbUrl <- System.env("DATABASE_URL").orElse(ZIO.succeed(Option.empty[String]))
+        fullUrl = dbUrl match {
+          case Some(value) => s"jdbc:postgresql://${value}:5432/civil_main"
+          case None        => "jdbc:postgresql://localhost:5434/civil_main"
+        }
+        dbPassword <- System.env("DATABASE_PASSWORD").orElse(ZIO.succeed("password".some))
+        _ <- ZIO.logInfo(s"Connection to database: ${System.env("DATABASE_URL")}")
+        _ <- ZIO.logInfo(s"Full Url: ${fullUrl}")
         localDBConfig = Map(
           "dataSource.user" -> "postgres",
-          "dataSource.password" -> "postgres",
-          "dataSource.url" -> "jdbc:postgresql://localhost:5434/civil_main"
+          "dataSource.password" -> dbPassword.getOrElse("postgres"),
+          "dataSource.url" -> fullUrl
         )
         config = ConfigFactory.parseMap(
           localDBConfig
@@ -30,7 +39,9 @@ object QuillContext extends PostgresZioJdbcContext(SnakeCase) with QuillCodecs {
             )
             .asJava
         )
-      } yield Quill.DataSource.fromConfig(config).orDie
+      } yield Quill.DataSource.fromConfig(config).tapError(e => {
+        ZIO.logInfo(s"Error Creating DataSource: $e")
+      }).orDie
     }.flatten
 
   import io.getquill.MappedEncoding
