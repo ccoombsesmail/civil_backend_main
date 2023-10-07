@@ -4,7 +4,7 @@ import civil.models.actions._
 import civil.models.Reports
 import com.typesafe.config.ConfigFactory
 import cats.implicits.catsSyntaxOptionId
-
+import io.circe.{Json, parser}
 import io.getquill.jdbczio.Quill
 import io.getquill.{PostgresZioJdbcContext, Query, SnakeCase}
 import zio._
@@ -15,22 +15,31 @@ import scala.jdk.CollectionConverters.MapHasAsJava
 
 object QuillContext extends PostgresZioJdbcContext(SnakeCase) with QuillCodecs {
 
+  private val rawDbPassword = java.lang.System.getenv("DATABASE_PASSWORD")
+  private val parsedJsonPw = parser.parse(rawDbPassword).getOrElse(Json.Null)
+  private val dbPassword: String = parsedJsonPw.hcursor.get[String]("DATABASE_PASSWORD").getOrElse("postgres")
+
+  private val rawDbUrl = java.lang.System.getenv("DATABASE_URL")
+  private val parsedJsonDb = parser.parse(rawDbUrl).getOrElse(Json.Null)
+  private val dbUrl: String = parsedJsonDb.hcursor.get[String]("DATABASE_URL").getOrElse("localhost")
+
   val dataSourceLayer: ZLayer[Any, Nothing, DataSource] =
     ZLayer {
       for {
-        dbUrl <- System.env("DATABASE_URL").orElse(ZIO.succeed(Option.empty[String]))
-        fullUrl = dbUrl match {
-          case Some(value) => s"jdbc:postgresql://${value}:5432/civil_main"
+        dbUrll <- System.env("DATABASE_URL").orElse(ZIO.succeed(Option.empty[String]))
+        fullUrl = dbUrll match {
+          case Some(value) => s"jdbc:postgresql://${dbUrl}:5434/civil_main"
           case None        => "jdbc:postgresql://localhost:5434/civil_main"
         }
-        dbPassword <- System.env("DATABASE_PASSWORD").orElse(ZIO.succeed("password".some))
+        dbPasswordd <- System.env("DATABASE_PASSWORD").orElse(ZIO.succeed("password".some))
         _ <- ZIO.logInfo(s"Connection to database: ${System.env("DATABASE_URL")}")
         _ <- ZIO.logInfo(s"Full Url: ${fullUrl}")
         localDBConfig = Map(
           "dataSource.user" -> "postgres",
-          "dataSource.password" -> dbPassword.getOrElse("postgres"),
+          "dataSource.password" -> dbPassword,
           "dataSource.url" -> fullUrl
         )
+        _ = println(localDBConfig)
         config = ConfigFactory.parseMap(
           localDBConfig
             .updated(
