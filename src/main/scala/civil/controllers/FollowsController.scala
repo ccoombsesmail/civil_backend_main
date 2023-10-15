@@ -5,7 +5,6 @@ import civil.controllers.ParseUtils._
 import civil.models.FollowedUserId
 import zio.http._
 import zio._
-import zio.http.model.Method
 import zio.json.EncoderOps
 
 final case class FollowsController(followsService: FollowsService) {

@@ -1,10 +1,7 @@
 package civil.errors
 
-import civil.models.IncomingPollVote
-import zio.http.model.Status
 import zio.{UIO, ZIO}
-import zio.http.{Body, Response}
-import zio.json.{DeriveJsonCodec, JsonCodec}
+import zio.http.{Body, Response, Status}
 
 /** Here we have defined our own error type, called AppError, which is a subtype
   * of Throwable. The purpose of this is to make errors more descriptive and
@@ -37,7 +34,7 @@ object AppError {
 
   final case class DatabaseError(error: Throwable) extends AppError {
     val userMsg = "Sorry, an error occurred while processing your request"
-    val internalMsg = s"Database Error -> Cause: ${error.getMessage}}"
+    val internalMsg = s"Database Error -> Cause: ${error.getMessage}"
     val errorCode = 500
   }
 
@@ -69,10 +66,10 @@ object AppError {
   implicit class AppErrorOps(val error: AppError) extends AnyVal {
     def toResponse: UIO[Response] = {
       for {
-        _ <- ZIO.logInfo(error.internalMsg)
+        _ <- ZIO.logError(error.internalMsg)
       } yield Response(
         Status.fromInt(error.errorCode).getOrElse(Status.UnprocessableEntity),
-        body = Body.fromString(error.userMsg)
+        body = Body.fromString(error.userMsg),
       )
 
     }

@@ -6,22 +6,10 @@ import akka.actor.typed.scaladsl.adapter._
 import akka.http.scaladsl._
 import akka.http.scaladsl.model.StatusCodes._
 import akka.http.scaladsl.model.headers.Accept
-import akka.http.scaladsl.model.{
-  HttpEntity,
-  HttpMethods,
-  HttpRequest,
-  HttpResponse,
-  MediaRange,
-  MediaTypes
-}
+import akka.http.scaladsl.model.{HttpEntity, HttpMethods, HttpRequest, HttpResponse, MediaRange, MediaTypes}
 import akka.stream.scaladsl.{Sink, Source}
 import akka.util.ByteString
-import civil.models.{
-  IncomingRecommendations,
-  Score,
-  UrlsForTFIDFConversion,
-  Words
-}
+import civil.models.{IncomingRecommendations, Score, UrlsForTFIDFConversion, Words}
 
 import scala.concurrent.Future
 import org.json4s._
@@ -38,8 +26,6 @@ import sttp.client3.httpclient.zio.HttpClientZioBackend
 import sttp.client3._
 import sttp.client3.circe._
 import zio.ZIO
-import zio.http.Client
-import zio.http.model.{HTTP_CHARSET, Headers}
 import zio.json.{DecoderOps, DeriveJsonCodec, JsonCodec}
 
 case class MetaData(html: Option[String], author_name: String)
@@ -198,13 +184,12 @@ object OutgoingHttp {
   def authenticateCivicTokenHeader(auth: String): ZIO[Any, AppError, Response[
     Either[ResponseException[String, circe.Error], AuthRes]
   ]] = {
-    for {
-      res <- Client.request(
-        s"${Config().getString("civil.misc_service")}/internal/civic-auth",
-        headers = Headers.Header.apply("Authorization", s"Bearer $auth")
-      )
-      st <- res.body.asString(HTTP_CHARSET)
-    } yield st.fromJson[AuthRes]
+//    for {
+//      res <- Client.request(
+//        s"${Config().getString("civil.misc_service")}/internal/civic-auth",
+//        headers = Headers.apply("Authorization", s"Bearer $auth")
+//      )
+//    } yield res.body.asString(Charset.defaultCharset()).fromJson[AuthRes]
     val request = basicRequest
       .get(uri"${Config().getString("civil.misc_service")}/internal/civic-auth")
       .auth

@@ -5,7 +5,7 @@ import civil.models.TribunalVote
 import civil.services.TribunalVotesService
 import zio.http._
 import zio._
-import zio.http.model.Method
+
 import zio.json.EncoderOps
 
 final case class TribunalVotesController(tribunalVotesService: TribunalVotesService) {

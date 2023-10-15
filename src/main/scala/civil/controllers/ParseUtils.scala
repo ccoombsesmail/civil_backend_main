@@ -4,7 +4,6 @@ import civil.errors.AppError
 import civil.errors.AppError.{JsonDecodingError, Unauthorized}
 import civil.models.{CommentId, DiscussionId, SpaceId}
 import zio.http._
-import zio.http.model.HTTP_CHARSET
 import zio.{IO, Task, ZIO}
 import zio.json.{DecoderOps, EncoderOps, JsonCodec, JsonDecoder}
 
@@ -26,7 +25,7 @@ object ParseUtils {
 
     for {
       stringBody <- request.body
-        .asString(HTTP_CHARSET)
+        .asString
         .mapError(AppError.JsonDecodingError)
       parsed <- ZIO
         .from(stringBody.fromJson[A])
@@ -37,12 +36,12 @@ object ParseUtils {
   def extractJwtData(request: Request): ZIO[Any, AppError, (String, String)] =
     for {
       jwt <- ZIO
-        .fromOption(request.bearerToken)
+        .fromOption(request.headers.get("authorization"))
         .orElseFail(Unauthorized(new Throwable("No Auth Token Provided")))
       jwtTypeHeader <- ZIO
-        .fromOption(request.header("X-JWT-TYPE"))
+        .fromOption(request.headers.get("X-JWT-TYPE"))
         .orElseFail(JsonDecodingError(new Throwable("error")))
-      jwtType = jwtTypeHeader.value.toString
+      jwtType = jwtTypeHeader
     } yield (jwt, jwtType)
 
   def parseQuery(

@@ -9,7 +9,7 @@ import java.util.UUID
 import civil.controllers.ParseUtils._
 import civil.errors.AppError.JsonDecodingError
 import civil.models.Report
-import zio.http.model.Method
+
 
 final case class ReportsController(reportsService: ReportsService) {
   val routes: Http[Any, Throwable, Request, Response] =
@@ -26,13 +26,13 @@ final case class ReportsController(reportsService: ReportsService) {
         (for {
           contentId <- parseQueryFirst(req, "contentId")
 
-          reportInfo <- req.bearerToken match {
+          reportInfo <- req.headers.get("authorization") match {
             case Some(jwt) =>
               for {
                 jwtTypeHeader <- ZIO
-                  .fromOption(req.header("X-JWT-TYPE"))
+                  .fromOption(req.headers.get("X-JWT-TYPE"))
                   .orElseFail(JsonDecodingError(new Throwable("error")))
-                jwtType = jwtTypeHeader.value.toString
+                jwtType = jwtTypeHeader
                 // Call the function for authenticated users
                 reportInfo <- reportsService.getReport(
                   jwt,

@@ -24,8 +24,7 @@ case class Users(
     consortiumMember: Boolean = false,
     bio: Option[String],
     experience: Option[String],
-    isDidUser: Boolean,
-    id: Int = 200
+    isDidUser: Boolean
 )
 
 case class OutgoingUser(

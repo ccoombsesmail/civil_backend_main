@@ -6,7 +6,6 @@ import zio._
 import zio.json._
 import ParseUtils._
 import civil.models.UpdateSpaceLikes
-import zio.http.model.{HTTP_CHARSET, Method}
 
 
 final case class SpaceLikesController(spaceLikeService: SpaceLikesService) {

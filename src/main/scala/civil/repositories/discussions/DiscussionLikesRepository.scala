@@ -48,7 +48,7 @@ case class DiscussionLikesRepositoryLive(dataSource: DataSource)
             discussionLikeDislikeData.id
           ) && tl.userId == lift(userId)
         )
-      ).mapError(DatabaseError(_))
+      ).mapError(DatabaseError)
       newLikeState = discussionLikeDislikeData.likeAction
       prevLikeState = previousLikeState.headOption
         .getOrElse(
@@ -56,21 +56,8 @@ case class DiscussionLikesRepositoryLive(dataSource: DataSource)
         )
         .likeState
 
-      likeValueToAdd = (prevLikeState, newLikeState) match {
-        case (LikedState, NeutralState)    => -1
-        case (NeutralState, LikedState)    => 1
-        case (DislikedState, NeutralState) => 1
-        case (NeutralState, DislikedState) => -1
-        case (LikedState, DislikedState)   => -2
-        case (DislikedState, LikedState)   => 2
-        case (NeutralState, NeutralState)  => 0
-        case _                             => -100
-      }
-      _ <- ZIO
-        .when(likeValueToAdd == -100)(
-          ZIO.fail(DatabaseError(new Throwable("Invalid like value")))
-        )
-        .mapError(DatabaseError(_))
+      likeValueToAdd <- ZIO.fromEither(computeLikeValue(prevLikeState, newLikeState))
+
       discussion <- transaction {
         for {
           _ <- run(
@@ -98,7 +85,10 @@ case class DiscussionLikesRepositoryLive(dataSource: DataSource)
               .returning(t => t)
           )
         } yield updatedDiscussion
-      }.mapError(DatabaseError(_))
+      }.mapError(e => {
+        println(e)
+        DatabaseError(e)
+      })
     } yield (
       DiscussionLiked(
         discussion.id,
@@ -108,6 +98,20 @@ case class DiscussionLikesRepositoryLive(dataSource: DataSource)
       discussion
     )).provideEnvironment(ZEnvironment(dataSource))
   }
+
+  private def computeLikeValue(prevState: LikeAction, newState: LikeAction): Either[InternalServerError, Int] = {
+    (prevState, newState) match {
+      case (LikedState, NeutralState) => Right(-1)
+      case (NeutralState, LikedState) => Right(1)
+      case (DislikedState, NeutralState) => Right(1)
+      case (NeutralState, DislikedState) => Right(-1)
+      case (LikedState, DislikedState) => Right(-2)
+      case (DislikedState, LikedState) => Right(2)
+      case (NeutralState, NeutralState) => Right(0)
+      case _ => Left(InternalServerError(new Throwable(s"Invalid like value: Prev -> $prevState New -> $newState")))
+    }
+  }
+
 
 }
 

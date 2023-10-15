@@ -6,7 +6,7 @@ import civil.models.{SpaceId, UpdateSpaceFollows}
 import civil.services.spaces.SpaceFollowsService
 import zio._
 import zio.http._
-import zio.http.model.Method
+
 final case class SpaceFollowsController(
     spaceFollowsService: SpaceFollowsService
 ) {

@@ -2,7 +2,7 @@ package civil.controllers
 
 import civil.services.RecommendationsService
 import zio.http._
-import zio.http.model.Method
+
 import zio.{URLayer, ZLayer}
 import zio.json.EncoderOps
 
@@ -13,7 +13,7 @@ final case class RecommendationsController(recommendationsService: Recommendatio
   val routes: Http[Any, Throwable, Request, Response] = Http.collectZIO[Request] {
     case req @ Method.GET -> !! / "api" / "v1" / "recommendations" =>
       (for {
-        recs <- recommendationsService.getAllRecommendations(UUID.fromString(req.url.queryParams("targetContentId").head))
+        recs <- recommendationsService.getAllRecommendations(UUID.fromString(req.url.queryParams.get("targetContentId").head.asString))
       } yield Response.json(recs.toJson)).catchAll(_.toResponse)
   }
 }

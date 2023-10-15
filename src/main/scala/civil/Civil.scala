@@ -12,7 +12,6 @@ import civil.services.comments._
 import civil.services.discussions._
 import civil.services.spaces._
 import zio._
-import zio.http.ServerConfig
 import zio.logging.console
 
 object Civil extends zio.ZIOAppDefault {
@@ -31,8 +30,7 @@ object Civil extends zio.ZIOAppDefault {
       .serviceWithZIO[CivilServer](_.start)
       .provide(
         CivilServer.layer,
-        zio.http.Server.live,
-        zio.http.ServerConfig.live(ServerConfig.default.port(8090)),
+        zio.http.Server.defaultWithPort(8090),
         SpaceLikesServiceLive.layer,
         SpaceLikesController.layer,
         SpaceLikesRepositoryLive.layer,

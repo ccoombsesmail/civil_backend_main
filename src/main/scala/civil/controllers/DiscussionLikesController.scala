@@ -6,7 +6,7 @@ import zio._
 import zio.json._
 import ParseUtils._
 import civil.models.UpdateDiscussionLikes
-import zio.http.model.Method
+
 
 
 final case class DiscussionLikesController(discussionLikeService: DiscussionLikesService) {

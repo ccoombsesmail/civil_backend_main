@@ -28,10 +28,10 @@ object QuillContext extends PostgresZioJdbcContext(SnakeCase) with QuillCodecs {
       for {
         dbUrll <- System.env("DATABASE_URL").orElse(ZIO.succeed(Option.empty[String]))
         fullUrl = dbUrll match {
-          case Some(value) => s"jdbc:postgresql://${dbUrl}:5434/civil_main"
-          case None        => "jdbc:postgresql://localhost:5434/civil_main"
+          case Some(value) => s"jdbc:postgresql://${dbUrl}:5432/civil_main"
+          case None        => "jdbc:postgresql://localhost:5432/civil_main"
         }
-        dbPasswordd <- System.env("DATABASE_PASSWORD").orElse(ZIO.succeed("password".some))
+        dbPasswordd <- System.env("DATABASE_PASSWORD").orElse(ZIO.succeed("postgres".some))
         _ <- ZIO.logInfo(s"Connection to database: ${System.env("DATABASE_URL")}")
         _ <- ZIO.logInfo(s"Full Url: ${fullUrl}")
         localDBConfig = Map(

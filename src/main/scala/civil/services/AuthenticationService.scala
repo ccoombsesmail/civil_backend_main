@@ -129,13 +129,15 @@ case class AuthenticationServiceLive(dataSource: DataSource)
     }
     for {
       res <- authenticateCivicTokenHeader(decodedJwt)
-
+      _ <- ZIO.logInfo(res.toString())
       body <- ZIO
         .fromEither(res.body)
         .mapError(e => Unauthorized(new Throwable(e.getMessage)))
       userDataOpt <- UsersRepository
         .getUserInternal(body.pk)
         .provideEnvironment(ZEnvironment(dataSource))
+      _ <- ZIO.logInfo(userDataOpt.toString)
+
       userData <- ZIO
         .fromOption(userDataOpt)
         .mapError(e => Unauthorized(new Throwable(e.toString)))

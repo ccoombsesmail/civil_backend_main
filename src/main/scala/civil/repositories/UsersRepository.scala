@@ -406,6 +406,8 @@ case class UsersRepositoryLive(dataSource: DataSource) extends UsersRepository {
       userQuery <- run(
         query[Users].filter(u => u.tag == lift(Option(tag)))
       ).mapError(DatabaseError(_)).provideEnvironment(ZEnvironment(dataSource))
+      _ = println(tag)
+      _ = println(userQuery.headOption)
     } yield TagExists(tagExists = userQuery.nonEmpty)
   }
 }

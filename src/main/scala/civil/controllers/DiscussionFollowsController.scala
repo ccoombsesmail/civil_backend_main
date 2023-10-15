@@ -6,7 +6,7 @@ import civil.models.{DiscussionId, UpdateDiscussionFollows}
 import civil.services.discussions.DiscussionFollowsService
 import zio._
 import zio.http._
-import zio.http.model.Method
+
 final case class DiscussionFollowsController(
     discussionFollowsService: DiscussionFollowsService
 ) {

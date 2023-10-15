@@ -18,7 +18,7 @@ import civil.models.{
 }
 import zio._
 import zio.http._
-import zio.http.model.Method
+
 import zio.json.EncoderOps
 
 final case class UsersController(usersService: UsersService) {
@@ -33,13 +33,13 @@ final case class UsersController(usersService: UsersService) {
       case req @ Method.GET -> !! / "api" / "v1" / "users" =>
         (for {
           userId <- parseQueryFirst(req, "userId")
-          user <- req.bearerToken match {
+          user <- req.headers.get("authorization") match {
             case Some(jwt) =>
               for {
                 jwtTypeHeader <- ZIO
-                  .fromOption(req.header("X-JWT-TYPE"))
+                  .fromOption(req.headers.get("X-JWT-TYPE"))
                   .orElseFail(JsonDecodingError(new Throwable("error")))
-                jwtType = jwtTypeHeader.value.toString
+                jwtType = jwtTypeHeader
                 // Call the function for authenticated users
                 user <- usersService.getUser(
                   jwt,

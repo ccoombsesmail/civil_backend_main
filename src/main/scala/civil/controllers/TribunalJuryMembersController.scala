@@ -5,7 +5,7 @@ import zio._
 import zio.json.EncoderOps
 import civil.controllers.ParseUtils._
 import civil.services.TribunalJuryMembersService
-import zio.http.model.Method
+
 
 final case class TribunalJuryMembersController(
     tribunalJuryMembersService: TribunalJuryMembersService

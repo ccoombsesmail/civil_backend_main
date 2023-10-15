@@ -12,7 +12,7 @@ import civil.models.IncomingSpace
 import civil.services.spaces.SpacesService
 import zio.http._
 import zio._
-import zio.http.model.Method
+
 import zio.json.EncoderOps
 
 final case class SpacesController(spacesService: SpacesService) {
@@ -29,17 +29,17 @@ final case class SpacesController(spacesService: SpacesService) {
       case req @ Method.GET -> !! / "api" / "v1" / "spaces" =>
         (for {
           skip <- parseQueryFirst(req, "skip")
-          spaces <- req.bearerToken match {
+          spaces <- req.headers.get("authorization") match {
             case Some(jwt) =>
               for {
                 jwtTypeHeader <- ZIO
-                  .fromOption(req.header("X-JWT-TYPE"))
+                  .fromOption(req.headers.get("X-JWT-TYPE"))
                   .orElseFail(
                     Unauthorized(
                       new Throwable("X-JWT-TYPE header not provided")
                     )
                   )
-                jwtType = jwtTypeHeader.value.toString
+                jwtType = jwtTypeHeader
                 spaces <- spacesService.getSpacesAuthenticated(
                   jwt,
                   jwtType,
@@ -56,17 +56,17 @@ final case class SpacesController(spacesService: SpacesService) {
       case req @ Method.GET -> !! / "api" / "v1" / "spaces" / "user" / userId =>
         (for {
           skip <- parseQueryFirst(req, "skip")
-          spaces <- req.bearerToken match {
+          spaces <- req.headers.get("authorization") match {
             case Some(jwt) =>
               for {
                 jwtTypeHeader <- ZIO
-                  .fromOption(req.header("X-JWT-TYPE"))
+                  .fromOption(req.headers.get("X-JWT-TYPE"))
                   .orElseFail(
                     Unauthorized(
                       new Throwable("X-JWT-TYPE header not provided")
                     )
                   )
-                jwtType = jwtTypeHeader.value.toString
+                jwtType = jwtTypeHeader
                 spaces <- spacesService.getUserSpaces(
                   jwt,
                   jwtType,
@@ -82,17 +82,17 @@ final case class SpacesController(spacesService: SpacesService) {
       case req @ Method.GET -> !! / "api" / "v1" / "spaces" / spaceId =>
         (for {
           spaceId <- parseSpaceId(spaceId)
-          space <- req.bearerToken match {
+          space <- req.headers.get("authorization") match {
             case Some(jwt) =>
               for {
                 jwtTypeHeader <- ZIO
-                  .fromOption(req.header("X-JWT-TYPE"))
+                  .fromOption(req.headers.get("X-JWT-TYPE"))
                   .orElseFail(
                     Unauthorized(
                       new Throwable("X-JWT-TYPE header not provided")
                     )
                   )
-                jwtType = jwtTypeHeader.value.toString
+                jwtType = jwtTypeHeader
                 space <- spacesService.getSpace(
                   jwt,
                   jwtType,

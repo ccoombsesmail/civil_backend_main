@@ -17,7 +17,7 @@ import io.circe.syntax.EncoderOps
 import zio.Console.printLine
 import zio.http._
 import zio._
-import zio.http.model.Method
+
 import zio.json.{DeriveJsonCodec, JsonCodec}
 import io.circe.generic.semiauto._
 import io.circe.generic.auto._
@@ -44,13 +44,13 @@ final case class CommentsController(commentsService: CommentsService) {
         (for {
           discussionId <- parseQueryFirst(req, "discussionId")
           skip <- parseQueryFirst(req, "skip")
-          comments <- req.bearerToken match {
+          comments <- req.headers.get("authorization") match {
             case Some(jwt) =>
               for {
                 jwtTypeHeader <- ZIO
-                  .fromOption(req.header("X-JWT-TYPE"))
+                  .fromOption(req.headers.get("X-JWT-TYPE"))
                   .orElseFail(JsonDecodingError(new Throwable("error")))
-                jwtType = jwtTypeHeader.value.toString
+                jwtType = jwtTypeHeader
                 // Call the function for authenticated users
                 comments <- commentsService.getComments(
                   jwt,
@@ -71,13 +71,13 @@ final case class CommentsController(commentsService: CommentsService) {
       case req @ Method.GET -> !! / "api" / "v1" / "comments" / "replies" / commentId =>
         (for {
           commentId <- parseCommentId(commentId)
-          comments <- req.bearerToken match {
+          comments <- req.headers.get("authorization") match {
             case Some(jwt) =>
               for {
                 jwtTypeHeader <- ZIO
-                  .fromOption(req.header("X-JWT-TYPE"))
+                  .fromOption(req.headers.get("X-JWT-TYPE"))
                   .orElseFail(JsonDecodingError(new Throwable("error")))
-                jwtType = jwtTypeHeader.value.toString
+                jwtType = jwtTypeHeader
                 // Call the function for authenticated users
                 comments <- commentsService.getAllCommentReplies(
                   jwt,
@@ -102,13 +102,13 @@ final case class CommentsController(commentsService: CommentsService) {
       case req @ Method.GET -> !! / "api" / "v1" / "comments" / "user" / userId =>
         (for {
           skip <- parseQueryFirst(req, "skip")
-          comments <- req.bearerToken match {
+          comments <- req.headers.get("authorization") match {
             case Some(jwt) =>
               for {
                 jwtTypeHeader <- ZIO
-                  .fromOption(req.header("X-JWT-TYPE"))
+                  .fromOption(req.headers.get("X-JWT-TYPE"))
                   .orElseFail(JsonDecodingError(new Throwable("error")))
-                jwtType = jwtTypeHeader.value.toString
+                jwtType = jwtTypeHeader
                 // Call the function for authenticated users
                 comments <- commentsService.getUserComments(
                   jwt,

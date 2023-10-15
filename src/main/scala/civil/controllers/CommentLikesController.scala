@@ -5,7 +5,7 @@ import civil.errors.AppError.JsonDecodingError
 import civil.models.UpdateCommentLikes
 import civil.services.comments.CommentLikesService
 import zio.http._
-import zio.http.model.Method
+
 
 import zio._
 import zio.json.EncoderOps

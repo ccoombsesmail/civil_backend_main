@@ -59,9 +59,8 @@ case class DiscussionLikesServiceLive(
       data <- discussionLikesRep
         .addRemoveDiscussionLikeOrDislike(
           discussionLikeDislikeData,
-          discussionLikeDislikeData.createdByUserId.getOrElse(userData.userId)
+          userData.userId
         )
-        .mapError(InternalServerError)
       (updatedLikeData, discussion) = data
       _ <- ZIO
         .when(updatedLikeData.likeState == LikedState)(

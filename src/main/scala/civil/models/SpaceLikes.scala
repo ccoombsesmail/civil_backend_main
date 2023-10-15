@@ -40,7 +40,7 @@ object SpaceLikes {
 }
 
 
-case class UpdateSpaceLikes(id: UUID, likeAction: LikeAction, createdByUserId: Option[String] = None)
+case class UpdateSpaceLikes(id: UUID, likeAction: LikeAction)
 
 object UpdateSpaceLikes {
   implicit val codec: JsonCodec[UpdateSpaceLikes] = DeriveJsonCodec.gen[UpdateSpaceLikes]

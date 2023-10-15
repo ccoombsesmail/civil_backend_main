@@ -6,7 +6,7 @@ import civil.models.UpdateCommentCivility
 import civil.services.comments.CommentCivilityService
 import zio.http._
 import zio._
-import zio.http.model.Method
+
 import zio.json.EncoderOps
 
 final case class CommentCivilityController(

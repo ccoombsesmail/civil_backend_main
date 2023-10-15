@@ -1,11 +1,11 @@
-val sttpVersion = "3.3.13"
+ val sttpVersion = "3.3.13"
 val circeVersion = "0.14.5"
 val akkaVersion = "2.8.0"
 val akkaHttpVersion = "10.5.0"
 val akkaHttpCirceVersion = "1.39.2"
 val zioVersion = "2.0.8"
 val zioConfigVersion = "3.0.7"
-val ZIOHttpVersion = "0.0.5"
+val ZIOHttpVersion = "3.0.0-RC1"
 val zioMetricsConnectorsVersion = "2.0.0-RC6" // metrics library for ZIO
 val zioLoggingVersion = "2.0.0-RC10" // logging library for ZIO
 val slf4jVersion = "2.0.5" // logging framework

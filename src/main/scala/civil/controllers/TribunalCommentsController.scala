@@ -9,7 +9,7 @@ import civil.controllers.ParseUtils._
 import civil.errors.AppError.{InternalServerError, JsonDecodingError}
 import civil.models.IncomingComment
 import io.circe.syntax.EncoderOps
-import zio.http.model.Method
+
 import io.circe._
 import io.circe.parser._
 
@@ -36,13 +36,13 @@ final case class TribunalCommentsController(
           contentId <- parseQueryFirst(req, "contentId")
           commentType <- parseQueryFirst(req, "commentType")
 
-          tComments <- req.bearerToken match {
+          tComments <- req.headers.get("authorization") match {
             case Some(jwt) =>
               for {
                 jwtTypeHeader <- ZIO
-                  .fromOption(req.header("X-JWT-TYPE"))
+                  .fromOption(req.headers.get("X-JWT-TYPE"))
                   .orElseFail(JsonDecodingError(new Throwable("error")))
-                jwtType = jwtTypeHeader.value.toString
+                jwtType = jwtTypeHeader
                 // Call the function for authenticated users
                 comments <- tribunalCommentsService
                   .getComments(

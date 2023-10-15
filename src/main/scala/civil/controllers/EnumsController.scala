@@ -3,7 +3,7 @@ package civil.controllers
 import civil.models.enums.SpaceCategories
 import zio.http._
 import zio._
-import zio.http.model.Method
+
 import zio.json.{DeriveJsonCodec, EncoderOps, JsonCodec}
 
 case class EnumValue(name: String, value: String)

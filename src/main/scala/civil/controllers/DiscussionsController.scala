@@ -7,8 +7,7 @@ import zio._
 import zio.json.EncoderOps
 import civil.controllers.ParseUtils._
 import civil.services.discussions.DiscussionService
-import zio.http.model.Method
-
+import zio.http.Request
 import java.util.UUID
 
 final case class DiscussionsController(discussionsService: DiscussionService) {
@@ -30,13 +29,13 @@ final case class DiscussionsController(discussionsService: DiscussionService) {
         (for {
           spaceId <- parseQueryFirst(req, "spaceId")
           skip <- parseQueryFirst(req, "skip")
-          discussions <- req.bearerToken match {
+          discussions <- req.headers.get("authorization") match {
             case Some(jwt) =>
               for {
                 jwtTypeHeader <- ZIO
-                  .fromOption(req.header("X-JWT-TYPE"))
+                  .fromOption(req.headers.get("X-JWT-TYPE"))
                   .orElseFail(JsonDecodingError(new Throwable("error")))
-                jwtType = jwtTypeHeader.value.toString
+                jwtType = jwtTypeHeader
                 // Call the function for authenticated users
                 discussions <- discussionsService.getSpaceDiscussions(
                   jwt,
@@ -57,13 +56,13 @@ final case class DiscussionsController(discussionsService: DiscussionService) {
       case req @ Method.GET -> !! / "api" / "v1" / "discussions" / "popular-discussions" =>
         (for {
           skip <- parseQueryFirst(req, "skip")
-          discussions <- req.bearerToken match {
+          discussions <- req.headers.get("authorization") match {
             case Some(jwt) =>
               for {
                 jwtTypeHeader <- ZIO
-                  .fromOption(req.header("X-JWT-TYPE"))
+                  .fromOption(req.headers.get("X-JWT-TYPE"))
                   .orElseFail(JsonDecodingError(new Throwable("error")))
-                jwtType = jwtTypeHeader.value.toString
+                jwtType = jwtTypeHeader
                 // Call the function for authenticated users
                 discussions <- discussionsService.getPopularDiscussions(
                   jwt,
@@ -82,13 +81,13 @@ final case class DiscussionsController(discussionsService: DiscussionService) {
       case req @ Method.GET -> !! / "api" / "v1" / "discussions" / discussionId =>
         (for {
           discussionId <- parseDiscussionId(discussionId)
-          discussion <- req.bearerToken match {
+          discussion <- req.headers.get("authorization") match {
             case Some(jwt) =>
               for {
                 jwtTypeHeader <- ZIO
-                  .fromOption(req.header("X-JWT-TYPE"))
+                  .fromOption(req.headers.get("X-JWT-TYPE"))
                   .orElseFail(JsonDecodingError(new Throwable("error")))
-                jwtType = jwtTypeHeader.value.toString
+                jwtType = jwtTypeHeader
                 // Call the function for authenticated users
                 discussion <- discussionsService.getDiscussion(
                   jwt,
@@ -112,13 +111,13 @@ final case class DiscussionsController(discussionsService: DiscussionService) {
         (for {
           skip <- parseQueryFirst(req, "skip")
 
-          discussions <- req.bearerToken match {
+          discussions <- req.headers.get("authorization") match {
             case Some(jwt) =>
               for {
                 jwtTypeHeader <- ZIO
-                  .fromOption(req.header("X-JWT-TYPE"))
+                  .fromOption(req.headers.get("X-JWT-TYPE"))
                   .orElseFail(JsonDecodingError(new Throwable("error")))
-                jwtType = jwtTypeHeader.value.toString
+                jwtType = jwtTypeHeader
                 // Call the function for authenticated users
                 discussions <- discussionsService.getUserDiscussions(
                   jwt,

@@ -11,5 +11,7 @@
 ./project/target
 asdas
 /project/target/
-/project/project/target/
+/project/project/*
 /target/
+
+

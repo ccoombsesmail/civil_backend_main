@@ -6,7 +6,7 @@ import civil.models.OpposingRecommendations
 import zio.http._
 import zio._
 import civil.controllers.ParseUtils._
-import zio.http.model.Method
+
 import zio.json.EncoderOps
 
 final case class OpposingRecommendationsController(opposingRecommendationsService: OpposingRecommendationsService) {
@@ -19,7 +19,7 @@ final case class OpposingRecommendationsController(opposingRecommendationsServic
 
       case req@Method.GET -> !! / "api" / "v1" / "opposing-recommendations" if (req.url.queryParams.nonEmpty) =>
         (for {
-          recs <- opposingRecommendationsService.getAllOpposingRecommendations(UUID.fromString(req.url.queryParams("targetContentId").head))
+          recs <- opposingRecommendationsService.getAllOpposingRecommendations(UUID.fromString(req.url.queryParams.get("targetContentId").head.asString))
         } yield Response.json(recs.toJson)).catchAll(_.toResponse)
     }
   }

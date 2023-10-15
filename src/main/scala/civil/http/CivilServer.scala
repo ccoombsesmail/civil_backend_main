@@ -1,11 +1,13 @@
 package civil.http
 
+import cats.implicits.catsSyntaxOptionId
+import civil.config.Config
 import civil.controllers._
 import zio.http.{HttpAppMiddleware, _}
 import zio.http.Server._
 import zio._
-import zio.http.middleware.Cors.CorsConfig
-import zio.http.model.Method.{DELETE, GET, OPTIONS, PATCH, POST, PUT}
+import zio.http.Method.{DELETE, GET, OPTIONS, PATCH, POST, PUT}
+import zio.http.internal.middlewares.Cors.CorsConfig
 
 case class CivilServer(
     topicLikesController: SpaceLikesController,
@@ -57,42 +59,31 @@ case class CivilServer(
   //    }
 
   def start = {
+    import civil.config.Config
+    val scheme = Config().getString("access-control-header.scheme")
+    val host = Config().getString("access-control-header.host")
+    val port =
+      if (Config().hasPath("access-control-header.port"))
+        Some(Config().getInt("access-control-header.port"))
+      else
+        None
+
     val corsMiddleware = HttpAppMiddleware.cors(
       CorsConfig(
-        anyOrigin = true,
-        allowCredentials = true,
-        allowedMethods = Some(Set(PUT, PATCH, GET, POST, DELETE, OPTIONS))
+        allowCredentials = Header.AccessControlAllowCredentials.allow(true),
+        allowedMethods = Header.AccessControlAllowMethods.Some(NonEmptyChunk(PUT, PATCH, GET, POST, DELETE, OPTIONS)),
+        allowedOrigin = (header) => {
+          println(header)
+          Header.AccessControlAllowOrigin(scheme, host, port).some
+        }
       )
     )
     HttpAppMiddleware.beautifyErrors
 
-//    val e = (for {
-//      res <- run(
-//        getAllUserDiscussions(
-//          lift("9UqP6nGyb6GYNT8PTmjMWb2FpqjLqAk6FXnNxctRFsY8"),
-//          lift(0),
-//          lift("9UqP6nGyb6GYNT8PTmjMWb2FpqjLqAk6FXnNxctRFsY8")
-//        )
-//      )
-//    } yield res).mapError(DatabaseError).provide(dataSourceLayer)
-//
-//    val runtime = Runtime.default
-//
-//    Unsafe.unsafe { implicit unsafe =>
-//      try {
-//        val result = runtime.unsafe.run(e)
-//        println(result)
-//      } catch {
-//        case e: Throwable =>
-//          println(s"Caught exception: ${e.getMessage}")
-//          e.printStackTrace() // This will print the stack trace for more detailed debugging
-//      }
-//    }
-
     for {
       _ <- ZIO.logInfo("Starting Server")
       _ <- serve {
-        (allRoutes @@ corsMiddleware @@ HttpAppMiddleware.debug @@ HttpAppMiddleware.beautifyErrors).withDefaultErrorResponse
+        (allRoutes @@ HttpAppMiddleware.debug @@ HttpAppMiddleware.beautifyErrors @@ corsMiddleware).withDefaultErrorResponse
       }
     } yield ()
 
