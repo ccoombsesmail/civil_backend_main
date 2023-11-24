@@ -365,7 +365,7 @@ case class DiscussionRepositoryLive(dataSource: DataSource)
     (for {
 
       discussionsUsersLinksJoin <- run(
-        getAllUserDiscussionsUnauthenticatdQuery(lift(skip), lift(userId))
+        getAllUserDiscussionsUnauthenticatedQuery(lift(skip), lift(userId))
       )
       discussions = discussionsUsersLinksJoin.map { row =>
         prepareOutgoingDiscussionRow(
@@ -500,8 +500,19 @@ case class DiscussionRepositoryLive(dataSource: DataSource)
           _.spaceCategory,
           Some(SpaceCategories.withName(d.spaceCategory))
         )
-        .withFieldConst(_.createdByIconSrc, d.iconSrc.getOrElse(""))
-        .withFieldConst(_.createdByTag, d.tag)
+        .withFieldConst(
+          _.createdByUserData,
+          CreatedByUserData(
+            createdByUsername = d.createdByUsername,
+            createdByTag = d.tag,
+            createdByIconSrc = d.iconSrc.getOrElse(""),
+            createdByUserId = d.createdByUserId,
+            civilityPoints = d.civility,
+            numFollowers = d.numFollowers.some,
+            numFollowed = None,
+            numPosts = None
+          )
+        )
         .withFieldConst(_.isFollowing, d.userFollowState)
         .withFieldConst(_.commentCount, d.commentCount)
         .withFieldComputed(

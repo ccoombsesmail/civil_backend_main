@@ -1,5 +1,6 @@
 package civil.repositories.spaces
 
+import cats.implicits.catsSyntaxOptionId
 import civil.errors.AppError
 import civil.errors.AppError.{DatabaseError, NotFoundError}
 import civil.models._
@@ -13,6 +14,7 @@ import civil.database.queries.SpaceQueries.{
   getAllSpacesUnauthenticatedQuery,
   getAllUserSpacesQuery,
   getAllUserSpacesUnauthenticatedQuery,
+  getSpaceQuery,
   getSpaceQueryUnauthenticated
 }
 import civil.repositories.recommendations.RecommendationsRepository
@@ -67,7 +69,6 @@ case class SpaceRepoHelpers(
             )
           )
         case None =>
-          println("getAllSpacesQuery")
           run(
             getAllSpacesQuery(lift(requestingUserId), lift(skip))
           )
@@ -78,12 +79,24 @@ case class SpaceRepoHelpers(
             .attempt(
               row
                 .into[OutgoingSpace]
-                .withFieldConst(_.createdByIconSrc, row.iconSrc.get)
                 .withFieldConst(
                   _.likeState,
                   row.userLikeState.getOrElse(NeutralState)
                 )
-                .withFieldConst(_.createdByTag, row.tag)
+                .withFieldComputed(
+                  _.createdByUserData,
+                  row =>
+                    CreatedByUserData(
+                      createdByUsername = row.createdByUsername,
+                      createdByTag = row.tag,
+                      createdByIconSrc = row.iconSrc.get,
+                      createdByUserId = row.createdByUserId,
+                      civilityPoints = row.civility,
+                      numFollowers = row.numFollowers.some,
+                      numFollowed = None,
+                      numPosts = None
+                    )
+                )
                 .withFieldConst(_.isFollowing, row.userFollowState)
                 .withFieldComputed(_.editorState, row => row.editorState)
                 .withFieldComputed(
@@ -272,9 +285,20 @@ case class SpaceRepositoryLive(
       outgoingSpace =
         incomingSpace
           .into[OutgoingSpace]
-          .withFieldConst(_.createdByIconSrc, user.iconSrc.getOrElse(""))
           .withFieldConst(_.likeState, NeutralState)
-          .withFieldConst(_.createdByTag, user.tag)
+          .withFieldConst(
+            _.createdByUserData,
+            CreatedByUserData(
+              createdByUsername = user.username,
+              createdByTag = user.tag,
+              createdByIconSrc = user.iconSrc.getOrElse(""),
+              createdByUserId = user.userId,
+              civilityPoints = user.civility.toLong,
+              numFollowers = None,
+              numFollowed = None,
+              numPosts = None
+            )
+          )
           .withFieldConst(_.isFollowing, false)
           .withFieldConst(_.discussionCount, 0)
           .withFieldConst(_.commentCount, 0)
@@ -317,12 +341,23 @@ case class SpaceRepositoryLive(
           .attempt(
             space
               .into[OutgoingSpace]
-              .withFieldConst(_.createdByIconSrc, user.iconSrc.get)
               .withFieldConst(
                 _.likeState,
                 likesMap.getOrElse(space.id, NeutralState)
               )
-              .withFieldConst(_.createdByTag, user.tag)
+              .withFieldConst(
+                _.createdByUserData,
+                CreatedByUserData(
+                  createdByUsername = user.username,
+                  createdByTag = user.tag,
+                  createdByIconSrc = user.iconSrc.getOrElse(""),
+                  createdByUserId = user.userId,
+                  civilityPoints = user.civility.toLong,
+                  numFollowers = None,
+                  numFollowed = None,
+                  numPosts = None
+                )
+              )
               .withFieldComputed(
                 _.category,
                 row => SpaceCategories.withName(row.category)
@@ -343,56 +378,44 @@ case class SpaceRepositoryLive(
       requestingUserID: String
   ): ZIO[Any, AppError, OutgoingSpace] = {
 
-    val joined = quote {
-      query[Spaces]
-        .filter(t => t.id == lift(id))
-        .join(query[Users])
-        .on(_.createdByUserId == _.userId)
-        .leftJoin(query[SpaceFollows])
-        .on { case ((t, u), tf) => t.id == tf.followedSpaceId }
-        .map { case ((t, u), tf) => (t, u, tf) }
-
-    }
-
-    for {
-      likes <- run(
-        query[SpaceLikes].filter(l =>
-          l.userId == lift(requestingUserID) && l.spaceId == lift(id)
+    (for {
+      spaceDataRes <- run(
+        getSpaceQuery(lift(requestingUserID), lift(id))
+      )
+      spaceData <- ZIO
+        .fromOption(spaceDataRes.headOption)
+        .orElseFail(
+          NotFoundError(new Throwable(s"Space with id=$id not found"))
+        )
+    } yield spaceData
+      .into[OutgoingSpace]
+      .withFieldConst(
+        _.likeState,
+        spaceData.userLikeState.getOrElse(NeutralState)
+      )
+      .withFieldConst(
+        _.createdByUserData,
+        CreatedByUserData(
+          createdByUsername = spaceData.createdByUsername,
+          createdByTag = spaceData.tag,
+          createdByIconSrc = spaceData.iconSrc.getOrElse(""),
+          createdByUserId = spaceData.createdByUserId,
+          civilityPoints = spaceData.civility,
+          numFollowers = spaceData.numFollowers.some,
+          numFollowed = None,
+          numPosts = None
         )
       )
-        .mapError(DatabaseError(_))
-        .provideEnvironment(ZEnvironment(dataSource))
-      likesMap = likes.foldLeft(Map[UUID, LikeAction]()) { (m, t) =>
-        m + (t.spaceId -> t.likeState)
-      }
-      joinedVals <- run(joined)
-        .mapError(DatabaseError(_))
-        .provideEnvironment(ZEnvironment(dataSource))
-      _ <- ZIO
-        .fail(DatabaseError(new Throwable("Can't find space details")))
-        .unless(joinedVals.nonEmpty)
-    } yield joinedVals
-      .map(row => {
-        val (space, user, spaceFollow) = row
-
-        space
-          .into[OutgoingSpace]
-          .withFieldConst(_.createdByIconSrc, user.iconSrc.get)
-          .withFieldConst(
-            _.likeState,
-            likesMap.getOrElse(space.id, NeutralState)
-          )
-          .withFieldConst(_.createdByTag, user.tag)
-          .withFieldConst(_.isFollowing, spaceFollow.isDefined)
-          .withFieldConst(_.discussionCount, 0)
-          .withFieldConst(_.commentCount, 0)
-          .withFieldComputed(
-            _.category,
-            row => SpaceCategories.withName(row.category)
-          )
-          .transform
-      })
-      .head
+      .withFieldConst(_.isFollowing, spaceData.userFollowState)
+      .withFieldConst(_.discussionCount, 0)
+      .withFieldConst(_.commentCount, 0)
+      .withFieldComputed(
+        _.category,
+        row => SpaceCategories.withName(row.category)
+      )
+      .transform)
+      .mapError(DatabaseError)
+      .provideEnvironment(ZEnvironment(dataSource))
 
   }
 
@@ -406,13 +429,24 @@ case class SpaceRepositoryLive(
       spaceData <- ZIO
         .fromOption(spaceDataRes.headOption)
         .orElseFail(
-          NotFoundError(new Throwable(s"Discussion with id=$id not found"))
+          NotFoundError(new Throwable(s"Space with id=$id not found"))
         )
     } yield spaceData
       .into[OutgoingSpace]
-      .withFieldConst(_.createdByIconSrc, spaceData.iconSrc.get)
       .withFieldConst(_.likeState, NeutralState)
-      .withFieldConst(_.createdByTag, spaceData.tag)
+      .withFieldConst(
+        _.createdByUserData,
+        CreatedByUserData(
+          createdByUsername = spaceData.createdByUsername,
+          createdByTag = spaceData.tag,
+          createdByIconSrc = spaceData.iconSrc.getOrElse(""),
+          createdByUserId = spaceData.createdByUserId,
+          civilityPoints = spaceData.civility,
+          numFollowers = None,
+          numFollowed = None,
+          numPosts = None
+        )
+      )
       .withFieldConst(_.isFollowing, false)
       .withFieldComputed(_.editorState, row => row.editorState)
       .withFieldComputed(
@@ -445,9 +479,20 @@ case class SpaceRepositoryLive(
             .attempt(
               row
                 .into[OutgoingSpace]
-                .withFieldConst(_.createdByIconSrc, row.iconSrc.get)
                 .withFieldConst(_.likeState, NeutralState)
-                .withFieldConst(_.createdByTag, row.tag)
+                .withFieldConst(
+                  _.createdByUserData,
+                  CreatedByUserData(
+                    createdByUsername = row.createdByUsername,
+                    createdByTag = row.tag,
+                    createdByIconSrc = row.iconSrc.getOrElse(""),
+                    createdByUserId = row.createdByUserId,
+                    civilityPoints = row.civility,
+                    numFollowers = None,
+                    numFollowed = None,
+                    numPosts = None
+                  )
+                )
                 .withFieldConst(_.isFollowing, false)
                 .withFieldComputed(_.editorState, row => row.editorState)
                 .withFieldComputed(
@@ -488,9 +533,20 @@ case class SpaceRepositoryLive(
             .attempt(
               row
                 .into[OutgoingSpace]
-                .withFieldConst(_.createdByIconSrc, row.iconSrc.get)
                 .withFieldConst(_.likeState, NeutralState)
-                .withFieldConst(_.createdByTag, row.tag)
+                .withFieldConst(
+                  _.createdByUserData,
+                  CreatedByUserData(
+                    createdByUsername = row.createdByUsername,
+                    createdByTag = row.tag,
+                    createdByIconSrc = row.iconSrc.getOrElse(""),
+                    createdByUserId = row.createdByUserId,
+                    civilityPoints = row.civility,
+                    numFollowers = None,
+                    numFollowed = None,
+                    numPosts = None
+                  )
+                )
                 .withFieldConst(_.isFollowing, false)
                 .withFieldComputed(_.editorState, row => row.editorState)
                 .withFieldComputed(
@@ -522,12 +578,23 @@ case class SpaceRepositoryLive(
             .attempt(
               row
                 .into[OutgoingSpace]
-                .withFieldConst(_.createdByIconSrc, row.iconSrc.get)
                 .withFieldConst(
                   _.likeState,
                   row.userLikeState.getOrElse(NeutralState)
                 )
-                .withFieldConst(_.createdByTag, row.tag)
+                .withFieldConst(
+                  _.createdByUserData,
+                  CreatedByUserData(
+                    createdByUsername = row.createdByUsername,
+                    createdByTag = row.tag,
+                    createdByIconSrc = row.iconSrc.getOrElse(""),
+                    createdByUserId = row.createdByUserId,
+                    civilityPoints = row.civility,
+                    numFollowers = None,
+                    numFollowed = None,
+                    numPosts = None
+                  )
+                )
                 .withFieldConst(_.isFollowing, row.userFollowState)
                 .withFieldComputed(_.editorState, row => row.editorState)
                 .withFieldComputed(
@@ -574,12 +641,23 @@ case class SpaceRepositoryLive(
           .attempt(
             space
               .into[OutgoingSpace]
-              .withFieldConst(_.createdByIconSrc, user.iconSrc.get)
               .withFieldConst(
                 _.likeState,
                 NeutralState
               )
-              .withFieldConst(_.createdByTag, user.tag)
+              .withFieldConst(
+                _.createdByUserData,
+                CreatedByUserData(
+                  createdByUsername = user.username,
+                  createdByTag = user.tag,
+                  createdByIconSrc = user.iconSrc.getOrElse(""),
+                  createdByUserId = user.userId,
+                  civilityPoints = user.civility.toLong,
+                  numFollowers = None,
+                  numFollowed = None,
+                  numPosts = None
+                )
+              )
               .withFieldConst(_.isFollowing, false)
               .withFieldConst(_.discussionCount, 0)
               .withFieldConst(_.commentCount, 0)

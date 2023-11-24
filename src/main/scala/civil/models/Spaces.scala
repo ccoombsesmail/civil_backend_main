@@ -89,11 +89,8 @@ object Spaces {
 case class OutgoingSpace(
     id: UUID,
     title: String,
-    createdByUserId: String,
-    createdByUsername: String,
-    createdByTag: Option[String],
+    createdByUserData: CreatedByUserData,
     editorState: String,
-    createdByIconSrc: String,
     likes: Int,
     likeState: LikeAction,
     category: SpaceCategories,

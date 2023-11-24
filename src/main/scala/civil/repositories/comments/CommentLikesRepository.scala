@@ -12,20 +12,20 @@ import javax.sql.DataSource
 
 trait CommentLikesRepository {
   def addRemoveCommentLikeOrDislike(
-                                     commentLikeDislike: CommentLikes,
-                                     createdById: String
-                                   ): ZIO[Any, AppError, (CommentLiked, Comments)]
+      commentLikeDislike: CommentLikes,
+      createdById: String
+  ): ZIO[Any, AppError, (CommentLiked, Comments)]
 
   def addRemoveTribunalCommentLikeOrDislike(
-                                             commentLikeDislike: CommentLikes
-                                           ): ZIO[Any, AppError, CommentLiked]
+      commentLikeDislike: CommentLikes
+  ): ZIO[Any, AppError, CommentLiked]
 }
 
 object CommentLikesRepository {
   def addRemoveCommentLikeOrDislike(
-                                     commentLikeDislike: CommentLikes,
-                                     createdById: String
-                                   ): ZIO[CommentLikesRepository, AppError, (CommentLiked, Comments)] =
+      commentLikeDislike: CommentLikes,
+      createdById: String
+  ): ZIO[CommentLikesRepository, AppError, (CommentLiked, Comments)] =
     ZIO.environmentWithZIO[CommentLikesRepository] { env =>
       env
         .get[CommentLikesRepository]
@@ -33,8 +33,8 @@ object CommentLikesRepository {
     }
 
   def addRemoveTribunalCommentLikeOrDislike(
-                                             commentLikeDislike: CommentLikes
-                                           ): ZIO[CommentLikesRepository, AppError, CommentLiked] =
+      commentLikeDislike: CommentLikes
+  ): ZIO[CommentLikesRepository, AppError, CommentLiked] =
     ZIO.environmentWithZIO[CommentLikesRepository] { env =>
       env
         .get[CommentLikesRepository]
@@ -44,14 +44,14 @@ object CommentLikesRepository {
 }
 
 case class CommentLikesRepositoryLive(dataSource: DataSource)
-  extends CommentLikesRepository {
+    extends CommentLikesRepository {
 
   import civil.repositories.QuillContext._
 
   override def addRemoveCommentLikeOrDislike(
-                                              commentLikeDislike: CommentLikes,
-                                              createdById: String
-                                            ): ZIO[Any, AppError, (CommentLiked, Comments)] = {
+      commentLikeDislike: CommentLikes,
+      createdById: String
+  ): ZIO[Any, AppError, (CommentLiked, Comments)] = {
     for {
       //      _ <- log.info(s"Fetching previous like state for comment id ${commentLikeDislike.commentId}")
       likeValueToAddSubtract <- getLikeValueToAddOrSubtract(commentLikeDislike)
@@ -96,8 +96,8 @@ case class CommentLikesRepositoryLive(dataSource: DataSource)
   }
 
   override def addRemoveTribunalCommentLikeOrDislike(
-                                                      commentLikeDislike: CommentLikes
-                                                    ): ZIO[Any, AppError, CommentLiked] = {
+      commentLikeDislike: CommentLikes
+  ): ZIO[Any, AppError, CommentLiked] = {
     for {
       likeValueToAddSubtract <- getLikeValueToAddOrSubtract(commentLikeDislike)
       commentLikesData <-
@@ -140,8 +140,8 @@ case class CommentLikesRepositoryLive(dataSource: DataSource)
   }
 
   private def getLikeValueToAddOrSubtract(
-                                           commentLikeDislike: CommentLikes
-                                         ): ZIO[Any, AppError, Index] = {
+      commentLikeDislike: CommentLikes
+  ): ZIO[Any, AppError, Index] = {
     for {
       previousLikeState <- run(
         query[CommentLikes].filter(cl =>
@@ -166,17 +166,18 @@ case class CommentLikesRepositoryLive(dataSource: DataSource)
         )
         .likeState
       likeValueToAdd = (prevLikeState, newLikeState) match {
-        case (LikedState, NeutralState) => -1
-        case (NeutralState, LikedState) => 1
+        case (LikedState, NeutralState)    => -1
+        case (NeutralState, LikedState)    => 1
         case (DislikedState, NeutralState) => 1
         case (NeutralState, DislikedState) => -1
-        case (LikedState, DislikedState) => -2
-        case (DislikedState, LikedState) => 2
-        case (NeutralState, NeutralState) => 0
-        case _ => -100
+        case (LikedState, DislikedState)   => -2
+        case (DislikedState, LikedState)   => 2
+        case (NeutralState, NeutralState)  => 0
+        case _                             => -100
       }
       _ <- ZIO.when(likeValueToAdd == -100)(
-        ZIO.fail(DatabaseError(new Throwable("Invalid like value"))))
+        ZIO.fail(DatabaseError(new Throwable("Invalid like value")))
+      )
 
     } yield likeValueToAdd
   }

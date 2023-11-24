@@ -1,13 +1,11 @@
 package civil.repositories.comments
 
+import cats.implicits.catsSyntaxOptionId
 import civil.errors.AppError
 import civil.errors.AppError.DatabaseError
 import civil.models._
 import civil.models.actions.NeutralState
-import civil.database.queries.CommentQueries.{
-  getCommentsWithReplies,
-  getCommentsWithRepliesUnauthenticatedQuery
-}
+import civil.database.queries.CommentQueries.{getCommentsWithReplies, getCommentsWithRepliesUnauthenticatedQuery}
 import civil.utils.CommentsTreeConstructor
 import io.getquill.Ord
 import io.scalaland.chimney.dsl._
@@ -144,11 +142,17 @@ case class CommentsRepositoryLive(dataSource: DataSource)
     } yield inserted
       .into[CommentReply]
       .withFieldConst(_.likeState, NeutralState)
-      .withFieldConst(_.createdByUserId, requestingUserData.userId)
-      .withFieldConst(_.createdByIconSrc, requestingUserData.userIconSrc)
+      .withFieldConst(_.createdByUserData, CreatedByUserData(
+        createdByUsername = requestingUserData.username,
+        createdByUserId = requestingUserData.userId,
+        createdByIconSrc = requestingUserData.userIconSrc,
+        createdByTag = requestingUserData.userCivilTag.some,
+        civilityPoints = 0,
+        numFollowers = None,
+        numFollowed = None,
+        numPosts = None
+      ))
       .withFieldConst(_.civility, 0.0f)
-      .withFieldConst(_.createdByExperience, requestingUserData.experience)
-      .withFieldConst(_.createdByTag, Some(requestingUserData.userCivilTag))
       .transform
 
   }
@@ -196,7 +200,10 @@ case class CommentsRepositoryLive(dataSource: DataSource)
                       c.userIconSrc.getOrElse(""),
                       c.userId,
                       c.userExperience,
-                      c.createdByTag
+                      c.createdByTag,
+                      c.createdByUsername,
+                      c.createdByCivility,
+                      c.numFollowers.some
                     )
                   )
                   .reverse
@@ -209,7 +216,10 @@ case class CommentsRepositoryLive(dataSource: DataSource)
                       c.userIconSrc.getOrElse(""),
                       c.userId,
                       c.userExperience,
-                      c.createdByTag
+                      c.createdByTag,
+                      c.createdByUsername,
+                      c.createdByCivility,
+                      c.numFollowers.some
                     )
                   )
 
@@ -256,7 +266,10 @@ case class CommentsRepositoryLive(dataSource: DataSource)
                       c.userIconSrc.getOrElse(""),
                       c.userId,
                       c.userExperience,
-                      c.createdByTag
+                      c.createdByTag,
+                      c.createdByUsername,
+                      c.createdByCivility,
+                      c.numFollowers.some
                     )
                   )
                   .reverse
@@ -269,7 +282,10 @@ case class CommentsRepositoryLive(dataSource: DataSource)
                       c.userIconSrc.getOrElse(""),
                       c.userId,
                       c.userExperience,
-                      c.createdByTag
+                      c.createdByTag,
+                      c.createdByUsername,
+                      c.createdByCivility,
+                      c.numFollowers.some
                     )
                   )
 
@@ -374,7 +390,10 @@ case class CommentsRepositoryLive(dataSource: DataSource)
                       c.userIconSrc.getOrElse(""),
                       c.userId,
                       c.userExperience,
-                      c.createdByTag
+                      c.createdByTag,
+                      c.createdByUsername,
+                      c.createdByCivility,
+                      c.numFollowers.some
                     )
                   )
                   .reverse
@@ -388,7 +407,10 @@ case class CommentsRepositoryLive(dataSource: DataSource)
                       c.userIconSrc.getOrElse(""),
                       c.userId,
                       c.userExperience,
-                      c.createdByTag
+                      c.createdByTag,
+                      c.createdByUsername,
+                      c.createdByCivility,
+                      c.numFollowers.some
                     )
                   )
 
@@ -402,14 +424,21 @@ case class CommentsRepositoryLive(dataSource: DataSource)
       replies = commentsWithReplies,
       comment = comment
         .into[CommentReply]
-        .withFieldConst(_.createdByUserId, user.userId)
-        .withFieldConst(_.createdByExperience, user.experience)
-        .withFieldConst(_.createdByIconSrc, user.iconSrc.get)
-        .withFieldConst(_.createdByTag, user.tag)
         .withFieldConst(
           _.likeState,
           likeOpt.map(_.likeState).getOrElse(NeutralState)
         )
+        .withFieldConst(_.createdByUserData, CreatedByUserData(
+          createdByUsername = user.username,
+          createdByUserId = user.userId,
+          createdByIconSrc = user.iconSrc.getOrElse(""),
+          createdByTag = user.tag,
+          civilityPoints = user.civility.toLong,
+          numFollowers = None,
+          numFollowed = None,
+          numPosts = None,
+          createdByExperience = user.experience
+        ))
         .withFieldConst(_.civility, civilityOpt.map(_.value).getOrElse(0f))
         .transform
     )).provideEnvironment(ZEnvironment(dataSource))
@@ -455,7 +484,10 @@ case class CommentsRepositoryLive(dataSource: DataSource)
                       c.userIconSrc.getOrElse(""),
                       c.userId,
                       c.userExperience,
-                      c.createdByTag
+                      c.createdByTag,
+                      c.createdByUsername,
+                      c.createdByCivility,
+                      c.numFollowers.some
                     )
                   )
                   .reverse
@@ -469,7 +501,10 @@ case class CommentsRepositoryLive(dataSource: DataSource)
                       c.userIconSrc.getOrElse(""),
                       c.userId,
                       c.userExperience,
-                      c.createdByTag
+                      c.createdByTag,
+                      c.createdByUsername,
+                      c.createdByCivility,
+                      c.numFollowers.some
                     )
                   )
 
@@ -483,14 +518,21 @@ case class CommentsRepositoryLive(dataSource: DataSource)
       replies = commentsWithReplies,
       comment = comment
         .into[CommentReply]
-        .withFieldConst(_.createdByUserId, user.userId)
-        .withFieldConst(_.createdByExperience, user.experience)
-        .withFieldConst(_.createdByIconSrc, user.iconSrc.get)
-        .withFieldConst(_.createdByTag, user.tag)
         .withFieldConst(
           _.likeState,
           NeutralState
         )
+        .withFieldConst(_.createdByUserData, CreatedByUserData(
+          createdByUsername = user.username,
+          createdByUserId = user.userId,
+          createdByIconSrc = user.iconSrc.getOrElse(""),
+          createdByTag = user.tag,
+          civilityPoints = user.civility.toLong,
+          numFollowers = None,
+          numFollowed = None,
+          numPosts = None,
+          createdByExperience = user.experience
+        ))
         .withFieldConst(_.civility, 0f)
         .transform
     )).provideEnvironment(ZEnvironment(dataSource))
@@ -534,7 +576,10 @@ case class CommentsRepositoryLive(dataSource: DataSource)
                       c.userIconSrc.getOrElse(""),
                       c.userId,
                       c.userExperience,
-                      c.createdByTag
+                      c.createdByTag,
+                      c.createdByUsername,
+                      c.createdByCivility,
+                      c.numFollowers.some
                     )
                   )
                   .reverse
@@ -547,7 +592,10 @@ case class CommentsRepositoryLive(dataSource: DataSource)
                       c.userIconSrc.getOrElse(""),
                       c.userId,
                       c.userExperience,
-                      c.createdByTag
+                      c.createdByTag,
+                      c.createdByUsername,
+                      c.createdByCivility,
+                      c.numFollowers.some
                     )
                   )
 
@@ -599,7 +647,10 @@ case class CommentsRepositoryLive(dataSource: DataSource)
                       c.userIconSrc.getOrElse(""),
                       c.userId,
                       c.userExperience,
-                      c.createdByTag
+                      c.createdByTag,
+                      c.createdByUsername,
+                      c.createdByCivility,
+                      c.numFollowers.some
                     )
                   )
                   .reverse
@@ -612,7 +663,10 @@ case class CommentsRepositoryLive(dataSource: DataSource)
                       c.userIconSrc.getOrElse(""),
                       c.userId,
                       c.userExperience,
-                      c.createdByTag
+                      c.createdByTag,
+                      c.createdByUsername,
+                      c.createdByCivility,
+                      c.numFollowers.some
                     )
                   )
 

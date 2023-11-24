@@ -51,7 +51,6 @@ final case class CommentsController(commentsService: CommentsService) {
                   .fromOption(req.headers.get("X-JWT-TYPE"))
                   .orElseFail(JsonDecodingError(new Throwable("error")))
                 jwtType = jwtTypeHeader
-                // Call the function for authenticated users
                 comments <- commentsService.getComments(
                   jwt,
                   jwtType,

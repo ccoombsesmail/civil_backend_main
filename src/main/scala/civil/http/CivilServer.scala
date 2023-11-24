@@ -73,7 +73,7 @@ case class CivilServer(
         allowCredentials = Header.AccessControlAllowCredentials.allow(true),
         allowedMethods = Header.AccessControlAllowMethods.Some(NonEmptyChunk(PUT, PATCH, GET, POST, DELETE, OPTIONS)),
         allowedOrigin = (header) => {
-          println(header)
+          println(scheme, host, host)
           Header.AccessControlAllowOrigin(scheme, host, port).some
         }
       )

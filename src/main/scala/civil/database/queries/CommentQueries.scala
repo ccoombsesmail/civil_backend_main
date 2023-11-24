@@ -1,13 +1,8 @@
 package civil.database.queries
 
-import civil.models.{
-  CommentWithDepthAndUser,
-  CommentWithDepthAndUserUnauthenticated,
-  TribunalCommentWithDepthAndUser,
-  TribunalCommentWithDepthAndUserUnauthenticated
-}
+import civil.models.{CommentWithDepthAndUser, CommentWithDepthAndUserUnauthenticated, TribunalCommentWithDepthAndUser, TribunalCommentWithDepthAndUserUnauthenticated}
 import civil.repositories.QuillContext
-import io.getquill.Query
+import io.getquill.{Query, Quoted}
 
 import java.util.UUID
 
@@ -15,7 +10,7 @@ object CommentQueries {
 
   import QuillContext._
 
-  val getCommentsWithReplies = quote { (id: UUID, userId: String) =>
+  val getCommentsWithReplies: Quoted[(UUID, String) => Query[CommentWithDepthAndUser]] = quote { (id: UUID, userId: String) =>
     sql"""
      WITH RECURSIVE comments_tree as (
       select
@@ -37,6 +32,8 @@ object CommentQueries {
         u1.experience as user_experience,
         u1.user_id,
         u1.tag as created_by_tag,
+        u1.civility as created_by_civility,
+             (SELECT COUNT(f.id) FROM follows f WHERE c1.created_by_user_id = f.followed_user_id) AS num_followers,
         l1.like_state,
         civ1.value as civility
       from comments c1
@@ -66,6 +63,8 @@ object CommentQueries {
         u2.experience as user_experience,
         u2.user_id,
         u2.tag as created_by_tag,
+        u2.civility as created_by_civility,
+                 (SELECT COUNT(f.id) FROM follows f WHERE c2.created_by_user_id = f.followed_user_id) AS num_followers,
         l2.like_state,
         civ2.value as civility
       from comments c2
@@ -78,7 +77,7 @@ object CommentQueries {
       """.pure.as[Query[CommentWithDepthAndUser]]
   }
 
-  val getCommentsWithRepliesUnauthenticatedQuery = quote { (id: UUID) =>
+  val getCommentsWithRepliesUnauthenticatedQuery: Quoted[UUID => Query[CommentWithDepthAndUserUnauthenticated]] = quote { (id: UUID) =>
     sql"""
      WITH RECURSIVE comments_tree as (
       select
@@ -99,7 +98,9 @@ object CommentQueries {
         u1.icon_src as user_icon_src,
         u1.experience as user_experience,
         u1.user_id,
-        u1.tag as created_by_tag
+        u1.tag as created_by_tag,
+        u1.civility as created_by_civility,
+             (SELECT COUNT(f.id) FROM follows f WHERE c1.created_by_user_id = f.followed_user_id) AS num_followers,
       from comments c1
       join users u1 on c1.created_by_user_id = u1.user_id
 
@@ -125,7 +126,9 @@ object CommentQueries {
         u2.icon_src as user_icon_src,
         u2.experience as user_experience,
         u2.user_id,
-        u2.tag as created_by_tag
+        u2.tag as created_by_tag,
+        u2.civility as created_by_civility,
+             (SELECT COUNT(f.id) FROM follows f WHERE c2.created_by_user_id = f.followed_user_id) AS num_followers,
       from comments c2
       join users u2 on c2.created_by_user_id = u2.user_id
 
@@ -135,7 +138,7 @@ object CommentQueries {
       """.pure.as[Query[CommentWithDepthAndUserUnauthenticated]]
   }
 
-  val getTribunalCommentsWithReplies = quote { (id: UUID, userId: String) =>
+  val getTribunalCommentsWithReplies: Quoted[(UUID, String) => Query[TribunalCommentWithDepthAndUser]] = quote { (id: UUID, userId: String) =>
     sql"""
      WITH RECURSIVE comments_tree as (
       select
@@ -156,6 +159,8 @@ object CommentQueries {
         u1.experience as user_experience,
         u1.user_id,
         u1.tag as created_by_tag,
+        u1.civility as created_by_civility,
+                 (SELECT COUNT(f.id) FROM follows f WHERE c1.created_by_user_id = f.followed_user_id) AS num_followers,
         l1.like_state,
         civ1.value as civility
       from tribunal_comments c1
@@ -184,6 +189,8 @@ object CommentQueries {
         u2.experience as user_experience,
         u2.user_id,
         u2.tag as created_by_tag,
+        u2.civility as created_by_civility,
+                    (SELECT COUNT(f.id) FROM follows f WHERE c2.created_by_user_id = f.followed_user_id) AS num_followers,
         l2.like_state,
         civ2.value as civility
       from tribunal_comments c2
@@ -196,7 +203,7 @@ object CommentQueries {
       """.pure.as[Query[TribunalCommentWithDepthAndUser]]
   }
 
-  val getTribunalCommentsWithRepliesUnauthenticatedQuery = quote { (id: UUID) =>
+  val getTribunalCommentsWithRepliesUnauthenticatedQuery: Quoted[UUID => Query[TribunalCommentWithDepthAndUserUnauthenticated]] = quote { (id: UUID) =>
     sql"""
      WITH RECURSIVE comments_tree as (
       select
@@ -217,7 +224,8 @@ object CommentQueries {
         u1.experience as user_experience,
         u1.user_id,
         u1.tag as created_by_tag,
-
+        u1.civility as created_by_civility,
+                       (SELECT COUNT(f.id) FROM follows f WHERE c1.created_by_user_id = f.followed_user_id) AS num_followers,
       from tribunal_comments c1
       join users u1 on c1.created_by_user_id = u1.user_id
        where c1.id = $id
@@ -242,6 +250,8 @@ object CommentQueries {
         u2.experience as user_experience,
         u2.user_id,
         u2.tag as created_by_tag,
+        u2.civility as created_by_civility,
+                       (SELECT COUNT(f.id) FROM follows f WHERE c2.created_by_user_id = f.followed_user_id) AS num_followers
       from tribunal_comments c2
       join users u2 on c2.created_by_user_id = u2.user_id
       join comments_tree ct on ct.id = c2.parent_id

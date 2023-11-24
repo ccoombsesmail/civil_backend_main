@@ -6,20 +6,7 @@ import civil.errors.AppError.{DatabaseError, InternalServerError}
 import civil.models.actions.NeutralState
 import civil.models.enums.SpaceCategories
 import civil.models.enums.SpaceCategories.General
-import civil.models.{
-  Comment,
-  CommentWithUserData,
-  Comments,
-  Discussions,
-  ExternalContentData,
-  ExternalLinksDiscussions,
-  JuryDuty,
-  OutgoingDiscussion,
-  OutgoingSpace,
-  Spaces,
-  TribunalJuryMembers,
-  Users
-}
+import civil.models.{Comment, CommentWithUserData, Comments, CreatedByUserData, Discussions, ExternalContentData, ExternalLinksDiscussions, JuryDuty, OutgoingDiscussion, OutgoingSpace, Spaces, TribunalJuryMembers, Users}
 import io.scalaland.chimney.dsl.TransformerOps
 import zio.{URLayer, ZEnvironment, ZIO, ZLayer}
 
@@ -103,10 +90,16 @@ case class TribunalJuryMembersRepositoryLive(dataSource: DataSource)
       case (tjm, s, d, c, u, edl) => {
         val outgoingSpace = s.map(
           _.into[OutgoingSpace]
-            .withFieldConst(_.createdByUserId, u.userId)
-            .withFieldConst(_.createdByUsername, u.username)
-            .withFieldConst(_.createdByIconSrc, u.iconSrc.getOrElse(""))
-            .withFieldConst(_.createdByTag, u.tag)
+            .withFieldConst(_.createdByUserData, CreatedByUserData(
+              createdByUsername = u.username,
+              createdByTag = u.tag,
+              createdByIconSrc = u.iconSrc.getOrElse(""),
+              createdByUserId = u.userId,
+              civilityPoints = u.civility.toLong,
+              numFollowers = None,
+              numFollowed = None,
+              numPosts = None
+            ))
             .withFieldComputed(
               _.category,
               s => SpaceCategories.withName(s.category)
@@ -120,10 +113,18 @@ case class TribunalJuryMembersRepositoryLive(dataSource: DataSource)
         )
         val outgoingDiscussion = d.map(
           _.into[OutgoingDiscussion]
-            .withFieldConst(_.createdByUserId, u.userId)
-            .withFieldConst(_.createdByUsername, u.username)
-            .withFieldConst(_.createdByIconSrc, u.iconSrc.getOrElse(""))
-            .withFieldConst(_.createdByTag, u.tag)
+            .withFieldConst(_.createdByUserData,
+              CreatedByUserData(
+                createdByUsername = u.username,
+                createdByUserId = u.userId,
+                createdByIconSrc = u.iconSrc.getOrElse(""),
+                createdByTag = u.tag,
+                0,
+                None,
+                None,
+                None
+              )
+            )
             .withFieldConst(
               _.externalContentData,
               edl.map(_.into[ExternalContentData].transform)

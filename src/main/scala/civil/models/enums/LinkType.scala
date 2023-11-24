@@ -13,6 +13,9 @@ case object LinkType extends Enum[LinkType] with CirceEnum[LinkType] with QuillE
   case object Twitter extends LinkType
   case object Web  extends LinkType
 
+  case object Ipfs  extends LinkType
+
+
   val values: IndexedSeq[LinkType] = findValues
 
   implicit val linkTypeEncoder: JsonEncoder[LinkType] = JsonEncoder[String].contramap(_.entryName)
@@ -20,6 +23,8 @@ case object LinkType extends Enum[LinkType] with CirceEnum[LinkType] with QuillE
     case "YouTube" => YouTube
     case "Twitter" => Twitter
     case "Web" => Web
+    case "Ipfs" => Ipfs
+
   }
 
 }

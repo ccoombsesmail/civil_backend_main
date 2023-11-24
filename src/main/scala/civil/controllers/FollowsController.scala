@@ -36,7 +36,7 @@ final case class FollowsController(followsService: FollowsService) {
 
       case req @ Method.GET -> !! / "api" / "v1" / "follows" / "followers" / userId =>
         for {
-          followers <- followsService.getAllFolowers(userId)
+          followers <- followsService.getAllFollowers(userId)
         } yield Response.json(followers.toJson)
 
       case req @ Method.GET -> !! / "api" / "v1" / "follows" / "followed" / userId =>

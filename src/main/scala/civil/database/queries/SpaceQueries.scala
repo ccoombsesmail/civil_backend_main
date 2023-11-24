@@ -5,7 +5,7 @@ import civil.models.enums.ReportStatus.CLEAN
 import civil.models.enums.UserVerificationType
 import civil.models.enums.UserVerificationType.NO_VERIFICATION
 import civil.repositories.QuillContext
-import io.getquill.Query
+import io.getquill.{Query, Quoted}
 
 import java.time.ZonedDateTime
 import java.util.UUID
@@ -34,6 +34,8 @@ object SpaceQueries {
       userUploadedImageUrl: Option[String],
       tag: Option[String],
       iconSrc: Option[String],
+      civility: Long,
+      numFollowers: Int,
       userLikeState: Option[LikeAction],
       userFollowState: Boolean,
       discussionCount: Int,
@@ -60,11 +62,13 @@ object SpaceQueries {
       userUploadedImageUrl: Option[String],
       tag: Option[String],
       iconSrc: Option[String],
+      civility: Long,
+      numFollowers: Int,
       discussionCount: Int,
       commentCount: Int
   )
 
-  val getSpaceQuery = quote { (requestingUserId: String, spaceId: UUID) =>
+  val getSpaceQuery: Quoted[(String, UUID) => Query[SpacesData]] = quote { (requestingUserId: String, spaceId: UUID) =>
     sql"""
         WITH DiscussionCounts AS (
              SELECT
@@ -90,6 +94,8 @@ object SpaceQueries {
            s.*,
            u.tag,
            u.icon_src,
+           u.civility,
+           (SELECT COUNT(f.id) FROM follows f WHERE s.created_by_user_id = f.followed_user_id) AS num_followers,
            sl.like_state as user_like_state,
            CASE WHEN sf.id IS NOT NULL THEN TRUE ELSE FALSE END AS user_follow_state,
            COALESCE(dc.discussion_count, 0) AS discussion_count,
@@ -110,7 +116,7 @@ object SpaceQueries {
     """.pure.as[Query[SpacesData]]
   }
 
-  val getSpaceQueryUnauthenticated = quote { (spaceId: UUID) =>
+  val getSpaceQueryUnauthenticated: Quoted[UUID => Query[SpacesDataUnauthenticated]] = quote { (spaceId: UUID) =>
     sql"""
         WITH DiscussionCounts AS (
              SELECT
@@ -136,6 +142,8 @@ object SpaceQueries {
            s.*,
            u.tag,
            u.icon_src,
+           u.civility,
+          (SELECT COUNT(f.id) FROM follows f WHERE s.created_by_user_id = f.followed_user_id) AS num_followers,
            COALESCE(dc.discussion_count, 0) AS discussion_count,
            COALESCE(cc.comment_count, 0) AS comment_count
        FROM
@@ -150,7 +158,7 @@ object SpaceQueries {
     """.pure.as[Query[SpacesDataUnauthenticated]]
   }
 
-  val getAllSpacesQuery = quote { (requestingUserId: String, skip: Int) =>
+  val getAllSpacesQuery: Quoted[(String, Index) => Query[SpacesData]] = quote { (requestingUserId: String, skip: Int) =>
     sql"""
         WITH DiscussionCounts AS (
              SELECT
@@ -176,6 +184,8 @@ object SpaceQueries {
            s.*,
            u.tag,
            u.icon_src,
+           u.civility,
+          (SELECT COUNT(f.id) FROM follows f WHERE s.created_by_user_id = f.followed_user_id) AS num_followers,
            sl.like_state as user_like_state,
            CASE WHEN sf.id IS NOT NULL THEN TRUE ELSE FALSE END AS user_follow_state,
            COALESCE(dc.discussion_count, 0) AS discussion_count,
@@ -199,7 +209,7 @@ object SpaceQueries {
     """.pure.as[Query[SpacesData]]
   }
 
-  val getAllSpacesUnauthenticatedQuery = quote { (skip: Int) =>
+  val getAllSpacesUnauthenticatedQuery: Quoted[Index => Query[SpacesDataUnauthenticated]] = quote { (skip: Int) =>
     sql"""
         WITH DiscussionCounts AS (
              SELECT
@@ -225,6 +235,8 @@ object SpaceQueries {
            s.*,
            u.tag,
            u.icon_src,
+           u.civility,
+          (SELECT COUNT(f.id) FROM follows f WHERE s.created_by_user_id = f.followed_user_id) AS num_followers,
            COALESCE(dc.discussion_count, 0) AS discussion_count,
            COALESCE(cc.comment_count, 0) AS comment_count
        FROM
@@ -242,7 +254,7 @@ object SpaceQueries {
     """.pure.as[Query[SpacesDataUnauthenticated]]
   }
 
-  val getAllFollowedSpacesQuery = quote {
+  val getAllFollowedSpacesQuery: Quoted[(String, Index) => Query[SpacesData]] = quote {
     (requestingUserId: String, skip: Int) =>
       sql"""
         WITH DiscussionCounts AS (
@@ -269,6 +281,8 @@ object SpaceQueries {
              s.*,
              u.tag,
              u.icon_src,
+             u.civility,
+             (SELECT COUNT(f.id) FROM follows f WHERE s.created_by_user_id = f.followed_user_id) AS num_followers,
              sl.like_state as user_like_state,
              CASE WHEN sf.id IS NOT NULL THEN TRUE ELSE FALSE END AS user_follow_state,
              COALESCE(dc.discussion_count, 0) AS discussion_count,
@@ -279,7 +293,7 @@ object SpaceQueries {
              users u ON s.created_by_user_id = u.user_id
          LEFT JOIN
              space_likes sl ON s.id = sl.space_id AND sl.user_id = $requestingUserId
-         INNER JOIN
+         LEFT JOIN
              space_follows sf ON s.id = sf.followed_space_id AND sf.user_id = $requestingUserId
          LEFT JOIN
              DiscussionCounts dc ON s.id = dc.space_id
@@ -292,7 +306,7 @@ object SpaceQueries {
       """.pure.as[Query[SpacesData]]
   }
 
-  val getAllUserSpacesQuery = quote {
+  val getAllUserSpacesQuery: Quoted[(String, Index, String) => Query[SpacesData]] = quote {
     (requestingUserId: String, skip: Int, userId: String) =>
       sql"""
         WITH DiscussionCounts AS (
@@ -319,6 +333,8 @@ object SpaceQueries {
              s.*,
              u.tag,
              u.icon_src,
+             u.civility,
+             (SELECT COUNT(f.id) FROM follows f WHERE s.created_by_user_id = f.followed_user_id) AS num_followers,
              sl.like_state as user_like_state,
              CASE WHEN sf.id IS NOT NULL THEN TRUE ELSE FALSE END AS user_follow_state,
              COALESCE(dc.discussion_count, 0) AS discussion_count,
@@ -343,7 +359,7 @@ object SpaceQueries {
       """.pure.as[Query[SpacesData]]
   }
 
-  val getAllUserSpacesUnauthenticatedQuery = quote {
+  val getAllUserSpacesUnauthenticatedQuery: Quoted[(Index, String) => Query[SpacesDataUnauthenticated]] = quote {
     (skip: Int, userId: String) =>
       sql"""
         WITH DiscussionCounts AS (
@@ -370,6 +386,8 @@ object SpaceQueries {
              s.*,
              u.tag,
              u.icon_src,
+             u.civility,
+             (SELECT COUNT(f.id) FROM follows f WHERE s.created_by_user_id = f.followed_user_id) AS num_followers,
              COALESCE(dc.discussion_count, 0) AS discussion_count,
              COALESCE(cc.comment_count, 0) AS comment_count
          FROM

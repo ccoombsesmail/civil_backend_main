@@ -67,7 +67,7 @@ case class CommentLikesServiceLive(
 
     for {
       userData <- authenticationService.extractUserData(jwt, jwtType)
-      _ <- ZIO.logInfo("Updating Tribunal Comment Like")
+      _ <- ZIO.logInfo("Updating Comment Like")
       data <- commentLikesRepo.addRemoveCommentLikeOrDislike(
         commentLikeDislikeData
           .into[CommentLikes]
@@ -99,7 +99,7 @@ case class CommentLikesServiceLive(
           )
         )
         .mapError(InternalServerError)
-        .forkDaemon
+        .fork
     } yield likeData
   }
 

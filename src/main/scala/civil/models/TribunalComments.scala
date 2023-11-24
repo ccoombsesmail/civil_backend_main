@@ -143,6 +143,8 @@ case class TribunalCommentWithDepthAndUser(
     userIconSrc: Option[String],
     userExperience: Option[String],
     createdByTag: Option[String],
+    createdByCivility: Long,
+    numFollowers: Int,
     userId: String,
     likeState: Option[LikeAction],
     civility: Option[Float]
@@ -165,6 +167,8 @@ case class TribunalCommentWithDepthAndUserUnauthenticated(
     userIconSrc: Option[String],
     userExperience: Option[String],
     createdByTag: Option[String],
+    createdByCivility: Long,
+    numFollowers: Int,
     userId: String
 )
 

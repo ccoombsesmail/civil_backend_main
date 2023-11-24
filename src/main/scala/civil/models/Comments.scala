@@ -47,17 +47,27 @@ object Comments {
       iconSrc: String,
       userId: String,
       createdByExperience: Option[String],
-      createdByTag: Option[String]
+      createdByTag: Option[String],
+      createdByUsername: String,
+      createdByCivility: Long,
+      numFollowers: Option[Int]
   ): EntryWithDepth =
     EntryWithDepth(
       commentWithDepth
         .into[CommentReply]
         .withFieldConst(_.likeState, likeState)
         .withFieldConst(_.civility, civility)
-        .withFieldConst(_.createdByIconSrc, iconSrc)
-        .withFieldConst(_.createdByUserId, userId)
-        .withFieldConst(_.createdByExperience, createdByExperience)
-        .withFieldConst(_.createdByTag, createdByTag)
+        .withFieldConst(_.createdByUserData, CreatedByUserData(
+          createdByUsername = createdByUsername,
+          createdByUserId = userId,
+          createdByIconSrc = iconSrc,
+          createdByTag = createdByTag,
+          civilityPoints = createdByCivility,
+          numFollowers = numFollowers,
+          numFollowed = None,
+          numPosts = None,
+          createdByExperience = createdByExperience
+        ))
         .withFieldConst(_.source, commentWithDepth.source)
         .transform,
       commentWithDepth.depth
@@ -70,17 +80,27 @@ object Comments {
       iconSrc: String,
       userId: String,
       createdByExperience: Option[String],
-      createdByTag: Option[String]
+      createdByTag: Option[String],
+      createdByUsername: String,
+      createdByCivility: Long,
+      numFollowers: Option[Int]
   ): CommentReply =
     comment
       .into[CommentReply]
       .withFieldConst(_.likeState, likeState)
       .withFieldConst(_.civility, civility)
-      .withFieldConst(_.createdByIconSrc, iconSrc)
-      .withFieldConst(_.createdByUserId, userId)
-      .withFieldConst(_.createdByExperience, createdByExperience)
+      .withFieldConst(_.createdByUserData, CreatedByUserData(
+        createdByUsername = createdByUsername,
+        createdByUserId = userId,
+        createdByIconSrc = iconSrc,
+        createdByTag = createdByTag,
+        civilityPoints = createdByCivility,
+        numFollowers = numFollowers,
+        numFollowed = None,
+        numPosts = None,
+        createdByExperience = createdByExperience
+      ))
       .withFieldConst(_.source, comment.source)
-      .withFieldConst(_.createdByTag, createdByTag)
       .transform
 }
 
@@ -101,6 +121,8 @@ case class CommentWithDepthAndUser(
     userIconSrc: Option[String],
     userExperience: Option[String],
     createdByTag: Option[String],
+    createdByCivility: Long,
+    numFollowers: Int,
     userId: String,
     likeState: Option[LikeAction] = Some(NeutralState),
     civility: Option[Float]
@@ -123,6 +145,8 @@ case class CommentWithDepthAndUserUnauthenticated(
     userIconSrc: Option[String],
     userExperience: Option[String],
     createdByTag: Option[String],
+    createdByCivility: Long,
+    numFollowers: Int,
     userId: String
 )
 
@@ -167,9 +191,6 @@ object IncomingComment {
 case class CommentReply(
     id: UUID,
     editorState: String,
-    createdByUsername: String,
-    createdByUserId: String,
-    createdByTag: Option[String],
     sentiment: String,
     discussionId: UUID,
     parentId: Option[UUID],
@@ -179,10 +200,9 @@ case class CommentReply(
     likeState: LikeAction,
     civility: Float,
     source: Option[String],
-    createdByIconSrc: String,
-    createdByExperience: Option[String],
     reportStatus: String = CLEAN.entryName,
-    toxicityStatus: Option[String] = None
+    toxicityStatus: Option[String] = None,
+    createdByUserData: CreatedByUserData
 )
 
 case class CommentReplyWithParent(
@@ -208,10 +228,9 @@ case class CommentReplyWithParent(
 )
 
 object CommentReply {
-  //  implicit val codec: JsonCodec[CommentReply] = DeriveJsonCodec.gen[CommentReply]
+//    implicit val codec: JsonCodec[CommentReply] = DeriveJsonCodec.gen[CommentReply]
 
   implicit val encoder: Encoder[CommentReply] = deriveEncoder[CommentReply]
-
 }
 
 case class CommentWithDepth(
@@ -236,18 +255,7 @@ case class CommentWithReplies(
 )
 
 object CommentWithReplies {
-  //  implicit val codec: JsonCodec[CommentWithReplies] =
-  //    DeriveJsonCodec.gen[CommentWithReplies]
   implicit val encoder: Encoder[CommentWithReplies] =
     deriveEncoder[CommentWithReplies]
 
 }
-
-case class UpdateLikes(id: UUID, userId: String, increment: Boolean)
-
-case class Liked(
-    commentId: UUID,
-    likes: Int,
-    liked: Boolean,
-    rootId: Option[UUID]
-)

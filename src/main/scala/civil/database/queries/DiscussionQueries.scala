@@ -39,6 +39,8 @@ object DiscussionQueries {
       thumbImgUrl: Option[String],
       tag: Option[String],
       iconSrc: Option[String],
+      civility: Long,
+      numFollowers: Int,
       userLikeState: Option[LikeAction],
       userFollowState: Boolean,
       commentCount: Int
@@ -71,6 +73,8 @@ object DiscussionQueries {
       thumbImgUrl: Option[String],
       tag: Option[String],
       iconSrc: Option[String],
+      civility: Long,
+      numFollowers: Int,
       commentCount: Int
   )
 
@@ -101,6 +105,8 @@ object DiscussionQueries {
       thumbImgUrl: Option[String],
       tag: Option[String],
       iconSrc: Option[String],
+      civility: Long,
+      numFollowers: Int,
       commentCount: Int
   )
 
@@ -128,6 +134,8 @@ object DiscussionQueries {
          link_data.thumb_img_url,
          u.tag,
          u.icon_src,
+         u.civility,
+         (SELECT COUNT(f.id) FROM follows f WHERE d.created_by_user_id = f.followed_user_id) AS num_followers,
          COALESCE(cc.comment_count, 0) AS comment_count
      FROM
          discussions d
@@ -174,6 +182,8 @@ object DiscussionQueries {
            link_data.thumb_img_url,
            u.tag,
            u.icon_src,
+           u.civility,
+          (SELECT COUNT(f.id) FROM follows f WHERE d.created_by_user_id = f.followed_user_id) AS num_followers,
            dl.like_state as user_like_state,
            CASE WHEN df.id IS NOT NULL THEN TRUE ELSE FALSE END AS user_follow_state,
            COALESCE(cc.comment_count, 0) AS comment_count
@@ -189,6 +199,7 @@ object DiscussionQueries {
            discussion_follows df ON d.id = df.followed_discussion_id AND df.user_id = $requestingUserId
        LEFT JOIN
          external_links_discussions link_data on d.id = link_data.discussion_id
+
        LEFT JOIN
            CommentCounts cc ON d.id = cc.discussion_id
        WHERE d.id = $discussionId
@@ -218,6 +229,8 @@ object DiscussionQueries {
            link_data.thumb_img_url,
            u.tag,
            u.icon_src,
+           u.civility,
+           (SELECT COUNT(f.id) FROM follows f WHERE d.created_by_user_id = f.followed_user_id) AS num_followers,
            COALESCE(cc.comment_count, 0) AS comment_count
        FROM
            discussions d
@@ -256,6 +269,8 @@ object DiscussionQueries {
            link_data.thumb_img_url,
            u.tag,
            u.icon_src,
+           u.civility,
+          (SELECT COUNT(f.id) FROM follows f WHERE d.created_by_user_id = f.followed_user_id) AS num_followers,
            dl.like_state as user_like_state,
            CASE WHEN df.id IS NOT NULL THEN TRUE ELSE FALSE END AS user_follow_state,
            COALESCE(cc.comment_count, 0) AS comment_count
@@ -281,7 +296,7 @@ object DiscussionQueries {
      """.pure.as[Query[DiscussionsData]]
   }
 
-  val getAllUserDiscussionsUnauthenticatdQuery
+  val getAllUserDiscussionsUnauthenticatedQuery
       : Quoted[(Int, String) => Query[DiscussionsDataUnauthenticated]] = quote {
     (skip: Int, userId: String) =>
       sql"""
@@ -304,6 +319,8 @@ object DiscussionQueries {
            link_data.thumb_img_url,
            u.tag,
            u.icon_src,
+           u.civility,
+           (SELECT COUNT(f.id) FROM follows f WHERE d.created_by_user_id = f.followed_user_id) AS num_followers,
            COALESCE(cc.comment_count, 0) AS comment_count
        FROM
            discussions d
@@ -345,6 +362,8 @@ object DiscussionQueries {
            link_data.thumb_img_url,
            u.tag,
            u.icon_src,
+           u.civility,
+           (SELECT COUNT(f.id) FROM follows f WHERE d.created_by_user_id = f.followed_user_id) AS num_followers,
            dl.like_state as user_like_state,
            CASE WHEN df.id IS NOT NULL THEN TRUE ELSE FALSE END AS user_follow_state,
            COALESCE(cc.comment_count, 0) AS comment_count
@@ -370,7 +389,7 @@ object DiscussionQueries {
      """.pure.as[Query[DiscussionsData]]
   }
 
-  val getSpaceDiscussionsUnauthenticatedQuery = quote {
+  val getSpaceDiscussionsUnauthenticatedQuery: Quoted[(Index, UUID) => Query[DiscussionsDataUnauthenticated]] = quote {
     (skip: Int, spaceId: UUID) =>
       sql"""
        WITH CommentCounts AS (
@@ -392,6 +411,8 @@ object DiscussionQueries {
            link_data.thumb_img_url,
            u.tag,
            u.icon_src,
+           u.civility,
+           (SELECT COUNT(f.id) FROM follows f WHERE d.created_by_user_id = f.followed_user_id) AS num_followers,
            COALESCE(cc.comment_count, 0) AS comment_count
        FROM
            discussions d
@@ -433,6 +454,8 @@ object DiscussionQueries {
            link_data.thumb_img_url,
            u.tag,
            u.icon_src,
+           u.civility,
+           (SELECT COUNT(f.id) FROM follows f WHERE d.created_by_user_id = f.followed_user_id) AS num_followers,
            dl.like_state as user_like_state,
            CASE WHEN df.id IS NOT NULL THEN TRUE ELSE FALSE END AS user_follow_state,
            COALESCE(cc.comment_count, 0) AS comment_count
@@ -481,6 +504,8 @@ object DiscussionQueries {
            link_data.thumb_img_url,
            u.tag,
            u.icon_src,
+           u.civility,
+           (SELECT COUNT(f.id) FROM follows f WHERE d.created_by_user_id = f.followed_user_id) AS num_followers,
            dl.like_state as user_like_state,
            CASE WHEN df.id IS NOT NULL THEN TRUE ELSE FALSE END AS user_follow_state,
            COALESCE(cc.comment_count, 0) AS comment_count
@@ -506,7 +531,7 @@ object DiscussionQueries {
      """.pure.as[Query[DiscussionsData]]
   }
 
-  val getAllPopularDiscussionsUnauthenticatedQuery = quote { (skip: Int) =>
+  val getAllPopularDiscussionsUnauthenticatedQuery: Quoted[Index => Query[DiscussionsDataUnauthenticated]] = quote { (skip: Int) =>
     sql"""
        WITH CommentCounts AS (
          SELECT
@@ -527,6 +552,8 @@ object DiscussionQueries {
            link_data.thumb_img_url,
            u.tag,
            u.icon_src,
+           u.civility,
+           (SELECT COUNT(f.id) FROM follows f WHERE d.created_by_user_id = f.followed_user_id) AS num_followers,
            COALESCE(cc.comment_count, 0) AS comment_count
        FROM
            discussions d

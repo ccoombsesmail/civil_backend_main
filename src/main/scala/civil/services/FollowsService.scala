@@ -19,7 +19,7 @@ trait FollowsService {
       jwtType: String,
       followedUserId: FollowedUserId
   ): ZIO[Any, AppError, OutgoingUser]
-  def getAllFolowers(userId: String): Task[List[OutgoingUser]]
+  def getAllFollowers(userId: String): Task[List[OutgoingUser]]
   def getAllFollowed(userId: String): Task[List[OutgoingUser]]
 }
 
@@ -42,10 +42,10 @@ object FollowsService {
       _.deleteFollow(jwt, jwtType, followedUserId)
     )
 
-  def getAllFolowers(
+  def getAllFollowers(
       userId: String
   ): RIO[FollowsService, List[OutgoingUser]] =
-    ZIO.serviceWithZIO[FollowsService](_.getAllFolowers(userId))
+    ZIO.serviceWithZIO[FollowsService](_.getAllFollowers(userId))
 
   def getAllFollowed(
       userId: String
@@ -114,7 +114,7 @@ case class FollowsServiceLive(
       )
     } yield outgoingUser
   }
-  override def getAllFolowers(userId: String): Task[List[OutgoingUser]] = {
+  override def getAllFollowers(userId: String): Task[List[OutgoingUser]] = {
     followsRepository.getAllFollowers(userId)
   }
   override def getAllFollowed(userId: String): Task[List[OutgoingUser]] = {

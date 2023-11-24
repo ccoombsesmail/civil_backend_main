@@ -106,7 +106,7 @@ object UsersRepository {
   ): ZIO[DataSource, AppError, Option[Users]] = {
     for {
       user <- run(query[Users].filter(u => u.userId == lift(userId)))
-        .mapError(InternalServerError)
+        .mapError(e => InternalServerError(new Throwable(s"Unable to retrieve user info from database. Called: getUserInternal. Error: $e")))
     } yield user.headOption
   }
 
@@ -187,7 +187,6 @@ case class UsersRepositoryLive(dataSource: DataSource) extends UsersRepository {
   ): ZIO[Any, AppError, OutgoingUser] = {
     (for {
       userQuery <- run(query[Users].filter(u => u.userId == lift(id)))
-
       user <- ZIO
         .fromOption(userQuery.headOption)
         .orElseFail(DatabaseError(new Throwable("Could Not Locate User")))
@@ -234,7 +233,7 @@ case class UsersRepositoryLive(dataSource: DataSource) extends UsersRepository {
       )
       .enableDefaultValues
       .transform)
-      .mapError(DatabaseError)
+      .mapError(e => DatabaseError(new Throwable(e.getMessage)))
       .provideEnvironment(ZEnvironment(dataSource))
   }
 
